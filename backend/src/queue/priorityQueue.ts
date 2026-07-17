@@ -85,11 +85,17 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 
 	const holdMs = settings.holdBeforePublishMinutes * 60_000;
 	let published = 0;
+	let pending = 0;
+	let earliestRemainingMs = Infinity;
 
 	for (const cluster of clusters) {
 		const earliestFetch = Math.min(...cluster.items.map((i) => new Date(i.fetchedAt).getTime()));
-		const ready = Date.now() - earliestFetch >= holdMs;
-		if (!ready) continue; // left unclustered — reconsidered next cycle, possibly with more corroborating items
+		const remaining = holdMs - (Date.now() - earliestFetch);
+		if (remaining > 0) {
+			pending += cluster.items.length;
+			earliestRemainingMs = Math.min(earliestRemainingMs, remaining);
+			continue; // left unclustered — reconsidered next cycle, possibly with more corroborating items
+		}
 
 		try {
 			const article = await publishCluster(provider, settings, cluster);
@@ -105,6 +111,14 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 		} catch (err) {
 			logger.error('synthesis', `Failed to publish cluster: ${(err as Error).message}`);
 		}
+	}
+
+	if (published === 0 && pending > 0) {
+		const minutesLeft = Math.ceil(earliestRemainingMs / 60_000);
+		logger.info(
+			'synthesis',
+			`${pending} item(s) ingested, waiting on hold-before-publish (~${minutesLeft}m remaining on the earliest)`
+		);
 	}
 
 	return published;
