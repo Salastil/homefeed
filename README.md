@@ -15,10 +15,13 @@ doesn't know or care which one it's talking to. Switch between them by changing
 
 ```bash
 cd backend
-cp .env.example .env   # set ADMIN_PASSWORD at minimum
+cp .env.example .env
 npm install
 npm run dev
 ```
+
+The console prints an admin API key on every startup (a fresh one each time) — copy
+it into the admin login page. See `backend/README.md` for details.
 
 See `backend/README.md` for what's fully implemented vs. stubbed (Telegram adapter,
 image-selection heuristic vs. vision model, etc.), and how it behaves when Ollama
@@ -49,7 +52,7 @@ Open http://localhost:5173.
 - **Article page** (`/article/:id`) — merge badge, hero image with single-source attribution, body, video slot, tag chips, thread continuation banners (both directions — "newer coverage" / "earlier coverage"), sources footer
 - **Article cards** — show source count (`⇄ N sources`), single-source attribution, or a video indicator, matching the design decided earlier
 - **Light/dark theme toggle** — slider in the masthead, top right, left of the settings cog. Dark is a genuine slate palette (not an inverted light theme). Persists via `localStorage`, respects system preference on first load, no flash-of-wrong-theme (set before hydration in `app.html`).
-- **Admin panel** (`/admin/settings`) — six tabs, all wired to the mock backend's `/api/admin/*` routes:
+- **Admin panel** (`/admin/settings`) — disabled by default; set `ADMIN_PANEL_ENABLED=true` in `frontend/.env` to turn on the cog icon and the `/admin/*` pages (see `frontend/.env.example`). Six tabs, all wired to the mock backend's `/api/admin/*` routes:
   - **Merge** — strictness slider, poll interval, hold-before-publish, follow-up thresholds, category priority (reorderable), tag dedup threshold, tag expiry
   - **Sources** — list, add, enable/disable, delete RSS/API/Telegram feeds
   - **Models** — AI service status, per-task model selection (embedding/image/synthesis), fetched from the mock's simulated Ollama catalog

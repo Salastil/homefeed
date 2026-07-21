@@ -1,7 +1,6 @@
-// The admin section talks to a different origin (the backend) than the frontend
-// itself. During SSR, the `load` function's fetch runs on the Node server, which has
-// no access to the browser's cookie jar — it can't attach the session cookie to a
-// cross-origin request. Disabling SSR here means all admin data fetching happens in
-// the actual browser instead, where credentials: 'include' works correctly against
-// whatever cookie the browser already holds from login.
+// The admin API key lives in this browser's localStorage (see adminAuth.ts), which
+// is only reachable from client-side code — a server-rendered `load` function
+// running on the Node server during SSR has no access to it and couldn't attach it
+// to a cross-origin request. Disabling SSR here means all admin data fetching
+// happens in the actual browser instead, where the stored key is available.
 export const ssr = false;

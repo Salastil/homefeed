@@ -3,8 +3,7 @@
 	import { page } from '$app/stores';
 	import { login } from '$lib/adminApi';
 
-	let username = $state('admin');
-	let password = $state('');
+	let apiKey = $state('');
 	let error = $state('');
 	let loading = $state(false);
 
@@ -13,7 +12,7 @@
 		error = '';
 		loading = true;
 		try {
-			await login(username, password);
+			await login(apiKey);
 			const redirectTo = $page.url.searchParams.get('redirectTo') || '/admin/settings';
 			await goto(redirectTo);
 		} catch (err) {
@@ -27,12 +26,13 @@
 <div class="wrap">
 	<form onsubmit={handleSubmit}>
 		<span class="title">Admin login</span>
+		<p class="hint">
+			Find the API key printed in your backend server's console output when it starts up. It's
+			generated fresh every restart, so check there again if this one stops working.
+		</p>
 
-		<label class="field-label" for="username">Username</label>
-		<input id="username" type="text" bind:value={username} autocomplete="username" />
-
-		<label class="field-label" for="password">Password</label>
-		<input id="password" type="password" bind:value={password} autocomplete="current-password" />
+		<label class="field-label" for="apiKey">API Key</label>
+		<input id="apiKey" type="password" bind:value={apiKey} autocomplete="off" />
 
 		{#if error}<div class="error">{error}</div>{/if}
 
@@ -57,6 +57,12 @@
 		font-size: 22px;
 		font-weight: 500;
 		margin-bottom: 8px;
+	}
+	.hint {
+		font-size: 12px;
+		color: var(--text-secondary);
+		line-height: 1.5;
+		margin: 0 0 4px;
 	}
 	.field-label {
 		font-size: 11px;

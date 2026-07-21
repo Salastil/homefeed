@@ -1,10 +1,9 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import cookie from '@fastify/cookie';
 import fs from 'node:fs';
 import path from 'node:path';
 import { migrate } from './storage/db/index.js';
-import { ensureAdminUserSeeded } from './storage/db/auth.js';
+import { ADMIN_API_KEY } from './api/apiKey.js';
 import { registerAuth } from './api/auth.js';
 import { registerPublicRoutes } from './api/public.js';
 import { registerAdminRoutes } from './api/admin.js';
@@ -15,12 +14,21 @@ const PORT = Number(process.env.PORT) || 4000;
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
 const MEDIA_DIR = process.env.MEDIA_DIR || './data/media';
 
+function printApiKeyBanner() {
+	const line = '='.repeat(64);
+	// Deliberately console.log, not the DB-backed logger — the Logs tab in the admin
+	// panel is itself behind this key, so printing there would be unreachable until
+	// you already have the key. This is the one and only place it's ever surfaced.
+	console.log(`\n${line}`);
+	console.log('  Homefeed admin API key (required for every /api/admin/* request)');
+	console.log(`  ${ADMIN_API_KEY}`);
+	console.log('  This key is generated fresh on every restart — it will not be the same next time.');
+	console.log(`${line}\n`);
+}
+
 async function main() {
 	migrate();
-	ensureAdminUserSeeded(
-		process.env.ADMIN_USERNAME || 'admin',
-		process.env.ADMIN_PASSWORD || 'change-me-immediately'
-	);
+	printApiKeyBanner();
 
 	const app = Fastify({ logger: false });
 
@@ -32,10 +40,8 @@ async function main() {
 	// reaches a route handler.
 	await app.register(cors, {
 		origin: FRONTEND_ORIGIN,
-		credentials: true,
 		methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS']
 	});
-	await app.register(cookie);
 
 	// Overrides Fastify's default JSON body parser, which throws "Body cannot be empty
 	// when content-type is set to 'application/json'" for any bodyless request (DELETE,
