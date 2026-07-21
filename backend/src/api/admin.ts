@@ -24,6 +24,20 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		return { ...settings, categoryPriority: categoriesDb.listCategories() };
 	});
 
+	// --- Categories (add/remove — reordering is via PATCH /settings above) ---
+	app.post('/api/admin/categories', async (req, reply) => {
+		const { name } = req.body as { name?: string };
+		if (!name || !name.trim()) return reply.code(400).send({ error: 'name required' });
+		const created = categoriesDb.createCategory(name.trim());
+		return reply.code(201).send(created);
+	});
+
+	app.delete('/api/admin/categories/:id', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		categoriesDb.deleteCategory(id);
+		return reply.code(204).send();
+	});
+
 	// --- Sources ---
 	app.get('/api/admin/sources', async () => sourcesDb.listSources());
 

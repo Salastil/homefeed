@@ -49,6 +49,17 @@ export const getSettings = (fetchFn?: typeof fetch) =>
 export const updateSettings = (patch: Partial<AdminSettings>, fetchFn?: typeof fetch) =>
 	request<AdminSettings>('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
 
+// Categories
+export const createCategory = (name: string, fetchFn?: typeof fetch) =>
+	request<{ id: string; name: string; priorityRank: number; isDefault: boolean }>(
+		'/api/admin/categories',
+		{ method: 'POST', body: JSON.stringify({ name }) },
+		fetchFn
+	);
+
+export const deleteCategory = (id: string, fetchFn?: typeof fetch) =>
+	request<void>(`/api/admin/categories/${id}`, { method: 'DELETE' }, fetchFn);
+
 // Sources
 export const getSources = (fetchFn?: typeof fetch) =>
 	request<AdminSource[]>('/api/admin/sources', {}, fetchFn);

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { AdminSettings } from '$lib/adminTypes';
-	import { updateSettings } from '$lib/adminApi';
+	import { updateSettings, createCategory, deleteCategory } from '$lib/adminApi';
 	import SaveStatus from './SaveStatus.svelte';
 
 	let { settings }: { settings: AdminSettings } = $props();
@@ -8,6 +8,8 @@
 	let local = $state({ ...settings, categoryPriority: [...settings.categoryPriority] });
 	let status = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
 	let saveTimer: ReturnType<typeof setTimeout>;
+	let newCategoryName = $state('');
+	let addingCategory = $state(false);
 
 	function scheduleSave() {
 		status = 'saving';
@@ -30,6 +32,30 @@
 				status = 'error';
 			}
 		}, 500);
+	}
+
+	async function addCategory() {
+		const name = newCategoryName.trim();
+		if (!name) return;
+		addingCategory = true;
+		try {
+			const created = await createCategory(name);
+			local.categoryPriority = [...local.categoryPriority, created];
+			newCategoryName = '';
+		} finally {
+			addingCategory = false;
+		}
+	}
+
+	async function removeCategory(id: string, isDefault: boolean, name: string) {
+		if (isDefault) {
+			// Sensible-default categories can still be removed — e.g. a fresh install's
+			// Business/Culture defaults aren't everyone's interest — just a lighter check.
+			const confirmed = confirm(`Remove "${name}"? Sources already tagged with it will keep the label but stop appearing under a nav tab.`);
+			if (!confirmed) return;
+		}
+		await deleteCategory(id);
+		local.categoryPriority = local.categoryPriority.filter((c) => c.id !== id);
 	}
 
 	function move(index: number, dir: -1 | 1) {
@@ -117,7 +143,8 @@
 	<span class="panel-title">Category priority</span>
 	<p class="hint">
 		Synthesis queue processes higher-ranked categories first. Nothing is dropped — lower
-		categories just wait longer when the queue is busy.
+		categories just wait longer when the queue is busy. This list also drives the site's nav —
+		remove anything you're not interested in (Business, Culture, etc.) or add your own.
 	</p>
 	<div class="priority-list">
 		{#each local.categoryPriority as cat, i (cat.id)}
@@ -131,8 +158,24 @@
 					disabled={i === local.categoryPriority.length - 1}
 					aria-label="Move down">▼</button
 				>
+				{#if cat.name.toLowerCase() !== 'top stories'}
+					<button class="icon-btn danger" onclick={() => removeCategory(cat.id, cat.isDefault, cat.name)} aria-label={`Remove ${cat.name}`}
+						>✕</button
+					>
+				{/if}
 			</div>
 		{/each}
+	</div>
+	<div class="add-row">
+		<input
+			type="text"
+			placeholder="New category name"
+			bind:value={newCategoryName}
+			onkeydown={(e) => e.key === 'Enter' && addCategory()}
+		/>
+		<button onclick={addCategory} disabled={addingCategory || !newCategoryName.trim()}>
+			{addingCategory ? 'Adding…' : '+ Add'}
+		</button>
 	</div>
 </div>
 
@@ -255,5 +298,16 @@
 		color: var(--text-muted);
 		opacity: 0.4;
 		cursor: default;
+	}
+	.icon-btn.danger:hover {
+		color: var(--text-danger);
+	}
+	.add-row {
+		display: flex;
+		gap: 8px;
+		margin-top: 10px;
+	}
+	.add-row input {
+		flex: 1;
 	}
 </style>

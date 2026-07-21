@@ -1,5 +1,5 @@
 import { getBackendUrl } from './config';
-import type { MergedArticle, Tag, TrackedEventPublic } from './types';
+import type { MergedArticle, Tag, TrackedEventPublic, Category } from './types';
 
 async function get<T>(path: string, fetchFn: typeof fetch = fetch): Promise<T> {
 	const res = await fetchFn(`${getBackendUrl()}${path}`);
@@ -7,11 +7,19 @@ async function get<T>(path: string, fetchFn: typeof fetch = fetch): Promise<T> {
 	return res.json();
 }
 
-export function getFeed(
-	params: { category?: string; geo?: string; eventId?: string; tag?: string } = {},
-	fetchFn?: typeof fetch
-): Promise<MergedArticle[]> {
-	const qs = new URLSearchParams(params as Record<string, string>).toString();
+export interface FeedParams {
+	category?: string;
+	geo?: string;
+	eventId?: string;
+	tag?: string;
+	before?: string;
+	limit?: number;
+}
+
+export function getFeed(params: FeedParams = {}, fetchFn?: typeof fetch): Promise<MergedArticle[]> {
+	const qs = new URLSearchParams(
+		Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
+	).toString();
 	return get<MergedArticle[]>(`/api/feed${qs ? `?${qs}` : ''}`, fetchFn);
 }
 
@@ -25,4 +33,8 @@ export function getTags(fetchFn?: typeof fetch): Promise<Tag[]> {
 
 export function getEvents(fetchFn?: typeof fetch): Promise<TrackedEventPublic[]> {
 	return get<TrackedEventPublic[]>('/api/events', fetchFn);
+}
+
+export function getCategories(fetchFn?: typeof fetch): Promise<Category[]> {
+	return get<Category[]>('/api/categories', fetchFn);
 }

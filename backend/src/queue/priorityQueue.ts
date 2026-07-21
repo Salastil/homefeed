@@ -24,10 +24,12 @@ function primaryCategoryRank(item: ContentItem, rankByName: Map<string, number>)
 }
 
 /**
- * Fallback for when the AI service isn't reachable yet — publishes eligible items
- * directly (no clustering across sources, no rewriting) rather than leaving pages
- * empty until Ollama is set up. Still respects category priority and the
- * hold-before-publish window; just skips everything that requires an AI call.
+ * Fallback for when the AI service isn't reachable yet — publishes every eligible item
+ * immediately rather than leaving pages empty until Ollama is set up. Unlike the AI
+ * pipeline, this doesn't wait out the hold-before-publish window: that window exists to
+ * give corroborating sources time to arrive before an AI merge locks in, which doesn't
+ * apply here since there's no merging happening at all — each item is just itself.
+ * Still respects category priority.
  */
 export async function runPassthroughCycle(settings: GlobalSettings): Promise<number> {
 	const eventSourceIds = eventsDb.listActiveEvents().flatMap((e) => e.sourceIds);
@@ -41,13 +43,9 @@ export async function runPassthroughCycle(settings: GlobalSettings): Promise<num
 		.sort((a, b) => a.rank - b.rank)
 		.map((r) => r.item);
 
-	const holdMs = settings.holdBeforePublishMinutes * 60_000;
 	let published = 0;
 
 	for (const item of ranked) {
-		const ready = Date.now() - new Date(item.fetchedAt).getTime() >= holdMs;
-		if (!ready) continue;
-
 		try {
 			const article = await publishDirect(item);
 			contentItemsDb.assignCluster([item.id], article.id);

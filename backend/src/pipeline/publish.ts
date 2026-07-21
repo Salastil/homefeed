@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { InferenceProvider } from '../inference/provider.js';
 import type { Cluster } from './clustering.js';
 import { synthesizeArticle } from './synthesis.js';
-import { selectBestImage } from './image-selection.js';
+import { selectBestImage, faviconUrlFor } from './image-selection.js';
 import { downloadAndStore, promoteToPublished } from '../storage/media/index.js';
 import { logger } from '../storage/db/logs.js';
 import * as articles from '../storage/db/articles.js';
@@ -28,6 +28,43 @@ function deriveTitle(body: string): string {
 }
 
 /**
+ * Resolves the hero image for an article: try the best candidate from the source
+ * items, download and locally host it; if there isn't one, fall back to the site's
+ * favicon rather than leaving the article with no art at all.
+ */
+async function resolveHeroImage(
+	items: ContentItem[],
+	primaryLink: string
+): Promise<{ heroImage: MergedArticle['heroImage']; storedMediaId: string | null }> {
+	const selected = selectBestImage(items);
+
+	if (selected) {
+		const stored = await downloadAndStore(selected.url, 'published', {});
+		if (stored) {
+			return {
+				heroImage: { url: stored.servedPath, sourceItemId: selected.sourceItemId, selectionReason: selected.selectionReason },
+				storedMediaId: stored.id
+			};
+		}
+		// Download failed — fall back to the hotlinked URL rather than losing the image entirely.
+		return { heroImage: selected, storedMediaId: null };
+	}
+
+	const favicon = faviconUrlFor(primaryLink);
+	if (favicon) {
+		const stored = await downloadAndStore(favicon, 'published', {});
+		if (stored) {
+			return {
+				heroImage: { url: stored.servedPath, sourceItemId: items[0]?.id ?? '', selectionReason: 'Site favicon — no article image available' },
+				storedMediaId: stored.id
+			};
+		}
+	}
+
+	return { heroImage: null, storedMediaId: null };
+}
+
+/**
  * Publishes a single item as-is, with no AI calls at all — used when the AI service
  * isn't reachable (e.g. Ollama hasn't been set up yet, per the "assume it arrives
  * after the backend launches" requirement). No rewriting, no tag extraction, no
@@ -39,19 +76,10 @@ function deriveTitle(body: string): string {
  */
 export async function publishDirect(item: ContentItem): Promise<MergedArticle> {
 	const category = uniqueCategories([item]);
-	const now = new Date().toISOString();
-
-	let heroImage: MergedArticle['heroImage'] = null;
-	if (item.images.length > 0) {
-		const stored = await downloadAndStore(item.images[0].url, 'published', {});
-		heroImage = stored
-			? { url: stored.servedPath, sourceItemId: item.id, selectionReason: 'Only available image (no AI service configured yet)' }
-			: { url: item.images[0].url, sourceItemId: item.id, selectionReason: 'Only available image (no AI service configured yet)' };
-	}
-
+	const { heroImage, storedMediaId } = await resolveHeroImage([item], item.link);
 	const video = item.videos[0] ? { url: item.videos[0].url, provider: item.videos[0].provider, sourceItemId: item.id } : null;
 
-	return articles.insertArticle({
+	const article = await articles.insertArticle({
 		title: item.title,
 		body: item.body || item.summary,
 		heroImage,
@@ -68,14 +96,19 @@ export async function publishDirect(item: ContentItem): Promise<MergedArticle> {
 				publishedAt: item.publishedAt
 			}
 		],
-		publishedAt: now,
-		updatedAt: now,
+		// Passthrough articles show the original feed date — only AI-synthesized/merged
+		// articles get a "modified" publish timeframe reflecting when the merge happened.
+		publishedAt: item.publishedAt,
+		updatedAt: item.publishedAt,
 		mergeConfidence: 1.0,
 		tags: [], // no LLM available to extract tags yet — backfilling these later is a reasonable future improvement
 		threadId: randomUUID(),
 		previousArticleId: null,
 		nextArticleId: null
 	});
+
+	if (storedMediaId) promoteToPublished(storedMediaId, article.id);
+	return article;
 }
 
 /**
@@ -104,18 +137,7 @@ export async function publishCluster(
 	}
 	const tagIds = resolvedTags.map((t) => t.id);
 
-	const selectedImage = selectBestImage(items);
-	let heroImage: MergedArticle['heroImage'] = null;
-	let storedMediaId: string | null = null;
-	if (selectedImage) {
-		const stored = await downloadAndStore(selectedImage.url, 'published', {});
-		if (stored) {
-			storedMediaId = stored.id;
-			heroImage = { url: stored.servedPath, sourceItemId: selectedImage.sourceItemId, selectionReason: selectedImage.selectionReason };
-		} else {
-			heroImage = selectedImage; // fall back to the hotlinked URL if the download failed, rather than losing the image entirely
-		}
-	}
+	const { heroImage, storedMediaId } = await resolveHeroImage(items, items[0]?.link ?? '');
 	const videoItem = items.find((i) => i.videos.length > 0);
 	const video = videoItem
 		? { url: videoItem.videos[0].url, provider: videoItem.videos[0].provider, sourceItemId: videoItem.id }

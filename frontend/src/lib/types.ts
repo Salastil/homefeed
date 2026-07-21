@@ -42,3 +42,10 @@ export interface TrackedEventPublic {
 	active: boolean;
 	cadence: string;
 }
+
+export interface Category {
+	id: string;
+	name: string;
+	priorityRank: number;
+	isDefault: boolean;
+}

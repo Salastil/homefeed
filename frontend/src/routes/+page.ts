@@ -1,19 +1,9 @@
 import type { PageLoad } from './$types';
 import { getFeed } from '$lib/api';
 
+const PAGE_SIZE = 15;
+
 export const load: PageLoad = async ({ fetch }) => {
-	const [all, local] = await Promise.all([
-		getFeed({}, fetch),
-		getFeed({ geo: 'philadelphia' }, fetch)
-	]);
-
-	const byCategory = (name: string) =>
-		all.filter((a) => a.category.some((c) => c.toLowerCase() === name.toLowerCase()));
-
-	return {
-		hero: all[0] ?? null,
-		local,
-		business: byCategory('business'),
-		tech: byCategory('tech')
-	};
+	const initial = await getFeed({ limit: PAGE_SIZE }, fetch);
+	return { initial, pageSize: PAGE_SIZE };
 };

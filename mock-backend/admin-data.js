@@ -25,12 +25,12 @@ let settings = {
 		storageUsedMB: 214
 	},
 	categoryPriority: [
-		{ id: "cat-top", name: "Top stories", priorityRank: 1 },
-		{ id: "cat-local", name: "Local", priorityRank: 2 },
-		{ id: "cat-world", name: "World", priorityRank: 3 },
-		{ id: "cat-business", name: "Business", priorityRank: 4 },
-		{ id: "cat-tech", name: "Tech", priorityRank: 5 },
-		{ id: "cat-culture", name: "Culture", priorityRank: 6 }
+		{ id: "cat-top", name: "Top stories", priorityRank: 1, isDefault: true },
+		{ id: "cat-local", name: "Local", priorityRank: 2, isDefault: true },
+		{ id: "cat-world", name: "World", priorityRank: 3, isDefault: true },
+		{ id: "cat-business", name: "Business", priorityRank: 4, isDefault: true },
+		{ id: "cat-tech", name: "Tech", priorityRank: 5, isDefault: true },
+		{ id: "cat-culture", name: "Culture", priorityRank: 6, isDefault: true }
 	]
 };
 
@@ -143,5 +143,15 @@ module.exports = {
 	deleteEvent: (id) => {
 		events = events.filter((e) => e.id !== id);
 	},
-	getModels: () => models
+	getModels: () => models,
+	createCategory: (name) => {
+		const id = `cat-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
+		const maxRank = Math.max(0, ...settings.categoryPriority.map((c) => c.priorityRank));
+		const created = { id, name, priorityRank: maxRank + 1, isDefault: false };
+		settings.categoryPriority = [...settings.categoryPriority, created];
+		return created;
+	},
+	deleteCategory: (id) => {
+		settings.categoryPriority = settings.categoryPriority.filter((c) => c.id !== id);
+	}
 };

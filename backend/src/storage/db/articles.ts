@@ -60,7 +60,20 @@ export function getArticle(id: string): MergedArticle | null {
 	return row ? rowToArticle(row) : null;
 }
 
-export function queryFeed(filters: { category?: string; geo?: string; eventId?: string; tag?: string }): MergedArticle[] {
+/** Unpaginated — for internal use (retention sweep), not the public feed API which caps page size. */
+export function allArticlesNewestFirst(): MergedArticle[] {
+	const rows = db.prepare('SELECT * FROM merged_articles ORDER BY published_at DESC').all();
+	return rows.map(rowToArticle);
+}
+
+export function queryFeed(filters: {
+	category?: string;
+	geo?: string;
+	eventId?: string;
+	tag?: string;
+	before?: string;
+	limit?: number;
+}): MergedArticle[] {
 	let sql = 'SELECT * FROM merged_articles WHERE 1=1';
 	const params: unknown[] = [];
 	if (filters.category) {
@@ -79,7 +92,12 @@ export function queryFeed(filters: { category?: string; geo?: string; eventId?: 
 		sql += ' AND tags LIKE ?';
 		params.push(`%"${filters.tag}"%`);
 	}
-	sql += ' ORDER BY published_at DESC';
+	if (filters.before) {
+		sql += ' AND published_at < ?';
+		params.push(filters.before);
+	}
+	sql += ' ORDER BY published_at DESC LIMIT ?';
+	params.push(Math.min(filters.limit ?? 15, 50));
 	const rows = db.prepare(sql).all(...(params as any[]));
 	return rows.map(rowToArticle);
 }

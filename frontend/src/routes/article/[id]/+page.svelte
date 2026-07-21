@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { timeAgo } from '$lib/format';
+	import { timeAgo, exactTime } from '$lib/format';
+	import { resolveMediaUrl } from '$lib/config';
 
 	let { data }: { data: PageData } = $props();
 	const a = $derived(data.article);
@@ -24,14 +25,14 @@
 	<h1>{a.title}</h1>
 
 	<div class="dates">
-		<span>Published {timeAgo(a.publishedAt)}</span>
+		<span>Published {timeAgo(a.publishedAt)} &middot; {exactTime(a.publishedAt)}</span>
 		{#if a.updatedAt !== a.publishedAt}
-			<span>&middot; Updated {timeAgo(a.updatedAt)}</span>
+			<span>&middot; Updated {timeAgo(a.updatedAt)} &middot; {exactTime(a.updatedAt)}</span>
 		{/if}
 	</div>
 
 	{#if a.heroImage}
-		<img class="hero-img" src={a.heroImage.url} alt="" />
+		<img class="hero-img" src={resolveMediaUrl(a.heroImage.url)} alt="" />
 		<div class="img-caption">
 			Image via <span class="accent">{a.sources[0]?.sourceName ?? 'source'}</span>
 		</div>

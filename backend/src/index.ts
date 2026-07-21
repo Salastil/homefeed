@@ -26,12 +26,28 @@ async function main() {
 
 	// Cross-origin is expected — see project-structure.md "Cross-origin and security
 	// implications". Not a wildcard: only the configured frontend origin is allowed.
-	await app.register(cors, { origin: FRONTEND_ORIGIN, credentials: true });
+	// @fastify/cors defaults to GET/HEAD/POST only — without an explicit methods list,
+	// every PATCH (settings saves) and DELETE (removing sources/events) gets silently
+	// blocked by the browser at the CORS preflight stage, before the request ever
+	// reaches a route handler.
+	await app.register(cors, {
+		origin: FRONTEND_ORIGIN,
+		credentials: true,
+		methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS']
+	});
 	await app.register(cookie);
 
 	await registerAuth(app);
 	await registerPublicRoutes(app);
 	await registerAdminRoutes(app);
+
+	// Fastify's own logger is off (see below) — without this, an unhandled exception
+	// in any route handler produces a bare 500 with zero trace anywhere, including the
+	// admin panel's own Logs tab. This is what "Save failed" with no log entry was.
+	app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
+		logger.error('server', `${req.method} ${req.url} failed: ${err.message}`);
+		reply.code(err.statusCode ?? 500).send({ error: err.message });
+	});
 
 	// Locally hosted media (see storage/media) — served directly rather than via a
 	// heavier static-file plugin, since this is a small, flat directory.

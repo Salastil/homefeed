@@ -35,3 +35,17 @@ export function selectBestImage(items: ContentItem[]): SelectedImage | null {
 
 	return { url: best.image.url, sourceItemId: best.item.id, selectionReason: reason };
 }
+
+/**
+ * Best-effort favicon URL for a link's origin — used as a hero-image fallback when a
+ * feed article has no image or video art of its own, rather than than a placeholder.
+ * Doesn't parse the page's <head> for a <link rel="icon">; just tries the conventional
+ * /favicon.ico path, which covers most sites without needing an extra HTTP round trip.
+ */
+export function faviconUrlFor(link: string): string | null {
+	try {
+		return `${new URL(link).origin}/favicon.ico`;
+	} catch {
+		return null;
+	}
+}

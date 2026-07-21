@@ -2,17 +2,21 @@
 	import '../lib/styles/app.css';
 	import { page } from '$app/stores';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import { slugify } from '$lib/format';
+	import type { LayoutData } from './$types';
 
-	let { children } = $props();
+	let { children, data }: { children: any; data: LayoutData } = $props();
 
-	const categories = [
-		{ label: 'Top stories', href: '/' },
-		{ label: 'Local', href: '/category/local' },
-		{ label: 'World', href: '/category/world' },
-		{ label: 'Business', href: '/category/business' },
-		{ label: 'Tech', href: '/category/tech' },
-		{ label: 'Culture', href: '/category/culture' }
-	];
+	// "Top stories" is a real Category row (it drives synthesis queue priority) but
+	// isn't itself a filterable category — it always means "everything, chronological",
+	// i.e. the homepage. Every other admin-defined category gets its own /category/:slug
+	// page. See MergeTab's category priority list for where these are managed.
+	const navItems = $derived(
+		data.categories.map((cat) => ({
+			label: cat.name,
+			href: cat.name.toLowerCase() === 'top stories' ? '/' : `/category/${slugify(cat.name)}`
+		}))
+	);
 
 	function isActive(href: string): boolean {
 		if (href === '/') return $page.url.pathname === '/';
@@ -27,8 +31,8 @@
 			<span class="brand-tag">self-hosted</span>
 		</div>
 		<nav class="tabs">
-			{#each categories as cat}
-				<a class="tab" class:active={isActive(cat.href)} href={cat.href}>{cat.label}</a>
+			{#each navItems as item}
+				<a class="tab" class:active={isActive(item.href)} href={item.href}>{item.label}</a>
 			{/each}
 		</nav>
 		<div class="controls">

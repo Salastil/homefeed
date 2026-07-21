@@ -1,4 +1,5 @@
 import type { Source, ContentItem } from '../../storage/db/types.js';
+import { cleanHtml, toSummary } from '../clean.js';
 
 export interface FetchedItem {
 	title: string;
@@ -17,12 +18,18 @@ export interface SourceAdapter {
 }
 
 export function toContentItem(source: Source, item: FetchedItem): Omit<ContentItem, 'id'> {
+	// Feed content is frequently raw (or double-escaped) HTML — cleaned here once,
+	// centrally, so every adapter (RSS, API, Telegram once implemented) benefits
+	// without each needing its own cleanup logic.
+	const cleanBody = item.body ? cleanHtml(item.body) : null;
+	const cleanSummary = cleanHtml(item.summary) || (cleanBody ? toSummary(cleanBody) : '');
+
 	return {
 		sourceId: source.id,
 		type: 'article',
-		title: item.title,
-		summary: item.summary,
-		body: item.body,
+		title: cleanHtml(item.title) || item.title,
+		summary: cleanSummary,
+		body: cleanBody,
 		images: item.images,
 		videos: item.videos,
 		link: item.link,

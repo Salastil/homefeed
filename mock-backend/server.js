@@ -1,9 +1,10 @@
 // Mock backend — implements the public API surface from homefeed-data-schema.md
 // so the frontend can be built and tested before the real backend exists.
-// GET /api/feed?category=&geo=&eventId=&tag=
+// GET /api/feed?category=&geo=&eventId=&tag=&before=&limit=
 // GET /api/article/:id
 // GET /api/events
 // GET /api/tags
+// GET /api/categories
 
 const express = require("express");
 const cors = require("cors");
@@ -17,7 +18,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 4000;
 
 app.get("/api/feed", (req, res) => {
-  const { category, geo, eventId, tag } = req.query;
+  const { category, geo, eventId, tag, before, limit } = req.query;
   let results = articles;
 
   if (category) {
@@ -34,7 +35,14 @@ app.get("/api/feed", (req, res) => {
   }
 
   results = [...results].sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
-  res.json(results);
+
+  if (before) {
+    const cursor = new Date(before).getTime();
+    results = results.filter((a) => new Date(a.publishedAt).getTime() < cursor);
+  }
+
+  const pageSize = Math.min(Number(limit) || 15, 50);
+  res.json(results.slice(0, pageSize));
 });
 
 app.get("/api/article/:id", (req, res) => {
@@ -49,6 +57,11 @@ app.get("/api/tags", (req, res) => {
 
 app.get("/api/events", (req, res) => {
   res.json(events);
+});
+
+app.get("/api/categories", (req, res) => {
+  const { categoryPriority } = admin.getSettings();
+  res.json([...categoryPriority].sort((a, b) => a.priorityRank - b.priorityRank));
 });
 
 // --- Admin API ---
@@ -102,6 +115,24 @@ app.delete("/api/admin/events/:id", (req, res) => {
 
 app.get("/api/admin/models", (req, res) => {
   res.json(admin.getModels());
+});
+
+app.post("/api/admin/categories", (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: "name required" });
+  res.status(201).json(admin.createCategory(name.trim()));
+});
+
+app.delete("/api/admin/categories/:id", (req, res) => {
+  admin.deleteCategory(req.params.id);
+  res.status(204).end();
+});
+
+app.get("/api/admin/logs", (req, res) => {
+  // The mock backend doesn't run a scheduler/pipeline, so there's nothing to log —
+  // returns an empty list rather than 404ing, so the Logs tab renders its empty state
+  // instead of erroring when pointed at the mock backend.
+  res.json([]);
 });
 
 app.get("/api/admin/ai-status", (req, res) => {

@@ -55,7 +55,7 @@ function enforceStorageCap(capValue: number, unit: 'MB' | 'GB') {
 	// level being absent here — media rows are cleaned up by the candidate sweep above;
 	// published-tier media tied to a deleted article becomes orphaned and is swept next
 	// cycle once its downloaded_at also ages past raw-item retention as a backstop).
-	const oldest = articlesDb.queryFeed({}).reverse(); // oldest first
+	const oldest = articlesDb.allArticlesNewestFirst().reverse(); // oldest first — retention needs everything, not the feed's page size
 	for (const article of oldest) {
 		if (used <= capBytes) break;
 		articlesDb.deleteArticle(article.id);

@@ -20,3 +20,15 @@ export function setBackendUrl(url: string) {
 		localStorage.setItem(STORAGE_KEY, url);
 	}
 }
+
+/**
+ * Media served by the backend (see storage/media in the backend) comes back as a
+ * relative path like "/media/abc.jpg" — deliberately, since the backend doesn't need
+ * to know its own externally-reachable URL. The frontend does know it (this is exactly
+ * what getBackendUrl() is for), so relative media paths get resolved against it here.
+ * Anything already absolute (e.g. a hotlinked fallback URL) passes through unchanged.
+ */
+export function resolveMediaUrl(url: string): string {
+	if (/^https?:\/\//i.test(url)) return url;
+	return `${getBackendUrl()}${url}`;
+}
