@@ -7,6 +7,8 @@ export interface Source {
 	config: Record<string, unknown>;
 	pollIntervalMinutes: number;
 	enabled: boolean;
+	/** Opt-in — default false, so the homepage ("Top stories") isn't flooded by every ingested source. */
+	pushToTopStories: boolean;
 	lastPolledAt: string | null;
 	lastError: string | null;
 	createdAt: string;
@@ -57,6 +59,8 @@ export interface MergedArticle {
 	threadId: string;
 	previousArticleId: string | null;
 	nextArticleId: string | null;
+	/** True if any contributing source opted into "Push to Top Stories?" — gates the homepage feed, see articles.queryFeed. */
+	topStories: boolean;
 }
 
 export interface Tag {

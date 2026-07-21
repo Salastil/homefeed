@@ -28,6 +28,7 @@ export function migrate() {
 			config TEXT NOT NULL DEFAULT '{}', -- JSON: apiKey, telegramChannelId, authHeaders
 			poll_interval_minutes INTEGER NOT NULL DEFAULT 15,
 			enabled INTEGER NOT NULL DEFAULT 1,
+			push_to_top_stories INTEGER NOT NULL DEFAULT 0, -- opt-in: keeps the homepage from being flooded by every ingested source
 			last_polled_at TEXT,
 			last_error TEXT,
 			created_at TEXT NOT NULL
@@ -73,7 +74,8 @@ export function migrate() {
 			tags TEXT NOT NULL DEFAULT '[]', -- JSON tag ids
 			thread_id TEXT NOT NULL,
 			previous_article_id TEXT,
-			next_article_id TEXT
+			next_article_id TEXT,
+			top_stories INTEGER NOT NULL DEFAULT 0 -- true if any contributing source opted into "Push to Top Stories?"
 		);
 		CREATE INDEX IF NOT EXISTS idx_articles_published ON merged_articles(published_at);
 		CREATE INDEX IF NOT EXISTS idx_articles_thread ON merged_articles(thread_id);
@@ -182,10 +184,22 @@ export function migrate() {
 		).run();
 	}
 
+	// Backfill new columns for installs seeded before they existed — node:sqlite's
+	// CREATE TABLE IF NOT EXISTS doesn't add columns to an already-existing table.
+	const hasColumn = (table: string, column: string) =>
+		(db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
+	if (!hasColumn('sources', 'push_to_top_stories')) {
+		db.exec('ALTER TABLE sources ADD COLUMN push_to_top_stories INTEGER NOT NULL DEFAULT 0');
+	}
+	if (!hasColumn('merged_articles', 'top_stories')) {
+		db.exec('ALTER TABLE merged_articles ADD COLUMN top_stories INTEGER NOT NULL DEFAULT 0');
+	}
+
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —
 	// general news sources belong here, not on "Top stories" itself, which isn't a real
-	// filterable tag: it's the homepage's all-categories-chronological view (see
-	// +layout.svelte's nav mapping and /api/feed's no-category-filter default).
+	// filterable tag: it's the homepage view, now scoped to only the articles whose
+	// sources opted into "Push to Top Stories?" (see sources.push_to_top_stories and
+	// articles.queryFeed's isHomepage gate) rather than every ingested article.
 	const catCount = db.prepare('SELECT COUNT(*) as c FROM categories').get() as { c: number };
 	if (catCount.c === 0) {
 		const defaults = ['Top stories', 'News', 'Local', 'World', 'Business', 'Tech', 'Culture'];

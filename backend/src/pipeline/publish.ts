@@ -21,6 +21,11 @@ function uniqueCategories(items: ContentItem[]): string[] {
 	return [...cats];
 }
 
+/** An article shows on the homepage if any of its contributing sources opted into "Push to Top Stories?". */
+function anyPushesToTopStories(items: ContentItem[]): boolean {
+	return items.some((item) => sources.getSource(item.sourceId)?.pushToTopStories ?? false);
+}
+
 /** Takes the first line of the synthesized body as a working title until a dedicated title-generation step exists. */
 function deriveTitle(body: string): string {
 	const firstLine = body.split('\n')[0];
@@ -106,7 +111,8 @@ export async function publishDirect(item: ContentItem): Promise<MergedArticle> {
 		tags: [], // no LLM available to extract tags yet — backfilling these later is a reasonable future improvement
 		threadId: randomUUID(),
 		previousArticleId: null,
-		nextArticleId: null
+		nextArticleId: null,
+		topStories: anyPushesToTopStories([item])
 	});
 
 	if (storedMediaId) promoteToPublished(storedMediaId, article.id);
@@ -197,7 +203,8 @@ export async function publishCluster(
 		tags: tagIds,
 		threadId,
 		previousArticleId,
-		nextArticleId: null
+		nextArticleId: null,
+		topStories: anyPushesToTopStories(items)
 	});
 
 	if (storedMediaId) {
