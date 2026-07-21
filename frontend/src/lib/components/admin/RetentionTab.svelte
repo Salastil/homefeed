@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { AdminSettings } from '$lib/adminTypes';
-	import { updateSettings } from '$lib/adminApi';
+	import { updateSettings, clearAllArticles, clearAllMedia } from '$lib/adminApi';
 	import SaveStatus from './SaveStatus.svelte';
 
 	let { settings }: { settings: AdminSettings } = $props();
@@ -8,6 +8,32 @@
 	let retention = $state({ ...settings.retention });
 	let status = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
 	let saveTimer: ReturnType<typeof setTimeout>;
+	let clearing = $state<'articles' | 'media' | null>(null);
+	let clearResult = $state<string | null>(null);
+
+	async function handleClearArticles() {
+		if (!confirm('Delete every published article and its media? Raw ingested items are kept, so sources can be re-synthesized fresh.')) return;
+		clearing = 'articles';
+		clearResult = null;
+		try {
+			const { deleted } = await clearAllArticles();
+			clearResult = `${deleted} article(s) deleted`;
+		} finally {
+			clearing = null;
+		}
+	}
+
+	async function handleClearMedia() {
+		if (!confirm('Delete every locally stored media file? Articles referencing them will show broken images until re-published.')) return;
+		clearing = 'media';
+		clearResult = null;
+		try {
+			const { deleted } = await clearAllMedia();
+			clearResult = `${deleted} media file(s) deleted`;
+		} finally {
+			clearing = null;
+		}
+	}
 
 	function scheduleSave() {
 		status = 'saving';
@@ -115,6 +141,26 @@
 	</div>
 </div>
 
+<div class="panel">
+	<span class="panel-title">Clear content</span>
+	<p class="hint">
+		Wipe everything so a category or the whole site can be repopulated fresh. To clear a single
+		source's content without deleting the source, use the ✕ next to it in the Sources tab's
+		"Clear content" action instead.
+	</p>
+	<div class="clear-row">
+		<button class="danger-btn" onclick={handleClearArticles} disabled={clearing !== null}>
+			{clearing === 'articles' ? 'Clearing…' : 'Clear all articles'}
+		</button>
+		<button class="danger-btn" onclick={handleClearMedia} disabled={clearing !== null}>
+			{clearing === 'media' ? 'Clearing…' : 'Clear all media'}
+		</button>
+		{#if clearResult}
+			<span class="usage-label">{clearResult}</span>
+		{/if}
+	</div>
+</div>
+
 <style>
 	.panel {
 		background: var(--surface-1);
@@ -185,5 +231,26 @@
 	.bar-fill {
 		height: 100%;
 		background: var(--border-accent);
+	}
+	.clear-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+	.danger-btn {
+		font-size: 12px;
+		padding: 6px 12px;
+		border-radius: var(--radius);
+		border: 0.5px solid var(--text-danger);
+		background: transparent;
+		color: var(--text-danger);
+	}
+	.danger-btn:hover:not(:disabled) {
+		background: var(--bg-accent);
+	}
+	.danger-btn:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 </style>

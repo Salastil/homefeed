@@ -1,31 +1,117 @@
 <script lang="ts">
-	import type { AdminSource } from '$lib/adminTypes';
-	import { addSource, deleteSource, updateSource, pollSourceNow } from '$lib/adminApi';
+	import type { AdminSource, CategoryPriority } from '$lib/adminTypes';
+	import { addSource, deleteSource, updateSource, pollSourceNow, clearSourceContent } from '$lib/adminApi';
 
-	let { sources: initial }: { sources: AdminSource[] } = $props();
+	let { sources: initial, categories }: { sources: AdminSource[]; categories: CategoryPriority[] } = $props();
 	let sources = $state([...initial]);
 	let showAdd = $state(false);
-	let newSource = $state({ name: '', type: 'rss' as AdminSource['type'], url: '', category: '', pollIntervalMinutes: 15 });
+	let editingId = $state<string | null>(null);
 	let pollingId = $state<string | null>(null);
+	let clearingId = $state<string | null>(null);
 	let justPolled = $state<{ id: string; count: number } | null>(null);
+	let justCleared = $state<{ id: string; items: number; articles: number } | null>(null);
 
-	async function handleAdd() {
-		if (!newSource.name || !newSource.url) return;
-		const created = await addSource({
-			name: newSource.name,
-			type: newSource.type,
-			url: newSource.url,
-			category: newSource.category ? [newSource.category] : [],
-			pollIntervalMinutes: newSource.pollIntervalMinutes
-		});
-		sources = [...sources, created];
-		newSource = { name: '', type: 'rss', url: '', category: '', pollIntervalMinutes: 15 };
+	// "Top stories" isn't a real filterable tag — it's the homepage's all-categories,
+	// chronological view (see /api/feed's no-filter default and +layout.svelte's nav
+	// mapping). Assigning it to a source is the exact miscategorization this list is
+	// meant to prevent — general news belongs under "News" instead.
+	const assignableCategories = $derived(categories.filter((c) => c.name.toLowerCase() !== 'top stories'));
+
+	function emptyForm() {
+		return {
+			name: '',
+			type: 'rss' as AdminSource['type'],
+			url: '',
+			channelId: '',
+			categorySet: new Set<string>(),
+			pollIntervalMinutes: 15
+		};
+	}
+
+	let form = $state(emptyForm());
+
+	function startAdd() {
+		form = emptyForm();
+		editingId = null;
+		showAdd = true;
+	}
+
+	function startEdit(source: AdminSource) {
+		form = {
+			name: source.name,
+			type: source.type,
+			url: source.type === 'youtube' ? '' : source.url,
+			channelId: source.type === 'youtube' ? (source.url || (source.config?.channelId as string) || '') : '',
+			categorySet: new Set(source.category),
+			pollIntervalMinutes: source.pollIntervalMinutes
+		};
+		editingId = source.id;
+		showAdd = true;
+	}
+
+	function cancelForm() {
 		showAdd = false;
+		editingId = null;
+	}
+
+	function toggleCategory(name: string) {
+		const next = new Set(form.categorySet);
+		if (next.has(name)) next.delete(name);
+		else next.add(name);
+		form.categorySet = next;
+	}
+
+	function buildPayload(): Partial<AdminSource> {
+		const category = [...form.categorySet];
+		if (form.type === 'youtube') {
+			return {
+				name: form.name,
+				type: form.type,
+				url: form.channelId,
+				category,
+				pollIntervalMinutes: form.pollIntervalMinutes
+			};
+		}
+		return {
+			name: form.name,
+			type: form.type,
+			url: form.url,
+			category,
+			pollIntervalMinutes: form.pollIntervalMinutes
+		};
+	}
+
+	async function handleSubmit() {
+		if (!form.name || (form.type === 'youtube' ? !form.channelId : !form.url)) return;
+		if (editingId) {
+			const updated = await updateSource(editingId, buildPayload());
+			sources = sources.map((s) => (s.id === editingId ? updated : s));
+		} else {
+			const created = await addSource(buildPayload());
+			sources = [...sources, created];
+		}
+		cancelForm();
 	}
 
 	async function handleDelete(id: string) {
+		if (!confirm('Delete this source? All of its ingested content (and any article made up entirely of it) will be deleted too.')) return;
 		await deleteSource(id);
 		sources = sources.filter((s) => s.id !== id);
+	}
+
+	async function handleClearContent(source: AdminSource) {
+		if (!confirm(`Clear all ingested content for "${source.name}" so it can be repopulated fresh? The source itself stays.`)) return;
+		clearingId = source.id;
+		justCleared = null;
+		try {
+			const { itemsDeleted, articlesDeleted } = await clearSourceContent(source.id);
+			justCleared = { id: source.id, items: itemsDeleted, articles: articlesDeleted };
+			setTimeout(() => {
+				if (justCleared?.id === source.id) justCleared = null;
+			}, 4000);
+		} finally {
+			clearingId = null;
+		}
 	}
 
 	async function toggleEnabled(source: AdminSource) {
@@ -48,30 +134,51 @@
 		}
 	}
 
-	const typeIcon = (type: string) => (type === 'rss' ? '⟳' : type === 'telegram' ? '✈' : type === 'api' ? '⇄' : '•');
+	const typeIcon = (type: string) =>
+		type === 'rss' ? '⟳' : type === 'telegram' ? '✈' : type === 'youtube' ? '▶' : type === 'api' ? '⇄' : '•';
 </script>
 
 <div class="toolbar">
 	<span class="count">{sources.length} sources</span>
-	<button class="add-btn" onclick={() => (showAdd = !showAdd)}>+ Add source</button>
+	<button class="add-btn" onclick={() => (showAdd ? cancelForm() : startAdd())}>
+		{showAdd ? 'Cancel' : '+ Add source'}
+	</button>
 </div>
 
 {#if showAdd}
 	<div class="add-panel">
 		<div class="add-grid">
-			<input placeholder="Name" bind:value={newSource.name} />
-			<select bind:value={newSource.type}>
+			<input placeholder="Name" bind:value={form.name} />
+			<select bind:value={form.type}>
 				<option value="rss">RSS</option>
 				<option value="api">API</option>
 				<option value="telegram">Telegram</option>
+				<option value="youtube">YouTube</option>
 				<option value="custom">Custom</option>
 			</select>
-			<input placeholder="URL or channel" bind:value={newSource.url} />
-			<input placeholder="Category" bind:value={newSource.category} />
+			{#if form.type === 'youtube'}
+				<input placeholder="Channel ID, playlist ID, or full feed URL" bind:value={form.channelId} />
+			{:else}
+				<input placeholder="URL or channel" bind:value={form.url} />
+			{/if}
+			<select bind:value={form.pollIntervalMinutes}>
+				<option value={5}>Every 5 minutes</option>
+				<option value={15}>Every 15 minutes</option>
+				<option value={60}>Every hour</option>
+			</select>
+		</div>
+		<div class="categories-label">Categories</div>
+		<div class="category-checks">
+			{#each assignableCategories as cat (cat.id)}
+				<label class="category-check">
+					<input type="checkbox" checked={form.categorySet.has(cat.name)} onchange={() => toggleCategory(cat.name)} />
+					{cat.name}
+				</label>
+			{/each}
 		</div>
 		<div class="add-actions">
-			<button onclick={() => (showAdd = false)}>Cancel</button>
-			<button class="primary" onclick={handleAdd}>Add</button>
+			<button onclick={cancelForm}>Cancel</button>
+			<button class="primary" onclick={handleSubmit}>{editingId ? 'Save' : 'Add'}</button>
 		</div>
 	</div>
 {/if}
@@ -99,8 +206,14 @@
 			</button>
 			<div>
 				<div class="name">{source.name}</div>
-				<div class="sub" class:error={source.lastError && !justPolled} class:success={justPolled?.id === source.id}>
-					{#if justPolled?.id === source.id}
+				<div
+					class="sub"
+					class:error={source.lastError && !justPolled && !justCleared}
+					class:success={justPolled?.id === source.id || justCleared?.id === source.id}
+				>
+					{#if justCleared?.id === source.id}
+						✓ cleared {justCleared.items} item(s), {justCleared.articles} article(s)
+					{:else if justPolled?.id === source.id}
 						{justPolled.count > 0 ? `✓ ${justPolled.count} new item(s)` : '✓ up to date, nothing new'}
 					{:else if source.lastError}
 						last poll failed · {source.lastError}
@@ -113,8 +226,17 @@
 			<span class="cat">{source.category.join(', ')}</span>
 			<span class="cat">{source.pollIntervalMinutes} min</span>
 			<div class="actions">
+				<button class="icon-btn" onclick={() => startEdit(source)} title="Edit">✎</button>
 				<button class="icon-btn" onclick={() => toggleEnabled(source)} title={source.enabled ? 'Disable' : 'Enable'}>
 					{source.enabled ? '⏸' : '▶'}
+				</button>
+				<button
+					class="icon-btn"
+					onclick={() => handleClearContent(source)}
+					disabled={clearingId === source.id}
+					title="Clear content (keep source)"
+				>
+					⟲
 				</button>
 				<button class="icon-btn danger" onclick={() => handleDelete(source.id)} title="Delete">✕</button>
 			</div>
@@ -149,6 +271,27 @@
 		gap: 8px;
 		margin-bottom: 10px;
 	}
+	.categories-label {
+		font-size: 11px;
+		color: var(--text-muted);
+		margin-bottom: 6px;
+	}
+	.category-checks {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+		margin-bottom: 12px;
+	}
+	.category-check {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 12px;
+		color: var(--text-secondary);
+	}
+	.category-check input {
+		width: auto;
+	}
 	.add-actions {
 		display: flex;
 		gap: 8px;
@@ -165,7 +308,7 @@
 	}
 	.row {
 		display: grid;
-		grid-template-columns: 20px 1.4fr 0.7fr 0.9fr 0.7fr 60px;
+		grid-template-columns: 20px 1.4fr 0.7fr 0.9fr 0.7fr 96px;
 		gap: 10px;
 		padding: 10px;
 		align-items: center;
@@ -231,7 +374,7 @@
 	}
 	.actions {
 		display: flex;
-		gap: 6px;
+		gap: 4px;
 	}
 	.icon-btn {
 		font-size: 12px;

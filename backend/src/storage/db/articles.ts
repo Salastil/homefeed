@@ -131,3 +131,7 @@ export function findRecentArticleByTags(tagIds: string[], sinceDays: number): Me
 export function deleteArticle(id: string) {
 	db.prepare('DELETE FROM merged_articles WHERE id = ?').run(id);
 }
+
+export function deleteAllArticles() {
+	db.prepare('DELETE FROM merged_articles').run();
+}

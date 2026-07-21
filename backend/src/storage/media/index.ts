@@ -70,6 +70,39 @@ export function deleteCandidateMediaOlderThan(days: number): number {
 	return rows.length;
 }
 
+function deleteRows(rows: { id: string; local_path: string }[]) {
+	for (const row of rows) fs.rm(row.local_path, () => {});
+	return rows.length;
+}
+
+export function deleteMediaByArticleId(articleId: string): number {
+	const rows = db.prepare('SELECT id, local_path FROM media_assets WHERE article_id = ?').all(articleId) as {
+		id: string;
+		local_path: string;
+	}[];
+	const count = deleteRows(rows);
+	db.prepare('DELETE FROM media_assets WHERE article_id = ?').run(articleId);
+	return count;
+}
+
+export function deleteMediaByContentItemIds(contentItemIds: string[]): number {
+	if (contentItemIds.length === 0) return 0;
+	const placeholders = contentItemIds.map(() => '?').join(',');
+	const rows = db
+		.prepare(`SELECT id, local_path FROM media_assets WHERE content_item_id IN (${placeholders})`)
+		.all(...contentItemIds) as { id: string; local_path: string }[];
+	const count = deleteRows(rows);
+	db.prepare(`DELETE FROM media_assets WHERE content_item_id IN (${placeholders})`).run(...contentItemIds);
+	return count;
+}
+
+export function deleteAllMedia(): number {
+	const rows = db.prepare('SELECT id, local_path FROM media_assets').all() as { id: string; local_path: string }[];
+	const count = deleteRows(rows);
+	db.prepare('DELETE FROM media_assets').run();
+	return count;
+}
+
 function guessExtension(contentType: string, url: string): string {
 	if (contentType.includes('jpeg')) return '.jpg';
 	if (contentType.includes('png')) return '.png';

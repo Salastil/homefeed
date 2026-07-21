@@ -1,7 +1,7 @@
 export interface Source {
 	id: string;
 	name: string;
-	type: 'rss' | 'api' | 'telegram' | 'custom';
+	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'custom';
 	category: string[];
 	url: string | null;
 	config: Record<string, unknown>;
@@ -44,7 +44,7 @@ export interface MergedArticle {
 	title: string;
 	body: string;
 	heroImage: { url: string; sourceItemId: string; selectionReason: string } | null;
-	video: { url: string; provider?: string; sourceItemId: string } | null;
+	video: { url: string; provider?: string; embedUrl?: string; sourceItemId: string } | null;
 	category: string[];
 	geo: string | null;
 	eventId: string | null;

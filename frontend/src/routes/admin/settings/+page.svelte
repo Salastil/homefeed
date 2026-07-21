@@ -38,7 +38,7 @@
 	{#if active === 'merge'}
 		<MergeTab settings={data.settings} />
 	{:else if active === 'sources'}
-		<SourcesTab sources={data.sources} />
+		<SourcesTab sources={data.sources} categories={data.settings.categoryPriority} />
 	{:else if active === 'models'}
 		<ModelsTab settings={data.settings} models={data.models} aiStatus={data.aiStatus} />
 	{:else if active === 'retention'}
