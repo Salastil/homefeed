@@ -24,7 +24,8 @@
 			url: '',
 			channelId: '',
 			categorySet: new Set<string>(),
-			pollIntervalMinutes: 15
+			pollIntervalMinutes: 15,
+			pushToTopStories: false
 		};
 	}
 
@@ -43,7 +44,8 @@
 			url: source.type === 'youtube' ? '' : source.url,
 			channelId: source.type === 'youtube' ? (source.url || (source.config?.channelId as string) || '') : '',
 			categorySet: new Set(source.category),
-			pollIntervalMinutes: source.pollIntervalMinutes
+			pollIntervalMinutes: source.pollIntervalMinutes,
+			pushToTopStories: source.pushToTopStories
 		};
 		editingId = source.id;
 		showAdd = true;
@@ -69,7 +71,8 @@
 				type: form.type,
 				url: form.channelId,
 				category,
-				pollIntervalMinutes: form.pollIntervalMinutes
+				pollIntervalMinutes: form.pollIntervalMinutes,
+				pushToTopStories: form.pushToTopStories
 			};
 		}
 		return {
@@ -77,7 +80,8 @@
 			type: form.type,
 			url: form.url,
 			category,
-			pollIntervalMinutes: form.pollIntervalMinutes
+			pollIntervalMinutes: form.pollIntervalMinutes,
+			pushToTopStories: form.pushToTopStories
 		};
 	}
 
@@ -116,6 +120,11 @@
 
 	async function toggleEnabled(source: AdminSource) {
 		const updated = await updateSource(source.id, { enabled: !source.enabled });
+		sources = sources.map((s) => (s.id === source.id ? updated : s));
+	}
+
+	async function toggleTopStories(source: AdminSource) {
+		const updated = await updateSource(source.id, { pushToTopStories: !source.pushToTopStories });
 		sources = sources.map((s) => (s.id === source.id ? updated : s));
 	}
 
@@ -176,6 +185,11 @@
 				</label>
 			{/each}
 		</div>
+		<label class="top-stories-check">
+			<input type="checkbox" bind:checked={form.pushToTopStories} />
+			Push to Top Stories?
+			<span class="hint">Off by default — keeps the homepage from being flooded by every source.</span>
+		</label>
 		<div class="add-actions">
 			<button onclick={cancelForm}>Cancel</button>
 			<button class="primary" onclick={handleSubmit}>{editingId ? 'Save' : 'Add'}</button>
@@ -226,6 +240,14 @@
 			<span class="cat">{source.category.join(', ')}</span>
 			<span class="cat">{source.pollIntervalMinutes} min</span>
 			<div class="actions">
+				<button
+					class="icon-btn"
+					class:starred={source.pushToTopStories}
+					onclick={() => toggleTopStories(source)}
+					title={source.pushToTopStories ? 'Pushing to Top Stories — click to stop' : 'Not pushed to Top Stories — click to enable'}
+				>
+					{source.pushToTopStories ? '★' : '☆'}
+				</button>
 				<button class="icon-btn" onclick={() => startEdit(source)} title="Edit">✎</button>
 				<button class="icon-btn" onclick={() => toggleEnabled(source)} title={source.enabled ? 'Disable' : 'Enable'}>
 					{source.enabled ? '⏸' : '▶'}
@@ -292,6 +314,22 @@
 	.category-check input {
 		width: auto;
 	}
+	.top-stories-check {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
+		font-size: 12px;
+		color: var(--text-secondary);
+		margin-bottom: 12px;
+	}
+	.top-stories-check input {
+		width: auto;
+	}
+	.top-stories-check .hint {
+		font-size: 11px;
+		color: var(--text-muted);
+	}
 	.add-actions {
 		display: flex;
 		gap: 8px;
@@ -308,7 +346,7 @@
 	}
 	.row {
 		display: grid;
-		grid-template-columns: 20px 1.4fr 0.7fr 0.9fr 0.7fr 96px;
+		grid-template-columns: 20px 1.4fr 0.7fr 0.9fr 0.7fr 120px;
 		gap: 10px;
 		padding: 10px;
 		align-items: center;
@@ -385,5 +423,8 @@
 	}
 	.icon-btn.danger:hover {
 		color: var(--text-danger);
+	}
+	.icon-btn.starred {
+		color: var(--text-accent);
 	}
 </style>

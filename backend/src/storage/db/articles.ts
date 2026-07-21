@@ -20,7 +20,8 @@ function rowToArticle(row: any): MergedArticle {
 		tags: JSON.parse(row.tags),
 		threadId: row.thread_id,
 		previousArticleId: row.previous_article_id,
-		nextArticleId: row.next_article_id
+		nextArticleId: row.next_article_id,
+		topStories: !!row.top_stories
 	};
 }
 
@@ -28,8 +29,8 @@ export function insertArticle(article: Omit<MergedArticle, 'id'>): MergedArticle
 	const id = `art-${randomUUID()}`;
 	db.prepare(
 		`INSERT INTO merged_articles
-		 (id, title, body, hero_image, video, category, geo, event_id, source_count, sources, published_at, updated_at, merge_confidence, tags, thread_id, previous_article_id, next_article_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		 (id, title, body, hero_image, video, category, geo, event_id, source_count, sources, published_at, updated_at, merge_confidence, tags, thread_id, previous_article_id, next_article_id, top_stories)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		id,
 		article.title,
@@ -47,7 +48,8 @@ export function insertArticle(article: Omit<MergedArticle, 'id'>): MergedArticle
 		JSON.stringify(article.tags),
 		article.threadId,
 		article.previousArticleId,
-		article.nextArticleId
+		article.nextArticleId,
+		article.topStories ? 1 : 0
 	);
 	if (article.previousArticleId) {
 		db.prepare('UPDATE merged_articles SET next_article_id = ? WHERE id = ?').run(id, article.previousArticleId);
@@ -76,6 +78,17 @@ export function queryFeed(filters: {
 }): MergedArticle[] {
 	let sql = 'SELECT * FROM merged_articles WHERE 1=1';
 	const params: unknown[] = [];
+
+	// The bare feed (no category/geo/eventId/tag — i.e. the homepage/"Top stories") only
+	// shows articles whose contributing source(s) opted into "Push to Top Stories?" —
+	// otherwise every ingested article from every source would flood the homepage.
+	// Any explicit filter (a real category page, Local's geo filter, a tag or event page)
+	// is unaffected — those show everything matching, regardless of this flag.
+	const isHomepage = !filters.category && !filters.geo && !filters.eventId && !filters.tag;
+	if (isHomepage) {
+		sql += ' AND top_stories = 1';
+	}
+
 	if (filters.category) {
 		sql += ' AND category LIKE ?';
 		params.push(`%"${filters.category}"%`);

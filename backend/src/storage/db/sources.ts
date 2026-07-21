@@ -12,6 +12,7 @@ function rowToSource(row: any): Source {
 		config: JSON.parse(row.config),
 		pollIntervalMinutes: row.poll_interval_minutes,
 		enabled: !!row.enabled,
+		pushToTopStories: !!row.push_to_top_stories,
 		lastPolledAt: row.last_polled_at,
 		lastError: row.last_error,
 		createdAt: row.created_at
@@ -37,8 +38,8 @@ export function createSource(input: Partial<Source>): Source {
 	const id = `src-${randomUUID()}`;
 	const now = new Date().toISOString();
 	db.prepare(
-		`INSERT INTO sources (id, name, type, category, url, config, poll_interval_minutes, enabled, last_polled_at, last_error, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`
+		`INSERT INTO sources (id, name, type, category, url, config, poll_interval_minutes, enabled, push_to_top_stories, last_polled_at, last_error, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`
 	).run(
 		id,
 		input.name ?? 'Untitled source',
@@ -48,6 +49,7 @@ export function createSource(input: Partial<Source>): Source {
 		JSON.stringify(input.config ?? {}),
 		input.pollIntervalMinutes ?? 15,
 		input.enabled === false ? 0 : 1,
+		input.pushToTopStories ? 1 : 0,
 		now
 	);
 	return getSource(id)!;
@@ -58,7 +60,7 @@ export function updateSource(id: string, patch: Partial<Source>): Source | null 
 	if (!existing) return null;
 	const merged = { ...existing, ...patch };
 	db.prepare(
-		`UPDATE sources SET name=?, type=?, category=?, url=?, config=?, poll_interval_minutes=?, enabled=?, last_polled_at=?, last_error=? WHERE id=?`
+		`UPDATE sources SET name=?, type=?, category=?, url=?, config=?, poll_interval_minutes=?, enabled=?, push_to_top_stories=?, last_polled_at=?, last_error=? WHERE id=?`
 	).run(
 		merged.name,
 		merged.type,
@@ -67,6 +69,7 @@ export function updateSource(id: string, patch: Partial<Source>): Source | null 
 		JSON.stringify(merged.config),
 		merged.pollIntervalMinutes,
 		merged.enabled ? 1 : 0,
+		merged.pushToTopStories ? 1 : 0,
 		merged.lastPolledAt,
 		merged.lastError,
 		id

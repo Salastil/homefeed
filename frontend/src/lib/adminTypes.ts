@@ -38,6 +38,7 @@ export interface AdminSource {
 	config?: Record<string, unknown>;
 	pollIntervalMinutes: number;
 	enabled: boolean;
+	pushToTopStories: boolean;
 	lastPolledAt: string | null;
 	lastError: string | null;
 }
