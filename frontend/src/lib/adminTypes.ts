@@ -11,6 +11,7 @@ export interface CategoryPriority {
 	id: string;
 	name: string;
 	priorityRank: number;
+	isDefault: boolean;
 }
 
 export interface AdminSettings {
@@ -31,9 +32,10 @@ export interface AdminSettings {
 export interface AdminSource {
 	id: string;
 	name: string;
-	type: 'rss' | 'api' | 'telegram' | 'custom';
+	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'custom';
 	category: string[];
 	url: string;
+	config?: Record<string, unknown>;
 	pollIntervalMinutes: number;
 	enabled: boolean;
 	lastPolledAt: string | null;

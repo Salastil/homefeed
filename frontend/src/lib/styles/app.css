@@ -77,7 +77,7 @@ button {
 }
 
 .page {
-	max-width: 1080px;
+	max-width: 1242px; /* 1080px + 15% */
 	margin: 0 auto;
 	padding: 0 24px 60px;
 }

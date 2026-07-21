@@ -182,15 +182,29 @@ export function migrate() {
 		).run();
 	}
 
-	// Seed default categories if none exist yet.
+	// Seed default categories if none exist yet. "News" sits right under "Top stories" —
+	// general news sources belong here, not on "Top stories" itself, which isn't a real
+	// filterable tag: it's the homepage's all-categories-chronological view (see
+	// +layout.svelte's nav mapping and /api/feed's no-category-filter default).
 	const catCount = db.prepare('SELECT COUNT(*) as c FROM categories').get() as { c: number };
 	if (catCount.c === 0) {
-		const defaults = ['Top stories', 'Local', 'World', 'Business', 'Tech', 'Culture'];
+		const defaults = ['Top stories', 'News', 'Local', 'World', 'Business', 'Tech', 'Culture'];
 		const stmt = db.prepare(
 			'INSERT INTO categories (id, name, priority_rank, is_default) VALUES (?, ?, ?, 1)'
 		);
 		defaults.forEach((name, i) => {
 			stmt.run(`cat-${name.toLowerCase().replace(/\s+/g, '-')}`, name, i + 1);
 		});
+	} else {
+		// Backfill for installs seeded before "News" existed.
+		const hasNews = db.prepare("SELECT id FROM categories WHERE lower(name) = 'news'").get();
+		if (!hasNews) {
+			const maxRank = db.prepare('SELECT COALESCE(MAX(priority_rank), 0) as m FROM categories').get() as { m: number };
+			db.prepare('INSERT INTO categories (id, name, priority_rank, is_default) VALUES (?, ?, ?, 1)').run(
+				'cat-news',
+				'News',
+				maxRank.m + 1
+			);
+		}
 	}
 }

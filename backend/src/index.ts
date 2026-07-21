@@ -37,6 +37,20 @@ async function main() {
 	});
 	await app.register(cookie);
 
+	// Overrides Fastify's default JSON body parser, which throws "Body cannot be empty
+	// when content-type is set to 'application/json'" for any bodyless request (DELETE,
+	// or POST with no payload) that still carries a Content-Type header — exactly what
+	// browsers' fetch() does when a client sets that header unconditionally. An empty
+	// body is just as valid as `{}` for routes that don't read req.body at all.
+	app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+		if (typeof body !== 'string' || body.trim() === '') return done(null, {});
+		try {
+			done(null, JSON.parse(body));
+		} catch (err) {
+			done(err as Error, undefined);
+		}
+	});
+
 	await registerAuth(app);
 	await registerPublicRoutes(app);
 	await registerAdminRoutes(app);

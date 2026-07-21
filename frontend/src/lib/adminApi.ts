@@ -9,10 +9,15 @@ import type {
 } from './adminTypes';
 
 async function request<T>(path: string, options: RequestInit = {}, fetchFn: typeof fetch = fetch): Promise<T> {
+	// Fastify's default JSON body parser rejects an empty body when Content-Type is
+	// application/json ("Body cannot be empty when content-type is set to
+	// 'application/json'") — so this header is only attached when there's actually a
+	// body to send (PATCH/POST with a JSON payload), never for bodyless DELETE/POST calls.
+	const headers = options.body ? { 'Content-Type': 'application/json', ...(options.headers || {}) } : options.headers;
 	const res = await fetchFn(`${getBackendUrl()}${path}`, {
 		...options,
 		credentials: 'include',
-		headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+		headers
 	});
 	if (res.status === 401) {
 		const err = new Error('unauthorized') as Error & { status?: number };
@@ -75,6 +80,16 @@ export const deleteSource = (id: string, fetchFn?: typeof fetch) =>
 
 export const pollSourceNow = (id: string, fetchFn?: typeof fetch) =>
 	request<{ ingested: number; source: AdminSource }>(`/api/admin/sources/${id}/poll`, { method: 'POST' }, fetchFn);
+
+// Content clearing — wipe articles/media/a source's raw items so they can be repopulated fresh.
+export const clearSourceContent = (id: string, fetchFn?: typeof fetch) =>
+	request<{ itemsDeleted: number; articlesDeleted: number }>(`/api/admin/content/sources/${id}`, { method: 'DELETE' }, fetchFn);
+
+export const clearAllArticles = (fetchFn?: typeof fetch) =>
+	request<{ deleted: number }>('/api/admin/content/articles', { method: 'DELETE' }, fetchFn);
+
+export const clearAllMedia = (fetchFn?: typeof fetch) =>
+	request<{ deleted: number }>('/api/admin/content/media', { method: 'DELETE' }, fetchFn);
 
 // Tracked events
 export const getEvents = (fetchFn?: typeof fetch) =>

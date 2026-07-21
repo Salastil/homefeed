@@ -4,6 +4,7 @@ import { logger } from '../storage/db/logs.js';
 import { rssAdapter } from './adapters/rss.js';
 import { telegramAdapter } from './adapters/telegram.js';
 import { apiAdapter } from './adapters/api.js';
+import { youtubeAdapter } from './adapters/youtube.js';
 import { toContentItem, type SourceAdapter, type FetchedItem } from './adapters/base.js';
 import { fetchFullArticle } from './articleFetcher.js';
 import type { Source } from '../storage/db/types.js';
@@ -12,6 +13,7 @@ const adapters: Record<Source['type'], SourceAdapter> = {
 	rss: rssAdapter,
 	telegram: telegramAdapter,
 	api: apiAdapter,
+	youtube: youtubeAdapter,
 	custom: apiAdapter
 };
 

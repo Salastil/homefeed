@@ -98,3 +98,16 @@ export function deleteContentItems(ids: string[]) {
 	const stmt = db.prepare('DELETE FROM content_items WHERE id = ?');
 	for (const id of ids) stmt.run(id);
 }
+
+export function itemsForSource(sourceId: string): ContentItem[] {
+	const rows = db.prepare('SELECT * FROM content_items WHERE source_id = ?').all(sourceId);
+	return rows.map(rowToItem);
+}
+
+export function deleteContentItemsForSource(sourceId: string) {
+	db.prepare('DELETE FROM content_items WHERE source_id = ?').run(sourceId);
+}
+
+export function deleteAllContentItems() {
+	db.prepare('DELETE FROM content_items').run();
+}

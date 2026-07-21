@@ -3,6 +3,7 @@ import * as settingsDb from '../storage/db/settings.js';
 import * as sourcesDb from '../storage/db/sources.js';
 import * as eventsDb from '../storage/db/events.js';
 import * as categoriesDb from '../storage/db/categories.js';
+import { clearSourceContent, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import { pollSourceNow } from '../ingestion/poller.js';
 import { logger, listLogs } from '../storage/db/logs.js';
@@ -58,8 +59,29 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
 	app.delete('/api/admin/sources/:id', async (req, reply) => {
 		const { id } = req.params as { id: string };
+		// Deleting a source deletes its raw content and any article composed entirely
+		// from it too — otherwise stale articles from a source the admin just removed
+		// keep showing up on the site pointing at nothing.
+		clearSourceContent(id);
 		sourcesDb.deleteSource(id);
 		return reply.code(204).send();
+	});
+
+	// --- Content clearing (re-populate a source, or the whole site, from scratch) ---
+	app.delete('/api/admin/content/sources/:id', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		const result = clearSourceContent(id);
+		return reply.code(200).send(result);
+	});
+
+	app.delete('/api/admin/content/articles', async (_req, reply) => {
+		const deleted = clearAllArticles();
+		return reply.code(200).send({ deleted });
+	});
+
+	app.delete('/api/admin/content/media', async (_req, reply) => {
+		const deleted = clearAllMedia();
+		return reply.code(200).send({ deleted });
 	});
 
 	// Manual "poll now" — the refresh icon on each source in the admin panel.

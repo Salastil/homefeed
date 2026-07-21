@@ -24,26 +24,49 @@
 
 	<h1>{a.title}</h1>
 
-	<div class="dates">
-		<span>Published {timeAgo(a.publishedAt)} &middot; {exactTime(a.publishedAt)}</span>
-		{#if a.updatedAt !== a.publishedAt}
-			<span>&middot; Updated {timeAgo(a.updatedAt)} &middot; {exactTime(a.updatedAt)}</span>
-		{/if}
-	</div>
-
-	{#if a.heroImage}
-		<img class="hero-img" src={resolveMediaUrl(a.heroImage.url)} alt="" />
-		<div class="img-caption">
-			Image via <span class="accent">{a.sources[0]?.sourceName ?? 'source'}</span>
+	{#if a.video?.provider === 'youtube'}
+		<!-- YouTube's own layout: title, then the video itself, then when it was published
+		     and its description — no hero image (the embed already shows the thumbnail) and
+		     no cross-source merging (see backend priorityQueue.ts — YouTube items never merge). -->
+		<div class="video-frame">
+			<iframe
+				src={a.video.embedUrl ?? a.video.url}
+				title={a.title}
+				loading="lazy"
+				allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+				allowfullscreen
+			></iframe>
 		</div>
-	{/if}
 
-	{#each a.body.split('\n\n') as paragraph}
-		<p>{paragraph}</p>
-	{/each}
+		<div class="dates">
+			<span>Published {timeAgo(a.publishedAt)} &middot; {exactTime(a.publishedAt)}</span>
+		</div>
 
-	{#if a.video}
-		<div class="video-embed">▶ video embed &middot; via {a.video.provider}</div>
+		{#each a.body.split('\n\n') as paragraph}
+			<p>{paragraph}</p>
+		{/each}
+	{:else}
+		<div class="dates">
+			<span>Published {timeAgo(a.publishedAt)} &middot; {exactTime(a.publishedAt)}</span>
+			{#if a.updatedAt !== a.publishedAt}
+				<span>&middot; Updated {timeAgo(a.updatedAt)} &middot; {exactTime(a.updatedAt)}</span>
+			{/if}
+		</div>
+
+		{#if a.heroImage}
+			<img class="hero-img" src={resolveMediaUrl(a.heroImage.url)} alt="" />
+			<div class="img-caption">
+				Image via <span class="accent">{a.sources[0]?.sourceName ?? 'source'}</span>
+			</div>
+		{/if}
+
+		{#each a.body.split('\n\n') as paragraph}
+			<p>{paragraph}</p>
+		{/each}
+
+		{#if a.video}
+			<div class="video-embed">▶ video embed &middot; via {a.video.provider}</div>
+		{/if}
 	{/if}
 
 	{#if data.tagLabels.length}
@@ -140,6 +163,22 @@
 		color: var(--text-muted);
 		font-size: 12px;
 		margin-bottom: 24px;
+	}
+	.video-frame {
+		position: relative;
+		width: 100%;
+		aspect-ratio: 16 / 9;
+		border-radius: 12px;
+		overflow: hidden;
+		background: var(--surface-1);
+		margin-bottom: 20px;
+	}
+	.video-frame iframe {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		border: none;
 	}
 	.tags {
 		display: flex;

@@ -9,6 +9,13 @@ import { publishCluster, publishDirect } from '../pipeline/publish.js';
 import { logger } from '../storage/db/logs.js';
 import type { GlobalSettings, ContentItem } from '../storage/db/types.js';
 
+function partition<T>(items: T[], predicate: (item: T) => boolean): [T[], T[]] {
+	const matches: T[] = [];
+	const rest: T[] = [];
+	for (const item of items) (predicate(item) ? matches : rest).push(item);
+	return [matches, rest];
+}
+
 function primaryCategoryRank(item: ContentItem, rankByName: Map<string, number>): number {
 	const source = sourcesDb.getSource(item.sourceId);
 	const cats = source?.category ?? [];
@@ -70,10 +77,28 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 	const items = contentItemsDb.unclusteredItemsExcludingSources(eventSourceIds);
 	if (items.length === 0) return 0;
 
+	// YouTube videos never get LLM-merged with anything — each is always its own
+	// article (title/video/date/description), same shape whether the AI service is up
+	// or not. Route them straight to publishDirect, same as the no-AI passthrough path.
+	const youtubeSourceIds = new Set(sourcesDb.listSources().filter((s) => s.type === 'youtube').map((s) => s.id));
+	const [youtubeItems, mergeableItems] = partition(items, (item) => youtubeSourceIds.has(item.sourceId));
+
+	let publishedDirect = 0;
+	for (const item of youtubeItems) {
+		try {
+			const article = await publishDirect(item);
+			contentItemsDb.assignCluster([item.id], article.id);
+			publishedDirect++;
+			logger.info('synthesis', `Published "${article.title}" directly (YouTube)`);
+		} catch (err) {
+			logger.error('synthesis', `Direct publish failed for "${item.title}": ${(err as Error).message}`);
+		}
+	}
+
 	const categories = categoriesDb.listCategories();
 	const rankByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.priorityRank]));
 
-	const ranked = items
+	const ranked = mergeableItems
 		.map((item) => ({ item, rank: primaryCategoryRank(item, rankByName) }))
 		.sort((a, b) => a.rank - b.rank)
 		.map((r) => r.item);
@@ -119,5 +144,5 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 		);
 	}
 
-	return published;
+	return published + publishedDirect;
 }

@@ -77,7 +77,9 @@ async function resolveHeroImage(
 export async function publishDirect(item: ContentItem): Promise<MergedArticle> {
 	const category = uniqueCategories([item]);
 	const { heroImage, storedMediaId } = await resolveHeroImage([item], item.link);
-	const video = item.videos[0] ? { url: item.videos[0].url, provider: item.videos[0].provider, sourceItemId: item.id } : null;
+	const video = item.videos[0]
+		? { url: item.videos[0].url, provider: item.videos[0].provider, embedUrl: item.videos[0].embedHtml, sourceItemId: item.id }
+		: null;
 
 	const article = await articles.insertArticle({
 		title: item.title,
@@ -140,7 +142,12 @@ export async function publishCluster(
 	const { heroImage, storedMediaId } = await resolveHeroImage(items, items[0]?.link ?? '');
 	const videoItem = items.find((i) => i.videos.length > 0);
 	const video = videoItem
-		? { url: videoItem.videos[0].url, provider: videoItem.videos[0].provider, sourceItemId: videoItem.id }
+		? {
+				url: videoItem.videos[0].url,
+				provider: videoItem.videos[0].provider,
+				embedUrl: videoItem.videos[0].embedHtml,
+				sourceItemId: videoItem.id
+			}
 		: null;
 
 	const category = uniqueCategories(items);
