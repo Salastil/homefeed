@@ -1,4 +1,4 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
@@ -11,9 +11,11 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 
-			// adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-			// If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-			// See https://svelte.dev/docs/kit/adapters for more information about adapters.
+			// adapter-node — this is a self-hosted app (see the "self-hosted" masthead tag),
+			// meant to run as a standalone Node server behind a reverse proxy (e.g. Nginx
+			// Proxy Manager) rather than on a specific platform like Vercel/Netlify/Cloudflare,
+			// which is what adapter-auto is for. See frontend/README.md "Deploying behind a
+			// reverse proxy" for the env vars (ORIGIN, PORT, etc.) this needs at runtime.
 			adapter: adapter()
 		})
 	]
