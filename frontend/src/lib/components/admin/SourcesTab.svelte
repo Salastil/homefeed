@@ -157,7 +157,7 @@
 				<option value="custom">Custom</option>
 			</select>
 			{#if form.type === 'youtube'}
-				<input placeholder="Channel ID, playlist ID, or full feed URL" bind:value={form.channelId} />
+				<input placeholder="Channel URL (@handle or /channel/UC…), or channel ID" bind:value={form.channelId} />
 			{:else}
 				<input placeholder="URL or channel" bind:value={form.url} />
 			{/if}
