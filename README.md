@@ -98,6 +98,15 @@ Keep this running (systemd, pm2, tmux — whatever you'd normally use). It print
 fresh admin API key to its console/log on every start; you'll need whatever's there
 each time it restarts (see `backend/README.md`).
 
+> **`FRONTEND_ORIGIN` here and `ORIGIN` in `frontend/.env` (next step) must be the
+> exact same value** — same scheme, same host, same trailing-slash-or-not. SvelteKit's
+> server-side `fetch` (used to load the homepage's data) enforces real CORS during
+> SSR, just like a browser would; if these two don't match character-for-character,
+> every page fails with `CORS error: Incorrect 'Access-Control-Allow-Origin' header
+> is present on the requested resource`. Both should be your public HTTPS domain —
+> not `localhost`, not an internal port — since that's what the browser (and
+> SvelteKit's own SSR fetch) actually sees as the origin.
+
 ### 2. Build and run the frontend
 
 Now that it uses `@sveltejs/adapter-node`, `npm run build` produces a standalone
