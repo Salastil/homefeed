@@ -10,13 +10,20 @@ contract the frontend already consumes from the mock backend — plus the full
 
 ```bash
 cp .env.example .env
-# edit .env — at minimum set ADMIN_PASSWORD to something real
 npm install
 npm run dev
 ```
 
 Runs on `:4000` by default. Point the frontend's `VITE_BACKEND_URL` at it instead of
 the mock backend and everything else keeps working unchanged — same API contract.
+
+On startup, the console prints an admin API key — a fresh random value generated
+every time the process starts (see `api/apiKey.ts`), not stored anywhere and not
+configurable via `.env`. Every `/api/admin/*` request must send it as an
+`X-Api-Key` header (enforced in `api/auth.ts`); the admin login page just asks for
+this key and stashes it in the browser's `localStorage` rather than issuing its own
+session. Restarting the backend invalidates the previous key — check the console
+each time.
 
 You'll also need a running Ollama instance (see `AI_SERVICE_HOST`/`AI_SERVICE_PORT` in
 the admin panel's Connections tab, or `PATCH /api/admin/settings` directly) with at
@@ -88,8 +95,10 @@ real RSS parsing, real HTTP calls to a stub Ollama server, real media download t
 disk, real tag dedup across separate synthesis calls):
 
 - SQLite schema + repository layer for every entity in `homefeed-data-schema.md`
-- Session auth (scrypt password hashing, httpOnly cookie, CORS locked to the
-  configured frontend origin) protecting all `/api/admin/*` routes
+- Per-launch API key auth (random key printed to the console on every startup,
+  checked via a timing-safe comparison against an `X-Api-Key` header on every
+  request, CORS locked to the configured frontend origin) protecting all
+  `/api/admin/*` routes
 - RSS adapter (real parsing, images/video extraction) and a generic JSON API adapter
   (configurable field mapping)
 - Poller respecting per-source poll intervals

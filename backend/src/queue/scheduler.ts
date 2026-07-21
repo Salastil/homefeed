@@ -4,7 +4,6 @@ import { runEventRecaps } from './eventsRecap.js';
 import { runRetentionSweep } from './retention.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import * as settingsDb from '../storage/db/settings.js';
-import { pruneExpiredSessions } from '../storage/db/auth.js';
 import { logger } from '../storage/db/logs.js';
 
 const POLL_TICK_MS = 60_000; // checks which sources are due every minute; each source's own interval governs actual fetch frequency
@@ -56,7 +55,6 @@ export function startScheduler() {
 	setInterval(() => {
 		try {
 			runRetentionSweep(settingsDb.getSettings());
-			pruneExpiredSessions();
 			logger.info('retention', 'Retention sweep completed');
 		} catch (err) {
 			logger.error('retention', `Retention tick failed: ${(err as Error).message}`);

@@ -1,4 +1,5 @@
 import { getBackendUrl } from './config';
+import { getApiKey, setApiKey, clearApiKey } from './adminAuth';
 import type {
 	AdminSettings,
 	AdminSource,
@@ -13,10 +14,13 @@ async function request<T>(path: string, options: RequestInit = {}, fetchFn: type
 	// application/json ("Body cannot be empty when content-type is set to
 	// 'application/json'") — so this header is only attached when there's actually a
 	// body to send (PATCH/POST with a JSON payload), never for bodyless DELETE/POST calls.
-	const headers = options.body ? { 'Content-Type': 'application/json', ...(options.headers || {}) } : options.headers;
+	const headers: Record<string, string> = { ...(options.headers as Record<string, string> | undefined) };
+	if (options.body) headers['Content-Type'] = 'application/json';
+	const apiKey = getApiKey();
+	if (apiKey) headers['X-Api-Key'] = apiKey;
+
 	const res = await fetchFn(`${getBackendUrl()}${path}`, {
 		...options,
-		credentials: 'include',
 		headers
 	});
 	if (res.status === 401) {
@@ -29,22 +33,22 @@ async function request<T>(path: string, options: RequestInit = {}, fetchFn: type
 	return res.json();
 }
 
-// Auth
-export async function login(username: string, password: string, fetchFn: typeof fetch = fetch): Promise<void> {
-	const res = await fetchFn(`${getBackendUrl()}/api/admin/login`, {
-		method: 'POST',
-		credentials: 'include',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ username, password })
-	});
-	if (!res.ok) {
-		const body = await res.json().catch(() => ({}));
-		throw new Error(body.error || `Login failed (${res.status})`);
+// Auth — there's no backend session to create; "logging in" means storing the
+// entered key locally and confirming it actually works with one real authenticated
+// call (getSettings has no side effects), and "logging out" is just discarding it.
+export async function login(apiKey: string, fetchFn: typeof fetch = fetch): Promise<void> {
+	setApiKey(apiKey);
+	try {
+		await getSettings(fetchFn);
+	} catch (err) {
+		clearApiKey();
+		if ((err as { status?: number }).status === 401) throw new Error('Invalid API key');
+		throw err;
 	}
 }
 
-export async function logout(fetchFn: typeof fetch = fetch): Promise<void> {
-	await fetchFn(`${getBackendUrl()}/api/admin/logout`, { method: 'POST', credentials: 'include' });
+export async function logout(): Promise<void> {
+	clearApiKey();
 }
 
 // Settings

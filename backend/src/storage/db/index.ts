@@ -18,6 +18,13 @@ db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 
 export function migrate() {
+	// Admin auth moved from username/password + sessions to a per-launch API key (see
+	// api/apiKey.ts, api/auth.ts) — these tables, and any stored password hash or live
+	// session in them, have no further purpose and are dropped rather than left as
+	// orphaned schema/data.
+	db.exec('DROP TABLE IF EXISTS admin_users;');
+	db.exec('DROP TABLE IF EXISTS sessions;');
+
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS sources (
 			id TEXT PRIMARY KEY,
@@ -131,20 +138,6 @@ export function migrate() {
 			name TEXT NOT NULL,
 			priority_rank INTEGER NOT NULL,
 			is_default INTEGER NOT NULL DEFAULT 0
-		);
-
-		CREATE TABLE IF NOT EXISTS admin_users (
-			id TEXT PRIMARY KEY,
-			username TEXT NOT NULL UNIQUE,
-			password_hash TEXT NOT NULL,
-			created_at TEXT NOT NULL
-		);
-
-		CREATE TABLE IF NOT EXISTS sessions (
-			id TEXT PRIMARY KEY,
-			created_at TEXT NOT NULL,
-			expires_at TEXT NOT NULL,
-			ip TEXT
 		);
 
 		CREATE TABLE IF NOT EXISTS logs (

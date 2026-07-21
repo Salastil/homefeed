@@ -1,44 +1,31 @@
 import type { FastifyInstance } from 'fastify';
-import { getAdminUserByUsername, createSession, isSessionValid, deleteSession } from '../storage/db/auth.js';
-import { verifyPassword } from './password.js';
+import { timingSafeEqual } from 'node:crypto';
+import { ADMIN_API_KEY } from './apiKey.js';
 
-const SESSION_COOKIE = 'homefeed_session';
+function isValidKey(provided: string | undefined): boolean {
+	if (!provided) return false;
+	// Buffers of mismatched length would make timingSafeEqual throw rather than
+	// return false — checking length first keeps this a normal "wrong key" case for
+	// any header of a different length rather than a runtime error.
+	const providedBuf = Buffer.from(provided);
+	const expectedBuf = Buffer.from(ADMIN_API_KEY);
+	if (providedBuf.length !== expectedBuf.length) return false;
+	return timingSafeEqual(providedBuf, expectedBuf);
+}
 
+/**
+ * Guards every /api/admin/* route with the process's current API key (see
+ * api/apiKey.ts) — there's no session or login endpoint anymore: the key itself is
+ * the credential, checked on every single request, exactly the way a bot or curl
+ * script hitting these routes unauthenticated is meant to be stopped cold.
+ */
 export async function registerAuth(app: FastifyInstance) {
-	app.post('/api/admin/login', async (req, reply) => {
-		const { username, password } = req.body as { username?: string; password?: string };
-		if (!username || !password) return reply.code(400).send({ error: 'username and password required' });
-
-		const user = getAdminUserByUsername(username);
-		if (!user || !verifyPassword(password, user.password_hash)) {
-			// Deliberately generic — doesn't reveal whether the username exists.
-			return reply.code(401).send({ error: 'invalid credentials' });
-		}
-
-		const session = createSession(req.ip ?? null);
-		reply.setCookie(SESSION_COOKIE, session.id, {
-			httpOnly: true,
-			secure: process.env.NODE_ENV === 'production',
-			sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-			path: '/',
-			expires: new Date(session.expiresAt)
-		});
-		return { ok: true };
-	});
-
-	app.post('/api/admin/logout', async (req, reply) => {
-		const sessionId = req.cookies[SESSION_COOKIE];
-		if (sessionId) deleteSession(sessionId);
-		reply.clearCookie(SESSION_COOKIE, { path: '/' });
-		return { ok: true };
-	});
-
-	// Guards every /api/admin/* route except login itself.
 	app.addHook('preHandler', async (req, reply) => {
-		if (!req.url.startsWith('/api/admin/') || req.url === '/api/admin/login') return;
+		if (!req.url.startsWith('/api/admin/')) return;
 
-		const sessionId = req.cookies[SESSION_COOKIE];
-		if (!sessionId || !isSessionValid(sessionId)) {
+		const header = req.headers['x-api-key'];
+		const provided = Array.isArray(header) ? header[0] : header;
+		if (!isValidKey(provided)) {
 			return reply.code(401).send({ error: 'unauthorized' });
 		}
 	});
