@@ -17,13 +17,12 @@ const USER_AGENT = 'Mozilla/5.0 (compatible; HomefeedBot/1.0; self-hosted RSS re
 const FETCH_TIMEOUT_MS = 10_000;
 
 /**
- * Shape based on the publicly documented FixTweet/fxtwitter API
- * (https://github.com/FixTweet/FxTwitter) — NOT verified against a live response in
- * this environment (outbound access to api.fxtwitter.com is blocked here). Every field
- * below is read with optional chaining and a fallback in fetchFxTwitter's caller, so a
- * shape mismatch degrades gracefully to RSS-only data rather than breaking ingestion.
- * Verify against a real `curl https://api.fxtwitter.com/2/status/<id>` response and
- * adjust the field paths here if they don't match.
+ * Shape confirmed against a real `curl https://api.fxtwitter.com/<handle>/status/<id>`
+ * response: `text`, `created_timestamp` (unix seconds), `author.name`/`avatar_url` all
+ * verified exactly as read below. `media.photos[].url` is still unconfirmed — that
+ * response had no attached photo — but is read with optional chaining regardless, so a
+ * shape mismatch there just falls back to the RSS description's own <img> (see
+ * fetch()'s photoUrl fallback) rather than breaking ingestion.
  */
 interface FxTweet {
 	text?: string;
@@ -32,9 +31,10 @@ interface FxTweet {
 	media?: { photos?: { url?: string }[] };
 }
 
-async function fetchFxTwitter(tweetId: string): Promise<FxTweet | null> {
+/** The endpoint is keyed by handle + status ID, e.g. https://api.fxtwitter.com/zerohedge/status/123 — no API version prefix. */
+async function fetchFxTwitter(handle: string, tweetId: string): Promise<FxTweet | null> {
 	try {
-		const res = await fetch(`https://api.fxtwitter.com/2/status/${tweetId}`, {
+		const res = await fetch(`https://api.fxtwitter.com/${handle}/status/${tweetId}`, {
 			headers: { 'User-Agent': USER_AGENT },
 			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
 		});
@@ -91,7 +91,7 @@ export const nitterAdapter: SourceAdapter = {
 			const ownHtml = ownContentHtml(item.content ?? '');
 			const rssImageUrl = extractImageUrl(ownHtml);
 
-			const enrichment = await fetchFxTwitter(tweetId);
+			const enrichment = await fetchFxTwitter(handle, tweetId);
 
 			const authorName = enrichment?.author?.name ?? handle;
 			const avatarUrl = enrichment?.author?.avatar_url ?? null;
