@@ -33,17 +33,18 @@ function deriveTitle(body: string): string {
 }
 
 /**
- * Resolves the hero image for an article: try the best candidate from the source
- * items, download and locally host it; if there isn't one, fall back to the site's
- * favicon rather than leaving the article with no art at all. That favicon fallback
- * is skipped for tweets (allowFaviconFallback: false) — a Nitter instance's own
- * favicon slapped onto an image-less tweet reads as a mistake, not a placeholder;
- * TweetCard.svelte already handles no-image tweets gracefully with no image at all.
+ * Resolves the hero image for a regular (non-tweet) article: try the best candidate
+ * from the source items, download and locally host it; if there isn't one, fall back
+ * to the site's favicon rather than leaving the article with no art at all. Tweets
+ * never reach this function — see resolveTweetMediaUrl below, which applies the
+ * admin-configured Nitter media mode instead of always downloading, and skips the
+ * favicon fallback entirely (a Nitter instance's own favicon slapped onto an
+ * image-less tweet reads as a mistake, not a placeholder; TweetCard.svelte already
+ * handles no-image tweets gracefully with no image at all).
  */
 async function resolveHeroImage(
 	items: ContentItem[],
-	primaryLink: string,
-	allowFaviconFallback = true
+	primaryLink: string
 ): Promise<{ heroImage: MergedArticle['heroImage']; storedMediaId: string | null }> {
 	const selected = selectBestImage(items);
 
@@ -57,10 +58,6 @@ async function resolveHeroImage(
 		}
 		// Download failed — fall back to the hotlinked URL rather than losing the image entirely.
 		return { heroImage: selected, storedMediaId: null };
-	}
-
-	if (!allowFaviconFallback) {
-		return { heroImage: null, storedMediaId: null };
 	}
 
 	const favicon = faviconUrlFor(primaryLink);
@@ -78,6 +75,31 @@ async function resolveHeroImage(
 }
 
 /**
+ * Applies the admin-configured Nitter media mode (Retention tab) to a single
+ * externally-hosted tweet media URL — an attached photo or the author's avatar.
+ * 'self-host' downloads and serves it locally like any other article image;
+ * 'proxy' routes it through this server's own /media/proxy route so only this
+ * server's IP is ever exposed to Twitter/the Nitter instance's CDN (the
+ * "anonymity" the admin asked for) without persisting anything to disk; 'direct'
+ * hotlinks the original URL unchanged, the cheapest option with no server involvement.
+ */
+async function resolveTweetMediaUrl(
+	url: string,
+	mode: GlobalSettings['nitterMediaMode']
+): Promise<{ url: string; storedMediaId: string | null }> {
+	if (mode === 'direct') return { url, storedMediaId: null };
+
+	if (mode === 'proxy') {
+		return { url: `/media/proxy?url=${encodeURIComponent(url)}`, storedMediaId: null };
+	}
+
+	const stored = await downloadAndStore(url, 'published', {});
+	if (stored) return { url: stored.servedPath, storedMediaId: stored.id };
+	// Download failed — fall back to hotlinking rather than losing the media entirely.
+	return { url, storedMediaId: null };
+}
+
+/**
  * Publishes a single item as-is, with no AI calls at all — used when the AI service
  * isn't reachable (e.g. Ollama hasn't been set up yet, per the "assume it arrives
  * after the backend launches" requirement). No rewriting, no tag extraction, no
@@ -87,15 +109,38 @@ async function resolveHeroImage(
  * tag-based thread detection — but these earlier articles aren't retroactively
  * rewritten or merged with anything after the fact.
  */
-export async function publishDirect(item: ContentItem): Promise<MergedArticle> {
+export async function publishDirect(item: ContentItem, settings: GlobalSettings): Promise<MergedArticle> {
 	const category = uniqueCategories([item]);
-	const { heroImage, storedMediaId } = await resolveHeroImage([item], item.link, !item.tweet);
+	const storedMediaIds: string[] = [];
+
+	let heroImage: MergedArticle['heroImage'] = null;
+	if (item.tweet) {
+		const selected = selectBestImage([item]);
+		if (selected) {
+			const resolved = await resolveTweetMediaUrl(selected.url, settings.nitterMediaMode);
+			heroImage = { url: resolved.url, sourceItemId: selected.sourceItemId, selectionReason: selected.selectionReason };
+			if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
+		}
+	} else {
+		const resolved = await resolveHeroImage([item], item.link);
+		heroImage = resolved.heroImage;
+		if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
+	}
+
 	const video = item.videos[0]
 		? { url: item.videos[0].url, provider: item.videos[0].provider, embedUrl: item.videos[0].embedHtml, sourceItemId: item.id }
 		: null;
-	const tweet = item.tweet
-		? { authorName: item.tweet.authorName, authorHandle: item.tweet.authorHandle, avatarUrl: item.tweet.avatarUrl, sourceItemId: item.id }
-		: null;
+
+	let tweet: MergedArticle['tweet'] = null;
+	if (item.tweet) {
+		let avatarUrl: string | null = null;
+		if (item.tweet.avatarUrl) {
+			const resolved = await resolveTweetMediaUrl(item.tweet.avatarUrl, settings.nitterMediaMode);
+			avatarUrl = resolved.url;
+			if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
+		}
+		tweet = { authorName: item.tweet.authorName, authorHandle: item.tweet.authorHandle, avatarUrl, sourceItemId: item.id };
+	}
 
 	const article = await articles.insertArticle({
 		title: item.title,
@@ -127,7 +172,7 @@ export async function publishDirect(item: ContentItem): Promise<MergedArticle> {
 		topStories: anyPushesToTopStories([item])
 	});
 
-	if (storedMediaId) promoteToPublished(storedMediaId, article.id);
+	for (const id of storedMediaIds) promoteToPublished(id, article.id);
 	return article;
 }
 

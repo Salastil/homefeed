@@ -167,7 +167,9 @@ export function migrate() {
 			raw_item_max_age_days INTEGER DEFAULT 7,
 			storage_cap_enabled INTEGER NOT NULL DEFAULT 1,
 			storage_cap_value INTEGER NOT NULL DEFAULT 500,
-			storage_cap_unit TEXT NOT NULL DEFAULT 'GB'
+			storage_cap_unit TEXT NOT NULL DEFAULT 'GB',
+			nitter_media_mode TEXT NOT NULL DEFAULT 'proxy', -- self-host | proxy | direct
+			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com'
 		);
 	`);
 
@@ -194,6 +196,12 @@ export function migrate() {
 	}
 	if (!hasColumn('merged_articles', 'tweet')) {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN tweet TEXT');
+	}
+	if (!hasColumn('global_settings', 'nitter_media_mode')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN nitter_media_mode TEXT NOT NULL DEFAULT 'proxy'");
+	}
+	if (!hasColumn('global_settings', 'fxtwitter_base_url')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com'");
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

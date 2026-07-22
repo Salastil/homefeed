@@ -18,7 +18,7 @@
 	</div>
 	<div class="author-row">
 		{#if article.tweet?.avatarUrl}
-			<img class="avatar" src={article.tweet.avatarUrl} alt="" loading="lazy" />
+			<img class="avatar" src={resolveMediaUrl(article.tweet.avatarUrl)} alt="" loading="lazy" />
 		{:else}
 			<div class="avatar placeholder"></div>
 		{/if}

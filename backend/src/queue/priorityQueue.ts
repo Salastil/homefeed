@@ -54,7 +54,7 @@ export async function runPassthroughCycle(settings: GlobalSettings): Promise<num
 
 	for (const item of ranked) {
 		try {
-			const article = await publishDirect(item);
+			const article = await publishDirect(item, settings);
 			contentItemsDb.assignCluster([item.id], article.id);
 			published++;
 			logger.info('synthesis', `Published "${article.title}" directly (no AI available)`);
@@ -88,7 +88,7 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 	let publishedDirect = 0;
 	for (const item of directItems) {
 		try {
-			const article = await publishDirect(item);
+			const article = await publishDirect(item, settings);
 			contentItemsDb.assignCluster([item.id], article.id);
 			publishedDirect++;
 			const source = sourcesDb.getSource(item.sourceId);

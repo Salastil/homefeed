@@ -119,6 +119,10 @@ export interface GlobalSettings {
 	aiServiceHost: string;
 	aiServicePort: number;
 	selectedModels: { embedding: string; image: string; synthesis: string };
+	/** How tweet media (attached photos, avatars) is served — see pipeline/publish.ts's resolveTweetMedia. */
+	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
+	/** Base URL of the fxtwitter-compatible enrichment API — defaults to the public instance, overridable for a self-hosted FixTweet mirror. */
+	fxtwitterBaseUrl: string;
 	retention: {
 		publishedArticleMaxAgeDays: number | null;
 		rawItemMaxAgeDays: number | null;

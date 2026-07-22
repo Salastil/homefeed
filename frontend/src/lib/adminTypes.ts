@@ -25,6 +25,8 @@ export interface AdminSettings {
 	aiServiceHost: string;
 	aiServicePort: number;
 	selectedModels: { embedding: string; image: string; synthesis: string };
+	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
+	fxtwitterBaseUrl: string;
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
 }

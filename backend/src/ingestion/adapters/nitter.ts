@@ -10,6 +10,7 @@ import Parser from 'rss-parser';
 import type { Source } from '../../storage/db/types.js';
 import type { SourceAdapter, FetchedItem } from './base.js';
 import { logger } from '../../storage/db/logs.js';
+import { getSettings } from '../../storage/db/settings.js';
 
 const parser = new Parser<Record<string, unknown>>();
 
@@ -31,10 +32,16 @@ interface FxTweet {
 	media?: { photos?: { url?: string }[] };
 }
 
-/** The endpoint is keyed by handle + status ID, e.g. https://api.fxtwitter.com/zerohedge/status/123 — no API version prefix. */
+/**
+ * The endpoint is keyed by handle + status ID, e.g. https://api.fxtwitter.com/zerohedge/status/123
+ * — no API version prefix. The base URL is admin-configurable (Retention tab) so a
+ * self-hosted FixTweet mirror (or another compatible public instance) can be used
+ * instead of the public api.fxtwitter.com default.
+ */
 async function fetchFxTwitter(handle: string, tweetId: string): Promise<FxTweet | null> {
+	const baseUrl = getSettings().fxtwitterBaseUrl.replace(/\/+$/, '');
 	try {
-		const res = await fetch(`https://api.fxtwitter.com/${handle}/status/${tweetId}`, {
+		const res = await fetch(`${baseUrl}/${handle}/status/${tweetId}`, {
 			headers: { 'User-Agent': USER_AGENT },
 			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
 		});
