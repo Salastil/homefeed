@@ -35,11 +35,15 @@ function deriveTitle(body: string): string {
 /**
  * Resolves the hero image for an article: try the best candidate from the source
  * items, download and locally host it; if there isn't one, fall back to the site's
- * favicon rather than leaving the article with no art at all.
+ * favicon rather than leaving the article with no art at all. That favicon fallback
+ * is skipped for tweets (allowFaviconFallback: false) — a Nitter instance's own
+ * favicon slapped onto an image-less tweet reads as a mistake, not a placeholder;
+ * TweetCard.svelte already handles no-image tweets gracefully with no image at all.
  */
 async function resolveHeroImage(
 	items: ContentItem[],
-	primaryLink: string
+	primaryLink: string,
+	allowFaviconFallback = true
 ): Promise<{ heroImage: MergedArticle['heroImage']; storedMediaId: string | null }> {
 	const selected = selectBestImage(items);
 
@@ -53,6 +57,10 @@ async function resolveHeroImage(
 		}
 		// Download failed — fall back to the hotlinked URL rather than losing the image entirely.
 		return { heroImage: selected, storedMediaId: null };
+	}
+
+	if (!allowFaviconFallback) {
+		return { heroImage: null, storedMediaId: null };
 	}
 
 	const favicon = faviconUrlFor(primaryLink);
@@ -81,7 +89,7 @@ async function resolveHeroImage(
  */
 export async function publishDirect(item: ContentItem): Promise<MergedArticle> {
 	const category = uniqueCategories([item]);
-	const { heroImage, storedMediaId } = await resolveHeroImage([item], item.link);
+	const { heroImage, storedMediaId } = await resolveHeroImage([item], item.link, !item.tweet);
 	const video = item.videos[0]
 		? { url: item.videos[0].url, provider: item.videos[0].provider, embedUrl: item.videos[0].embedHtml, sourceItemId: item.id }
 		: null;
