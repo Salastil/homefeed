@@ -220,21 +220,21 @@
 			</button>
 			<div>
 				<div class="name">{source.name}</div>
-				<div
-					class="sub"
-					class:error={source.lastError && !justPolled && !justCleared}
-					class:success={justPolled?.id === source.id || justCleared?.id === source.id}
-				>
-					{#if justCleared?.id === source.id}
-						✓ cleared {justCleared.items} item(s), {justCleared.articles} article(s)
-					{:else if justPolled?.id === source.id}
-						{justPolled.count > 0 ? `✓ ${justPolled.count} new item(s)` : '✓ up to date, nothing new'}
-					{:else if source.lastError}
-						last poll failed · {source.lastError}
-					{:else}
-						{source.url}
-					{/if}
-				</div>
+				{#if justCleared?.id === source.id || justPolled?.id === source.id || source.lastError}
+					<div
+						class="sub"
+						class:error={source.lastError && !justPolled && !justCleared}
+						class:success={justPolled?.id === source.id || justCleared?.id === source.id}
+					>
+						{#if justCleared?.id === source.id}
+							✓ cleared {justCleared.items} item(s), {justCleared.articles} article(s)
+						{:else if justPolled?.id === source.id}
+							{justPolled.count > 0 ? `✓ ${justPolled.count} new item(s)` : '✓ up to date, nothing new'}
+						{:else if source.lastError}
+							last poll failed · {source.lastError}
+						{/if}
+					</div>
+				{/if}
 			</div>
 			<span class="badge">{source.type.toUpperCase()}</span>
 			<span class="cat">{source.category.join(', ')}</span>
