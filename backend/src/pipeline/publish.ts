@@ -85,12 +85,16 @@ export async function publishDirect(item: ContentItem): Promise<MergedArticle> {
 	const video = item.videos[0]
 		? { url: item.videos[0].url, provider: item.videos[0].provider, embedUrl: item.videos[0].embedHtml, sourceItemId: item.id }
 		: null;
+	const tweet = item.tweet
+		? { authorName: item.tweet.authorName, authorHandle: item.tweet.authorHandle, avatarUrl: item.tweet.avatarUrl, sourceItemId: item.id }
+		: null;
 
 	const article = await articles.insertArticle({
 		title: item.title,
 		body: item.body || item.summary,
 		heroImage,
 		video,
+		tweet,
 		category,
 		geo: item.geo,
 		eventId: item.eventId,
@@ -192,6 +196,7 @@ export async function publishCluster(
 		body,
 		heroImage,
 		video,
+		tweet: null, // tweets never reach clustering — see priorityQueue.ts's direct-publish bypass
 		category,
 		geo,
 		eventId: opts.eventId ?? items[0]?.eventId ?? null,

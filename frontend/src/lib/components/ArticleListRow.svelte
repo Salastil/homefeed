@@ -2,6 +2,7 @@
 	import type { MergedArticle } from '$lib/types';
 	import { timeAgo, exactTime, excerpt } from '$lib/format';
 	import { resolveMediaUrl } from '$lib/config';
+	import TweetCard from './TweetCard.svelte';
 
 	let { article }: { article: MergedArticle } = $props();
 
@@ -12,28 +13,32 @@
 	);
 </script>
 
-<a class="row" href={`/article/${article.id}`}>
-	{#if article.heroImage}
-		<img class="thumb" src={resolveMediaUrl(article.heroImage.url)} alt="" loading="lazy" />
-	{:else}
-		<div class="thumb placeholder"></div>
-	{/if}
+{#if article.tweet}
+	<TweetCard {article} />
+{:else}
+	<a class="row" href={`/article/${article.id}`}>
+		{#if article.heroImage}
+			<img class="thumb" src={resolveMediaUrl(article.heroImage.url)} alt="" loading="lazy" />
+		{:else}
+			<div class="thumb placeholder"></div>
+		{/if}
 
-	<div class="content">
-		<div class="meta">
-			<span>{article.category[0] ?? ''}</span>
-			<span>&middot;</span>
-			<span>{sourceLabel}</span>
-			{#if article.video}
+		<div class="content">
+			<div class="meta">
+				<span>{article.category[0] ?? ''}</span>
 				<span>&middot;</span>
-				<span>▶ Video</span>
-			{/if}
+				<span>{sourceLabel}</span>
+				{#if article.video}
+					<span>&middot;</span>
+					<span>▶ Video</span>
+				{/if}
+			</div>
+			<div class="title">{article.title}</div>
+			<div class="excerpt">{excerpt(article.body)}</div>
+			<div class="time">{timeAgo(article.publishedAt)} &middot; {exactTime(article.publishedAt)}</div>
 		</div>
-		<div class="title">{article.title}</div>
-		<div class="excerpt">{excerpt(article.body)}</div>
-		<div class="time">{timeAgo(article.publishedAt)} &middot; {exactTime(article.publishedAt)}</div>
-	</div>
-</a>
+	</a>
+{/if}
 
 <style>
 	.row {

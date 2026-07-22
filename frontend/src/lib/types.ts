@@ -14,6 +14,7 @@ export interface MergedArticle {
 	body: string;
 	heroImage: { url: string; sourceItemId: string; selectionReason: string } | null;
 	video: { url: string; provider?: string; embedUrl?: string; sourceItemId: string } | null;
+	tweet: { authorName: string; authorHandle: string; avatarUrl: string | null; sourceItemId: string } | null;
 	category: string[];
 	geo: string | null;
 	eventId: string | null;

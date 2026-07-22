@@ -1,7 +1,7 @@
 export interface Source {
 	id: string;
 	name: string;
-	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'custom';
+	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'nitter' | 'custom';
 	category: string[];
 	url: string | null;
 	config: Record<string, unknown>;
@@ -31,6 +31,8 @@ export interface ContentItem {
 	embedding: number[] | null;
 	eventId: string | null;
 	clusterId: string | null;
+	/** Nitter-sourced items only — null for everything else. */
+	tweet: { id: string; authorName: string; authorHandle: string; avatarUrl: string | null } | null;
 	raw: unknown;
 }
 
@@ -47,6 +49,8 @@ export interface MergedArticle {
 	body: string;
 	heroImage: { url: string; sourceItemId: string; selectionReason: string } | null;
 	video: { url: string; provider?: string; embedUrl?: string; sourceItemId: string } | null;
+	/** Nitter-sourced articles only — the embed card's author info (see TweetCard.svelte). Never set alongside video. */
+	tweet: { authorName: string; authorHandle: string; avatarUrl: string | null; sourceItemId: string } | null;
 	category: string[];
 	geo: string | null;
 	eventId: string | null;
