@@ -9,16 +9,26 @@
 	// article.tweet.media is undefined for tweets published before this field existed —
 	// older rows in the DB weren't backfilled, so this can't assume it's always an array.
 	const media = $derived(article.tweet?.media?.slice(0, 4) ?? []);
+	// The card's own href — clicking the frame goes to the original tweet, not our
+	// internal article page (there's no separate "full article" for a tweet anyway).
+	const tweetUrl = $derived(article.sources[0]?.link ?? `/article/${article.id}`);
 
-	// Native <video controls> needs its clicks not to fall through to the card's own
-	// <a> navigation (play/pause/scrub would otherwise just open the article instead).
-	// Plain images keep navigating as before — only the video element itself is exempted.
-	function handleMediaClick(e: MouseEvent) {
-		if ((e.target as HTMLElement).tagName === 'VIDEO') e.preventDefault();
+	// A <video controls> click must not fall through to the card's own <a> navigation
+	// (play/pause/scrub would otherwise just open the tweet in a new tab instead).
+	function stopVideoNav(e: MouseEvent) {
+		e.preventDefault();
+	}
+
+	// A photo click opens the image itself in a new tab, rather than the tweet link the
+	// rest of the card points to — also resolved through the configured media mode
+	// (proxy/self-host/direct) so opening the full image doesn't bypass proxy anonymity.
+	function openImage(e: MouseEvent, url: string) {
+		e.preventDefault();
+		window.open(resolveMediaUrl(url), '_blank', 'noopener,noreferrer');
 	}
 </script>
 
-<a class="tweet-card" href={`/article/${article.id}`}>
+<a class="tweet-card" href={tweetUrl} target="_blank" rel="noreferrer">
 	<div class="meta">
 		<span>{article.category[0] ?? ''}</span>
 		<span>&middot;</span>
@@ -37,7 +47,7 @@
 	</div>
 	<div class="text">{article.body}</div>
 	{#if media.length > 0}
-		<div class="media-grid" data-count={media.length} onclick={handleMediaClick} role="presentation">
+		<div class="media-grid" data-count={media.length}>
 			{#each media as item, i (item.url)}
 				<div class="media-cell" class:span-2={media.length === 3 && i === 0}>
 					{#if item.type === 'video' || item.type === 'gif'}
@@ -49,11 +59,14 @@
 							loop={item.type === 'gif'}
 							muted={item.type === 'gif'}
 							poster={item.thumbnailUrl ? resolveMediaUrl(item.thumbnailUrl) : undefined}
+							onclick={stopVideoNav}
 						>
 							<source src={resolveMediaUrl(item.url)} type="video/mp4" />
 						</video>
 					{:else}
-						<img class="media-el" src={resolveMediaUrl(item.url)} alt="" loading="lazy" />
+						<button type="button" class="media-btn" onclick={(e) => openImage(e, item.url)}>
+							<img class="media-el" src={resolveMediaUrl(item.url)} alt="" loading="lazy" />
+						</button>
 					{/if}
 				</div>
 			{/each}
@@ -152,6 +165,15 @@
 	}
 	.media-cell.span-2 {
 		grid-row: 1 / 3;
+	}
+	.media-btn {
+		display: block;
+		width: 100%;
+		height: 100%;
+		padding: 0;
+		border: none;
+		background: none;
+		cursor: pointer;
 	}
 	.media-el {
 		width: 100%;
