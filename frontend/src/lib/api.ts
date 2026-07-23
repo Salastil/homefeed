@@ -2,7 +2,10 @@ import { getBackendUrl } from './config';
 import type { MergedArticle, Tag, TrackedEventPublic, Category } from './types';
 
 async function get<T>(path: string, fetchFn: typeof fetch = fetch): Promise<T> {
-	const res = await fetchFn(`${getBackendUrl()}${path}`);
+	// credentials: 'include' so the private-access cookie (see lib/privateAccess.ts)
+	// is sent cross-origin to the backend, revealing private categories/articles to
+	// anyone who's logged in — without it every request would look unauthenticated.
+	const res = await fetchFn(`${getBackendUrl()}${path}`, { credentials: 'include' });
 	if (!res.ok) throw new Error(`Request failed: ${path} (${res.status})`);
 	return res.json();
 }
