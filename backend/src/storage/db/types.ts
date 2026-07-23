@@ -58,12 +58,6 @@ export interface TelegramMediaRef {
 	height: number | null;
 }
 
-/** Where a forwarded Telegram message originated — username is null when the origin has no public handle (e.g. a private channel/user, or a sender who hid their identity), in which case the card falls back to showing just the name. */
-export interface TelegramForwardedFrom {
-	name: string;
-	username: string | null;
-}
-
 export interface ContentItem {
 	id: string;
 	sourceId: string;
@@ -93,13 +87,24 @@ export interface ContentItem {
 		/** Set when this item is a quote-tweet — the tweet embedded in its <blockquote>. */
 		quotedTweet: QuotedTweet | null;
 	} | null;
-	/** Telegram-sourced items only — null for everything else. Media is unresolved refs (see TelegramMediaRef); publish.ts resolves them (and the channel avatar) per the admin's configured media mode. */
+	/**
+	 * Telegram-sourced items only — null for everything else. channelName/channelUsername
+	 * describe whoever should be *displayed* as the author — the original channel when
+	 * this message is a forward (same as tweet.authorName always being the original
+	 * tweet's author, not the retweeter), or the polled channel itself otherwise.
+	 * channelUsername is null when a forward's origin has no public handle. Media is
+	 * unresolved refs (see TelegramMediaRef); publish.ts resolves them (and the display
+	 * avatar) per the admin's configured media mode.
+	 */
 	telegramMessage: {
 		channelName: string;
-		channelUsername: string;
+		channelUsername: string | null;
+		/** The channel actually polled — always non-null, used to re-fetch this message's media (attached media lives on the polled channel's own copy of the message, forward or not). */
+		sourceChannelUsername: string;
 		messageId: string;
 		media: TelegramMediaRef[];
-		forwardedFrom: TelegramForwardedFrom | null;
+		/** Set when this message is a forward — the polled channel's own handle, e.g. "Forwarded by @X". */
+		repostedByHandle: string | null;
 	} | null;
 	raw: unknown;
 }
@@ -130,11 +135,11 @@ export interface MergedArticle {
 	/** Telegram-sourced articles only — the embed card's channel info and attached media (see TelegramCard.svelte). Never set alongside video. */
 	telegramMessage: {
 		channelName: string;
-		channelUsername: string;
+		channelUsername: string | null;
 		channelAvatarUrl: string | null;
 		sourceItemId: string;
 		media: TelegramMediaItem[];
-		forwardedFrom: TelegramForwardedFrom | null;
+		repostedByHandle: string | null;
 	} | null;
 	category: string[];
 	geo: string | null;

@@ -16,7 +16,7 @@
 // where those refs turn into an actual servable url.
 
 import type { Api } from 'telegram';
-import type { Source, TelegramMediaRef, TelegramForwardedFrom } from '../../storage/db/types.js';
+import type { Source, TelegramMediaRef } from '../../storage/db/types.js';
 import type { SourceAdapter, FetchedItem } from './base.js';
 import { logger } from '../../storage/db/logs.js';
 import { getClient, fetchChannelMessages } from '../../telegram/client.js';
@@ -69,6 +69,12 @@ function refForMessage(message: TgMessage): TelegramMediaRef | null {
 	return null;
 }
 
+interface ForwardOrigin {
+	name: string;
+	/** Null when the origin has no public handle (e.g. a private channel/user, or a sender who hid their identity) — the card then falls back to showing just the name, with no avatar. */
+	username: string | null;
+}
+
 /**
  * Detects a forwarded message and resolves where it came from. GramJS's `message.forward`
  * wraps the raw fwdFrom header using entities Telegram already sent alongside the same
@@ -77,7 +83,7 @@ function refForMessage(message: TgMessage): TelegramMediaRef | null {
  * `.sender` the origin user. Falls back to fwdFrom.fromName for the rarer case where the
  * origin has no resolvable identity (e.g. a user who hid their account from forwards).
  */
-function detectForward(message: TgMessage): TelegramForwardedFrom | null {
+function detectForward(message: TgMessage): ForwardOrigin | null {
 	const fwd = message.fwdFrom;
 	if (!fwd) return null;
 
@@ -133,12 +139,14 @@ export const telegramAdapter: SourceAdapter = {
 		// that means anything to a non-member — a private channel's t.me/c/<internal_id>/...
 		// link would make "click to open on Telegram" mostly useless, so v1 restricts to
 		// public channels and fails soft otherwise (same style as youtube.ts's resolveFeedUrl).
-		const channelUsername: string | undefined = entity?.username;
-		if (!channelUsername) {
+		// This is always the channel we polled — used for the permalink and, on a forward,
+		// as the "Forwarded by @X" attribution — never the identity actually displayed.
+		const pollingChannelUsername: string | undefined = entity?.username;
+		if (!pollingChannelUsername) {
 			logger.warn('telegram', `"${source.name}" has no public username — private channels aren't supported yet, skipping`);
 			return [];
 		}
-		const channelName: string = entity?.title ?? channelUsername;
+		const pollingChannelName: string = entity?.title ?? pollingChannelUsername;
 
 		const items: FetchedItem[] = [];
 
@@ -156,20 +164,30 @@ export const telegramAdapter: SourceAdapter = {
 
 			if (!text && media.length === 0) continue; // nothing worth publishing (e.g. a service message)
 
+			// A forward displays as if it were authored by the ORIGIN channel/user — same
+			// treatment as a retweet, where tweet.authorName is always the original tweet's
+			// author, never the retweeter — with a "Forwarded by @<polled channel>" line
+			// (repostedByHandle) taking the place of the retweeter's own attribution.
+			const origin = detectForward(primary);
+			const channelName = origin?.name ?? pollingChannelName;
+			const channelUsername = origin ? origin.username : pollingChannelUsername;
+			const repostedByHandle = origin ? pollingChannelUsername : null;
+
 			items.push({
-				title: firstLine || `Message from ${channelName}`,
+				title: firstLine || `Message from ${pollingChannelName}`,
 				summary: text.slice(0, 500),
 				body: text || null,
 				images: [],
 				videos: [],
-				link: `https://t.me/${channelUsername}/${group[0].id}`,
+				link: `https://t.me/${pollingChannelUsername}/${group[0].id}`,
 				publishedAt: new Date(primary.date * 1000).toISOString(),
 				telegramMessage: {
 					channelName,
 					channelUsername,
+					sourceChannelUsername: pollingChannelUsername,
 					messageId: String(group[0].id),
 					media,
-					forwardedFrom: detectForward(primary)
+					repostedByHandle
 				},
 				raw: { messageIds: group.map((m) => m.id) }
 			});

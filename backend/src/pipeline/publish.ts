@@ -281,18 +281,28 @@ export async function publishDirect(item: ContentItem, settings: GlobalSettings)
 
 	let telegramMessage: MergedArticle['telegramMessage'] = null;
 	if (item.telegramMessage) {
-		const { channelUsername } = item.telegramMessage;
-		const avatar = await resolveTelegramAvatarUrl(channelUsername, settings.telegramMediaMode);
+		const { channelUsername, sourceChannelUsername } = item.telegramMessage;
+
+		// The avatar shown is whoever is DISPLAYED (the origin channel on a forward) — if
+		// that has no public handle, there's no avatar to fetch at all, regardless of mode.
+		const avatar = channelUsername
+			? await resolveTelegramAvatarUrl(channelUsername, settings.telegramMediaMode)
+			: { url: null, storedMediaId: null };
 		if (avatar.storedMediaId) storedMediaIds.push(avatar.storedMediaId);
-		const resolvedMedia = await resolveTelegramMedia(channelUsername, item.telegramMessage.media, settings.telegramMediaMode);
+
+		// Attached media always lives on the polled channel's own copy of the message
+		// (forward or not), so media resolution uses sourceChannelUsername, never the
+		// (possibly different, possibly null) displayed channelUsername.
+		const resolvedMedia = await resolveTelegramMedia(sourceChannelUsername, item.telegramMessage.media, settings.telegramMediaMode);
 		storedMediaIds.push(...resolvedMedia.storedMediaIds);
+
 		telegramMessage = {
 			channelName: item.telegramMessage.channelName,
 			channelUsername,
 			channelAvatarUrl: avatar.url,
 			sourceItemId: item.id,
 			media: resolvedMedia.media,
-			forwardedFrom: item.telegramMessage.forwardedFrom
+			repostedByHandle: item.telegramMessage.repostedByHandle
 		};
 	}
 

@@ -3,8 +3,7 @@ import type {
 	ContentItem,
 	TweetMediaItem,
 	QuotedTweet,
-	TelegramMediaRef,
-	TelegramForwardedFrom
+	TelegramMediaRef
 } from '../../storage/db/types.js';
 import { cleanHtml, toSummary } from '../clean.js';
 
@@ -29,10 +28,11 @@ export interface FetchedItem {
 	/** Set by the Telegram adapter only — carries the channel/message info through to ContentItem.telegramMessage. Media is unresolved refs; publish.ts resolves them per the admin's configured telegramMediaMode. */
 	telegramMessage?: {
 		channelName: string;
-		channelUsername: string;
+		channelUsername: string | null;
+		sourceChannelUsername: string;
 		messageId: string;
 		media: TelegramMediaRef[];
-		forwardedFrom: TelegramForwardedFrom | null;
+		repostedByHandle: string | null;
 	};
 	raw: unknown;
 }

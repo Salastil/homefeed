@@ -28,9 +28,8 @@
 </script>
 
 <a class="telegram-card" href={messageUrl} target="_blank" rel="noreferrer">
-	{#if article.telegramMessage?.forwardedFrom}
-		{@const from = article.telegramMessage.forwardedFrom}
-		<div class="forward-line">↪️ Forwarded from {from.username ? `@${from.username}` : from.name}</div>
+	{#if article.telegramMessage?.repostedByHandle}
+		<div class="forward-line">↪️ Forwarded by @{article.telegramMessage.repostedByHandle}</div>
 	{/if}
 	<div class="meta">
 		<span>{article.category[0] ?? ''}</span>
@@ -46,7 +45,9 @@
 			<div class="avatar placeholder"></div>
 		{/if}
 		<span class="name">{article.telegramMessage?.channelName}</span>
-		<span class="handle">@{article.telegramMessage?.channelUsername}</span>
+		{#if article.telegramMessage?.channelUsername}
+			<span class="handle">@{article.telegramMessage.channelUsername}</span>
+		{/if}
 	</div>
 	<div class="text">{article.body}</div>
 	{#if media.length > 0}
