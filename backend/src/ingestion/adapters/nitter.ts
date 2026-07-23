@@ -7,10 +7,11 @@
 // two outlets' coverage of the same news event does — same reasoning as YouTube.
 
 import Parser from 'rss-parser';
-import type { Source, TweetMediaItem } from '../../storage/db/types.js';
+import type { Source, TweetMediaItem, QuotedTweet } from '../../storage/db/types.js';
 import type { SourceAdapter, FetchedItem } from './base.js';
 import { logger } from '../../storage/db/logs.js';
 import { getSettings } from '../../storage/db/settings.js';
+import { cleanHtml } from '../clean.js';
 
 /** fxtwitter caps a tweet at 4 attached photos/videos/gifs, in tweet display order. */
 const MAX_TWEET_MEDIA = 4;
@@ -101,6 +102,46 @@ function extractImageUrl(html: string): string | null {
 	return html.match(/<img[^>]+src="([^"]+)"/i)?.[1] ?? null;
 }
 
+/**
+ * A bare retweet's RSS title is prefixed "RT by @handle: ..." — confirmed against a real
+ * sample (e.g. `<title>RT by @rawsalerts: BREAKING: MyPillow CEO...</title>` with
+ * `<dc:creator>@Polymarket</dc:creator>`, i.e. dc:creator is already the original author;
+ * only the retweeter's handle is missing from anywhere else in the feed). No blockquote
+ * accompanies a bare retweet — the description is the original tweet's own content directly.
+ */
+function extractRepostedByHandle(title: string | undefined): string | null {
+	return title?.match(/^RT by @(\w+):/i)?.[1] ?? null;
+}
+
+/**
+ * A quote-tweet's RSS description is the quoter's own commentary followed by an `<hr/>`
+ * and a `<blockquote>` wrapping the quoted tweet — confirmed against a real sample:
+ * `<blockquote><b>zerohedge (@zerohedge)</b><p>...quoted text...<img .../></p>
+ * <footer>— <cite><a href="https://.../status/...">...</a></cite></footer></blockquote>`.
+ * Nitter carries the quoted tweet's author, text, one image, and permalink fully inline —
+ * no extra fxtwitter call needed to render it as a nested preview.
+ */
+function extractQuotedTweet(descriptionHtml: string): QuotedTweet | null {
+	const blockquoteMatch = descriptionHtml.match(/<blockquote>([\s\S]*?)<\/blockquote>/i);
+	if (!blockquoteMatch) return null;
+	const inner = blockquoteMatch[1];
+
+	const authorMatch = inner.match(/<b>\s*([^<(]+?)\s*\(@([^)]+)\)\s*<\/b>/i);
+	const linkMatch = inner.match(/<footer>[\s\S]*?<a href="([^"]+)"/i);
+	if (!authorMatch || !linkMatch) return null;
+
+	const afterAuthor = inner.slice((authorMatch.index ?? 0) + authorMatch[0].length);
+	const beforeFooter = afterAuthor.replace(/<footer>[\s\S]*$/i, '');
+
+	return {
+		authorName: authorMatch[1].trim(),
+		authorHandle: authorMatch[2].trim(),
+		text: cleanHtml(beforeFooter),
+		imageUrl: extractImageUrl(inner),
+		link: linkMatch[1]
+	};
+}
+
 export const nitterAdapter: SourceAdapter = {
 	async fetch(source: Source): Promise<FetchedItem[]> {
 		if (!source.url) return [];
@@ -116,16 +157,22 @@ export const nitterAdapter: SourceAdapter = {
 				continue;
 			}
 
-			// dc:creator is reliably the author of this item's own tweet text (rss-parser
-			// maps it to item.creator) — for a retweet, that's the original tweet's author,
-			// not whichever list member's retweet surfaced it in this feed.
-			const handle = (item.creator ?? '').replace(/^@/, '') || 'unknown';
+			// dc:creator (rss-parser maps it to item.creator) is reliably the author of the
+			// tweet actually being shown — confirmed against a real "RT by @X: ..." sample,
+			// where dc:creator was the ORIGINAL author, not the retweeter (the retweeter's
+			// handle only ever appears in the title's "RT by @X:" prefix, extracted below).
+			const rssHandle = (item.creator ?? '').replace(/^@/, '') || 'unknown';
 			const ownHtml = ownContentHtml(item.content ?? '');
 			const rssImageUrl = extractImageUrl(ownHtml);
+			const repostedByHandle = extractRepostedByHandle(item.title);
+			// A bare retweet never carries a blockquote (its description IS the original
+			// tweet directly), so this is naturally null whenever repostedByHandle is set.
+			const quotedTweet = extractQuotedTweet(item.content ?? '');
 
-			const enrichment = await fetchFxTwitter(handle, tweetId);
+			const enrichment = await fetchFxTwitter(rssHandle, tweetId);
 
-			const authorName = enrichment?.author?.name ?? handle;
+			const authorName = enrichment?.author?.name ?? rssHandle;
+			const handle = enrichment?.author?.screen_name ?? rssHandle;
 			const avatarUrl = enrichment?.author?.avatar_url ?? null;
 			const text = enrichment?.text ?? ownHtml;
 			// Enrichment failed (or came back with no media) — fall back to the RSS
@@ -146,7 +193,7 @@ export const nitterAdapter: SourceAdapter = {
 				videos: [],
 				link: item.link,
 				publishedAt,
-				tweet: { id: tweetId, authorName, authorHandle: handle, avatarUrl, media },
+				tweet: { id: tweetId, authorName, authorHandle: handle, avatarUrl, media, repostedByHandle, quotedTweet },
 				raw: { rss: item, fxtwitter: enrichment }
 			});
 		}

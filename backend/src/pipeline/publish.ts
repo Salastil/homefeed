@@ -8,7 +8,7 @@ import { logger } from '../storage/db/logs.js';
 import * as articles from '../storage/db/articles.js';
 import * as tags from '../storage/db/tags.js';
 import * as sources from '../storage/db/sources.js';
-import type { GlobalSettings, MergedArticle, ContentItem, TweetMediaItem } from '../storage/db/types.js';
+import type { GlobalSettings, MergedArticle, ContentItem, TweetMediaItem, QuotedTweet } from '../storage/db/types.js';
 
 const FOLLOW_UP_LOOKBACK_DAYS = 3;
 
@@ -129,6 +129,16 @@ async function resolveTweetMedia(
 	return { media: resolved, storedMediaIds };
 }
 
+/** Resolves a quote-tweet's embedded image (if any) through the Nitter media mode, same as any other tweet media. */
+async function resolveQuotedTweet(
+	quoted: QuotedTweet,
+	mode: GlobalSettings['nitterMediaMode']
+): Promise<{ quotedTweet: QuotedTweet; storedMediaId: string | null }> {
+	if (!quoted.imageUrl) return { quotedTweet: quoted, storedMediaId: null };
+	const resolved = await resolveTweetMediaUrl(quoted.imageUrl, mode);
+	return { quotedTweet: { ...quoted, imageUrl: resolved.url }, storedMediaId: resolved.storedMediaId };
+}
+
 /**
  * Publishes a single item as-is, with no AI calls at all — used when the AI service
  * isn't reachable (e.g. Ollama hasn't been set up yet, per the "assume it arrives
@@ -165,12 +175,22 @@ export async function publishDirect(item: ContentItem, settings: GlobalSettings)
 		}
 		const resolvedMedia = await resolveTweetMedia(item.tweet.media, settings.nitterMediaMode);
 		storedMediaIds.push(...resolvedMedia.storedMediaIds);
+
+		let quotedTweet: QuotedTweet | null = null;
+		if (item.tweet.quotedTweet) {
+			const resolvedQuoted = await resolveQuotedTweet(item.tweet.quotedTweet, settings.nitterMediaMode);
+			quotedTweet = resolvedQuoted.quotedTweet;
+			if (resolvedQuoted.storedMediaId) storedMediaIds.push(resolvedQuoted.storedMediaId);
+		}
+
 		tweet = {
 			authorName: item.tweet.authorName,
 			authorHandle: item.tweet.authorHandle,
 			avatarUrl,
 			sourceItemId: item.id,
-			media: resolvedMedia.media
+			media: resolvedMedia.media,
+			repostedByHandle: item.tweet.repostedByHandle,
+			quotedTweet
 		};
 	}
 

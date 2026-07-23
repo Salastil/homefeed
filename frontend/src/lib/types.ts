@@ -17,13 +17,30 @@ export interface TweetMediaItem {
 	height: number | null;
 }
 
+/** The tweet embedded in a quote-tweet's own preview — rendered as a smaller nested frame. */
+export interface QuotedTweet {
+	authorName: string;
+	authorHandle: string;
+	text: string;
+	imageUrl: string | null;
+	link: string;
+}
+
 export interface MergedArticle {
 	id: string;
 	title: string;
 	body: string;
 	heroImage: { url: string; sourceItemId: string; selectionReason: string } | null;
 	video: { url: string; provider?: string; embedUrl?: string; sourceItemId: string } | null;
-	tweet: { authorName: string; authorHandle: string; avatarUrl: string | null; sourceItemId: string; media: TweetMediaItem[] } | null;
+	tweet: {
+		authorName: string;
+		authorHandle: string;
+		avatarUrl: string | null;
+		sourceItemId: string;
+		media: TweetMediaItem[];
+		repostedByHandle: string | null;
+		quotedTweet: QuotedTweet | null;
+	} | null;
 	category: string[];
 	geo: string | null;
 	eventId: string | null;
