@@ -1,11 +1,30 @@
 <script lang="ts">
 	import '../lib/styles/app.css';
 	import { page } from '$app/stores';
+	import { invalidateAll } from '$app/navigation';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import PrivateAccessModal from '$lib/components/PrivateAccessModal.svelte';
+	import { logoutPrivateAccess } from '$lib/privateAccess';
 	import { slugify } from '$lib/format';
 	import type { LayoutData } from './$types';
 
 	let { children, data }: { children: any; data: LayoutData } = $props();
+
+	let showLoginModal = $state(false);
+
+	async function handleLockClick() {
+		if (data.privateAccess.authenticated) {
+			await logoutPrivateAccess();
+			await invalidateAll();
+		} else {
+			showLoginModal = true;
+		}
+	}
+
+	async function handleLoginSuccess() {
+		showLoginModal = false;
+		await invalidateAll();
+	}
 
 	// "Top stories" is a real Category row (it drives synthesis queue priority) but
 	// isn't itself a filterable category — it always means "everything, chronological",
@@ -37,6 +56,26 @@
 		</nav>
 		<div class="controls">
 			<ThemeToggle />
+			{#if data.privateAccess?.configured}
+				<button
+					class="lock-btn"
+					onclick={handleLockClick}
+					aria-label={data.privateAccess.authenticated ? 'Log out of private categories' : 'Log in to private categories'}
+					title={data.privateAccess.authenticated ? 'Log out of private categories' : 'Log in to private categories'}
+				>
+					{#if data.privateAccess.authenticated}
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+							<rect x="5" y="11" width="14" height="10" rx="2" />
+							<path d="M8 11V7a4 4 0 0 1 7.75-1.5" />
+						</svg>
+					{:else}
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+							<rect x="5" y="11" width="14" height="10" rx="2" />
+							<path d="M8 11V7a4 4 0 0 1 8 0v4" />
+						</svg>
+					{/if}
+				</button>
+			{/if}
 			{#if data.adminPanelEnabled}
 				<a class="cog" href="/admin/settings" aria-label="Admin settings" title="Admin settings">
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -50,6 +89,10 @@
 		</div>
 	</div>
 </header>
+
+{#if showLoginModal}
+	<PrivateAccessModal onClose={() => (showLoginModal = false)} onSuccess={handleLoginSuccess} />
+{/if}
 
 <main class="page">
 	{@render children()}
@@ -109,6 +152,19 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
+	}
+	.lock-btn {
+		display: flex;
+		align-items: center;
+		color: var(--text-secondary);
+		padding: 4px;
+		border-radius: var(--radius);
+		background: transparent;
+		border: none;
+	}
+	.lock-btn:hover {
+		background: var(--surface-1);
+		color: var(--text-primary);
 	}
 	.cog {
 		display: flex;

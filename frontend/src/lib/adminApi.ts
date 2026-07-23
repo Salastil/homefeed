@@ -59,10 +59,10 @@ export const updateSettings = (patch: Partial<AdminSettings>, fetchFn?: typeof f
 	request<AdminSettings>('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
 
 // Categories
-export const createCategory = (name: string, fetchFn?: typeof fetch) =>
-	request<{ id: string; name: string; priorityRank: number; isDefault: boolean }>(
+export const createCategory = (name: string, isPrivate = false, fetchFn?: typeof fetch) =>
+	request<{ id: string; name: string; priorityRank: number; isDefault: boolean; isPrivate: boolean }>(
 		'/api/admin/categories',
-		{ method: 'POST', body: JSON.stringify({ name }) },
+		{ method: 'POST', body: JSON.stringify({ name, isPrivate }) },
 		fetchFn
 	);
 

@@ -58,4 +58,5 @@ export interface Category {
 	name: string;
 	priorityRank: number;
 	isDefault: boolean;
+	isPrivate: boolean;
 }

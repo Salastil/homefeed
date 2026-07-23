@@ -139,7 +139,8 @@ export function migrate() {
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
 			priority_rank INTEGER NOT NULL,
-			is_default INTEGER NOT NULL DEFAULT 0
+			is_default INTEGER NOT NULL DEFAULT 0,
+			is_private INTEGER NOT NULL DEFAULT 0
 		);
 
 		CREATE TABLE IF NOT EXISTS logs (
@@ -202,6 +203,9 @@ export function migrate() {
 	}
 	if (!hasColumn('global_settings', 'fxtwitter_base_url')) {
 		db.exec("ALTER TABLE global_settings ADD COLUMN fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com'");
+	}
+	if (!hasColumn('categories', 'is_private')) {
+		db.exec('ALTER TABLE categories ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —
