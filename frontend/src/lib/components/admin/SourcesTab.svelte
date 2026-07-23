@@ -144,7 +144,17 @@
 	}
 
 	const typeIcon = (type: string) =>
-		type === 'rss' ? '⟳' : type === 'telegram' ? '✈' : type === 'youtube' ? '▶' : type === 'api' ? '⇄' : '•';
+		type === 'rss'
+			? '⟳'
+			: type === 'telegram'
+				? '✈'
+				: type === 'youtube'
+					? '▶'
+					: type === 'nitter'
+						? '🐦'
+						: type === 'api'
+							? '⇄'
+							: '•';
 </script>
 
 <div class="toolbar">
@@ -163,10 +173,13 @@
 				<option value="api">API</option>
 				<option value="telegram">Telegram</option>
 				<option value="youtube">YouTube</option>
+				<option value="nitter">Nitter</option>
 				<option value="custom">Custom</option>
 			</select>
 			{#if form.type === 'youtube'}
 				<input placeholder="Channel URL (@handle or /channel/UC…), or channel ID" bind:value={form.channelId} />
+			{:else if form.type === 'nitter'}
+				<input placeholder="Nitter list/user RSS feed URL" bind:value={form.url} />
 			{:else}
 				<input placeholder="URL or channel" bind:value={form.url} />
 			{/if}

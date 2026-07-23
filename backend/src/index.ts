@@ -8,6 +8,7 @@ import { ADMIN_API_KEY } from './api/apiKey.js';
 import { registerAuth } from './api/auth.js';
 import { registerPublicRoutes } from './api/public.js';
 import { registerAdminRoutes } from './api/admin.js';
+import { registerMediaProxy } from './api/mediaProxy.js';
 import { registerPrivateAccess, privateAccessConfigured } from './api/privateAccess.js';
 import { startScheduler } from './queue/scheduler.js';
 import { logger } from './storage/db/logs.js';
@@ -87,6 +88,11 @@ async function main() {
 		if (!fs.existsSync(filePath)) return reply.code(404).send();
 		return reply.send(fs.createReadStream(filePath));
 	});
+
+	// Static "/media/proxy" takes priority over the "/media/:filename" param route
+	// above regardless of registration order (find-my-way, Fastify's router, always
+	// prefers a static segment over a parametric one at the same depth).
+	await registerMediaProxy(app);
 
 	app.get('/health', async () => ({ ok: true }));
 

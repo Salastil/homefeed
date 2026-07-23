@@ -11,6 +11,31 @@
 	let clearing = $state<'articles' | 'media' | null>(null);
 	let clearResult = $state<string | null>(null);
 
+	let nitterMediaMode = $state(settings.nitterMediaMode);
+	let fxtwitterBaseUrl = $state(settings.fxtwitterBaseUrl);
+	let nitterStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+	let nitterSaveTimer: ReturnType<typeof setTimeout>;
+
+	function scheduleNitterSave() {
+		nitterStatus = 'saving';
+		clearTimeout(nitterSaveTimer);
+		nitterSaveTimer = setTimeout(async () => {
+			try {
+				await updateSettings({ nitterMediaMode, fxtwitterBaseUrl });
+				nitterStatus = 'saved';
+				setTimeout(() => (nitterStatus = 'idle'), 1500);
+			} catch {
+				nitterStatus = 'error';
+			}
+		}, 500);
+	}
+
+	const mediaModes: { label: string; value: 'self-host' | 'proxy' | 'direct' }[] = [
+		{ label: 'Self-host', value: 'self-host' },
+		{ label: 'Proxy (recommended)', value: 'proxy' },
+		{ label: 'Direct', value: 'direct' }
+	];
+
 	async function handleClearArticles() {
 		if (!confirm('Delete every published article and its media? Raw ingested items are kept, so sources can be re-synthesized fresh.')) return;
 		clearing = 'articles';
@@ -139,6 +164,40 @@
 	<div class="bar">
 		<div class="bar-fill" style="width: {usagePercent}%"></div>
 	</div>
+</div>
+
+<div class="panel">
+	<div class="head">
+		<span class="panel-title">Nitter (tweet media)</span>
+		<SaveStatus status={nitterStatus} />
+	</div>
+	<p class="hint">
+		How images and video attached to ingested tweets are served to visitors. Self-hosting
+		downloads and stores everything locally, same as regular article images. Proxying streams
+		each request through this server without persisting anything, so only this server's IP is
+		ever exposed to Twitter's CDN. Direct hotlinks the original URL straight from Twitter, with
+		no server involvement at all.
+	</p>
+	<div class="pill-row">
+		{#each mediaModes as mode}
+			<button
+				class="pill"
+				class:active={nitterMediaMode === mode.value}
+				onclick={() => {
+					nitterMediaMode = mode.value;
+					scheduleNitterSave();
+				}}
+			>
+				{mode.label}
+			</button>
+		{/each}
+	</div>
+	<p class="hint" style="margin-top: 14px; margin-bottom: 6px;">
+		Enrichment API used to fetch full tweet text, author info, and media — any fxtwitter/FixTweet-
+		compatible endpoint works. Defaults to the public fxtwitter.com instance; point this at a
+		self-hosted FixTweet mirror (or another public instance) instead if you'd rather not depend on it.
+	</p>
+	<input type="text" bind:value={fxtwitterBaseUrl} oninput={scheduleNitterSave} placeholder="https://api.fxtwitter.com" style="width: 100%" />
 </div>
 
 <div class="panel">
