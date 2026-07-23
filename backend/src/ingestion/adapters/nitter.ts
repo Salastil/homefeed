@@ -116,16 +116,21 @@ export const nitterAdapter: SourceAdapter = {
 				continue;
 			}
 
-			// dc:creator is reliably the author of this item's own tweet text (rss-parser
-			// maps it to item.creator) — for a retweet, that's the original tweet's author,
-			// not whichever list member's retweet surfaced it in this feed.
-			const handle = (item.creator ?? '').replace(/^@/, '') || 'unknown';
+			// dc:creator (rss-parser maps it to item.creator) is actually whichever list
+			// member's retweet/reply surfaced this item in the feed — NOT the original
+			// tweet's author for a retweet. It's only used here to look up the fxtwitter
+			// enrichment (fxtwitter needs *a* handle + the tweet ID, and any handle works
+			// for that lookup); the author identity actually displayed always comes from
+			// the enrichment response below, keyed consistently off the same tweet — so
+			// name and handle never end up describing two different people.
+			const rssHandle = (item.creator ?? '').replace(/^@/, '') || 'unknown';
 			const ownHtml = ownContentHtml(item.content ?? '');
 			const rssImageUrl = extractImageUrl(ownHtml);
 
-			const enrichment = await fetchFxTwitter(handle, tweetId);
+			const enrichment = await fetchFxTwitter(rssHandle, tweetId);
 
-			const authorName = enrichment?.author?.name ?? handle;
+			const authorName = enrichment?.author?.name ?? rssHandle;
+			const handle = enrichment?.author?.screen_name ?? rssHandle;
 			const avatarUrl = enrichment?.author?.avatar_url ?? null;
 			const text = enrichment?.text ?? ownHtml;
 			// Enrichment failed (or came back with no media) — fall back to the RSS
