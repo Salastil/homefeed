@@ -7,13 +7,25 @@ import { embedPendingItems } from '../pipeline/embedding.js';
 import { clusterItems } from '../pipeline/clustering.js';
 import { publishCluster, publishDirect } from '../pipeline/publish.js';
 import { logger } from '../storage/db/logs.js';
-import type { GlobalSettings, ContentItem } from '../storage/db/types.js';
+import type { GlobalSettings, ContentItem, TrackedEvent } from '../storage/db/types.js';
 
 function partition<T>(items: T[], predicate: (item: T) => boolean): [T[], T[]] {
 	const matches: T[] = [];
 	const rest: T[] = [];
 	for (const item of items) (predicate(item) ? matches : rest).push(item);
 	return [matches, rest];
+}
+
+/**
+ * An item is "claimed" by a tracked event — and so left for eventsRecap.ts to handle
+ * instead of normal synthesis — only if it belongs to one of the event's sources AND
+ * matches its keyword filter. An item from an event-linked source that doesn't match
+ * (e.g. a general Middle-East feed assigned to an "Iran war" event, but this particular
+ * item doesn't mention Iran) falls through to normal synthesis rather than being
+ * silently dropped — it just isn't part of that event's recap.
+ */
+function isClaimedByEvent(item: ContentItem, events: TrackedEvent[]): boolean {
+	return events.some((e) => e.sourceIds.includes(item.sourceId) && eventsDb.itemMatchesEventKeywords(item, e.keywords));
 }
 
 function primaryCategoryRank(item: ContentItem, rankByName: Map<string, number>): number {
@@ -39,8 +51,8 @@ function primaryCategoryRank(item: ContentItem, rankByName: Map<string, number>)
  * Still respects category priority.
  */
 export async function runPassthroughCycle(settings: GlobalSettings): Promise<number> {
-	const eventSourceIds = eventsDb.listActiveEvents().flatMap((e) => e.sourceIds);
-	const items = contentItemsDb.unclusteredItemsExcludingSources(eventSourceIds);
+	const activeEvents = eventsDb.listActiveEvents();
+	const items = contentItemsDb.unclusteredItemsExcludingSources([]).filter((item) => !isClaimedByEvent(item, activeEvents));
 	if (items.length === 0) return 0;
 
 	const categories = categoriesDb.listCategories();
@@ -68,13 +80,14 @@ export async function runPassthroughCycle(settings: GlobalSettings): Promise<num
 
 /**
  * One pass of the synthesis queue: cluster whatever's unclustered (excluding items
- * belonging to tracked-event sources, which are handled by eventsRecap.ts instead),
- * ordered by admin-defined category priority, and publish clusters that have cleared
- * the hold-before-publish window.
+ * claimed by a tracked event — belonging to one of its sources AND matching its
+ * keyword filter, if any — which are handled by eventsRecap.ts instead), ordered by
+ * admin-defined category priority, and publish clusters that have cleared the
+ * hold-before-publish window.
  */
 export async function runSynthesisCycle(provider: InferenceProvider, settings: GlobalSettings): Promise<number> {
-	const eventSourceIds = eventsDb.listActiveEvents().flatMap((e) => e.sourceIds);
-	const items = contentItemsDb.unclusteredItemsExcludingSources(eventSourceIds);
+	const activeEvents = eventsDb.listActiveEvents();
+	const items = contentItemsDb.unclusteredItemsExcludingSources([]).filter((item) => !isClaimedByEvent(item, activeEvents));
 	if (items.length === 0) return 0;
 
 	// YouTube videos, Nitter tweets, and Telegram messages never get LLM-merged with

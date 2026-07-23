@@ -120,6 +120,7 @@ export function migrate() {
 			name TEXT NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
 			source_ids TEXT NOT NULL DEFAULT '[]', -- JSON
+			keywords TEXT NOT NULL DEFAULT '[]', -- JSON string array — empty means "match everything from source_ids"
 			cadence TEXT NOT NULL DEFAULT 'continuous',
 			cadence_time TEXT,
 			active INTEGER NOT NULL DEFAULT 1,
@@ -235,6 +236,9 @@ export function migrate() {
 	}
 	if (!hasColumn('global_settings', 'telegram_media_mode')) {
 		db.exec("ALTER TABLE global_settings ADD COLUMN telegram_media_mode TEXT NOT NULL DEFAULT 'self-host'");
+	}
+	if (!hasColumn('tracked_events', 'keywords')) {
+		db.exec("ALTER TABLE tracked_events ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'");
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

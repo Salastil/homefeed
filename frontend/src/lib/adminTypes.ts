@@ -52,6 +52,8 @@ export interface AdminTrackedEvent {
 	name: string;
 	description: string;
 	sourceIds: string[];
+	/** Only items whose title/summary/body contain at least one of these (case-insensitive) qualify for this event — empty means "match everything from sourceIds". */
+	keywords: string[];
 	cadence: 'continuous' | 'daily' | 'hourly' | 'custom';
 	cadenceTime: string | null;
 	active: boolean;

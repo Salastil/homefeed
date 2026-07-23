@@ -37,7 +37,9 @@ export async function runEventRecaps(provider: InferenceProvider, settings: Glob
 		if (event.sourceIds.length === 0 || !isDue(event)) continue;
 
 		const since = event.lastRecapAt ?? new Date(Date.now() - 24 * 3600_000).toISOString();
-		const items = contentItemsDb.unclusteredItemsForSources(event.sourceIds, since);
+		const items = contentItemsDb
+			.unclusteredItemsForSources(event.sourceIds, since)
+			.filter((item) => eventsDb.itemMatchesEventKeywords(item, event.keywords));
 		if (items.length === 0) continue;
 
 		const embedded = await embedPendingItems(provider, settings.selectedModels.embedding, items);
