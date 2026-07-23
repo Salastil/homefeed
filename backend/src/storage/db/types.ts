@@ -24,6 +24,19 @@ export interface TweetMediaItem {
 	height: number | null;
 }
 
+/**
+ * The tweet embedded inside a quote-tweet's own <blockquote> — Nitter's RSS carries this
+ * fully inline (author, text, one image, permalink), so no extra fxtwitter call is needed
+ * to render it. Rendered as a smaller frame nested inside the quoting tweet's card.
+ */
+export interface QuotedTweet {
+	authorName: string;
+	authorHandle: string;
+	text: string;
+	imageUrl: string | null;
+	link: string;
+}
+
 /** Same shape as TweetMediaItem — distinct name for readability at Telegram call sites. */
 export type TelegramMediaItem = TweetMediaItem;
 
@@ -69,7 +82,17 @@ export interface ContentItem {
 	eventId: string | null;
 	clusterId: string | null;
 	/** Nitter-sourced items only — null for everything else. */
-	tweet: { id: string; authorName: string; authorHandle: string; avatarUrl: string | null; media: TweetMediaItem[] } | null;
+	tweet: {
+		id: string;
+		authorName: string;
+		authorHandle: string;
+		avatarUrl: string | null;
+		media: TweetMediaItem[];
+		/** Set when this item is a bare retweet — the retweeter's handle, e.g. from RSS "RT by @X:". */
+		repostedByHandle: string | null;
+		/** Set when this item is a quote-tweet — the tweet embedded in its <blockquote>. */
+		quotedTweet: QuotedTweet | null;
+	} | null;
 	/** Telegram-sourced items only — null for everything else. Media is unresolved refs (see TelegramMediaRef); publish.ts resolves them (and the channel avatar) per the admin's configured media mode. */
 	telegramMessage: {
 		channelName: string;
@@ -95,7 +118,15 @@ export interface MergedArticle {
 	heroImage: { url: string; sourceItemId: string; selectionReason: string } | null;
 	video: { url: string; provider?: string; embedUrl?: string; sourceItemId: string } | null;
 	/** Nitter-sourced articles only — the embed card's author info and attached media (see TweetCard.svelte). Never set alongside video. */
-	tweet: { authorName: string; authorHandle: string; avatarUrl: string | null; sourceItemId: string; media: TweetMediaItem[] } | null;
+	tweet: {
+		authorName: string;
+		authorHandle: string;
+		avatarUrl: string | null;
+		sourceItemId: string;
+		media: TweetMediaItem[];
+		repostedByHandle: string | null;
+		quotedTweet: QuotedTweet | null;
+	} | null;
 	/** Telegram-sourced articles only — the embed card's channel info and attached media (see TelegramCard.svelte). Never set alongside video. */
 	telegramMessage: {
 		channelName: string;

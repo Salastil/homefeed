@@ -1,4 +1,11 @@
-import type { Source, ContentItem, TweetMediaItem, TelegramMediaRef, TelegramForwardedFrom } from '../../storage/db/types.js';
+import type {
+	Source,
+	ContentItem,
+	TweetMediaItem,
+	QuotedTweet,
+	TelegramMediaRef,
+	TelegramForwardedFrom
+} from '../../storage/db/types.js';
 import { cleanHtml, toSummary } from '../clean.js';
 
 export interface FetchedItem {
@@ -10,7 +17,15 @@ export interface FetchedItem {
 	link: string;
 	publishedAt: string;
 	/** Set by the Nitter adapter only — carries the tweet's author info through to ContentItem.tweet. */
-	tweet?: { id: string; authorName: string; authorHandle: string; avatarUrl: string | null; media: TweetMediaItem[] };
+	tweet?: {
+		id: string;
+		authorName: string;
+		authorHandle: string;
+		avatarUrl: string | null;
+		media: TweetMediaItem[];
+		repostedByHandle: string | null;
+		quotedTweet: QuotedTweet | null;
+	};
 	/** Set by the Telegram adapter only — carries the channel/message info through to ContentItem.telegramMessage. Media is unresolved refs; publish.ts resolves them per the admin's configured telegramMediaMode. */
 	telegramMessage?: {
 		channelName: string;

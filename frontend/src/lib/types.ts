@@ -17,6 +17,15 @@ export interface TweetMediaItem {
 	height: number | null;
 }
 
+/** The tweet embedded in a quote-tweet's own preview — rendered as a smaller nested frame. */
+export interface QuotedTweet {
+	authorName: string;
+	authorHandle: string;
+	text: string;
+	imageUrl: string | null;
+	link: string;
+}
+
 /** Same shape as TweetMediaItem — distinct name for readability at Telegram call sites. */
 export type TelegramMediaItem = TweetMediaItem;
 
@@ -32,7 +41,15 @@ export interface MergedArticle {
 	body: string;
 	heroImage: { url: string; sourceItemId: string; selectionReason: string } | null;
 	video: { url: string; provider?: string; embedUrl?: string; sourceItemId: string } | null;
-	tweet: { authorName: string; authorHandle: string; avatarUrl: string | null; sourceItemId: string; media: TweetMediaItem[] } | null;
+	tweet: {
+		authorName: string;
+		authorHandle: string;
+		avatarUrl: string | null;
+		sourceItemId: string;
+		media: TweetMediaItem[];
+		repostedByHandle: string | null;
+		quotedTweet: QuotedTweet | null;
+	} | null;
 	telegramMessage: {
 		channelName: string;
 		channelUsername: string;
