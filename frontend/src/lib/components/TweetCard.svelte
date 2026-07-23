@@ -50,7 +50,7 @@
 							muted={item.type === 'gif'}
 							poster={item.thumbnailUrl ? resolveMediaUrl(item.thumbnailUrl) : undefined}
 						>
-							<source src={resolveMediaUrl(item.url)} />
+							<source src={resolveMediaUrl(item.url)} type="video/mp4" />
 						</video>
 					{:else}
 						<img class="media-el" src={resolveMediaUrl(item.url)} alt="" loading="lazy" />
