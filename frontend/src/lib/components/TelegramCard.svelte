@@ -28,6 +28,10 @@
 </script>
 
 <a class="telegram-card" href={messageUrl} target="_blank" rel="noreferrer">
+	{#if article.telegramMessage?.forwardedFrom}
+		{@const from = article.telegramMessage.forwardedFrom}
+		<div class="forward-line">↪️ Forwarded from {from.username ? `@${from.username}` : from.name}</div>
+	{/if}
 	<div class="meta">
 		<span>{article.category[0] ?? ''}</span>
 		<span>&middot;</span>
@@ -87,6 +91,12 @@
 	.telegram-card:hover {
 		text-decoration: none;
 		border-color: var(--border-accent);
+	}
+	.forward-line {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-secondary);
+		margin-bottom: 10px;
 	}
 	.meta {
 		font-size: 11px;

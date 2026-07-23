@@ -20,6 +20,12 @@ export interface TweetMediaItem {
 /** Same shape as TweetMediaItem — distinct name for readability at Telegram call sites. */
 export type TelegramMediaItem = TweetMediaItem;
 
+/** Where a forwarded Telegram message originated — username is null when the origin has no public handle, in which case TelegramCard falls back to showing just the name. */
+export interface TelegramForwardedFrom {
+	name: string;
+	username: string | null;
+}
+
 export interface MergedArticle {
 	id: string;
 	title: string;
@@ -33,6 +39,7 @@ export interface MergedArticle {
 		channelAvatarUrl: string | null;
 		sourceItemId: string;
 		media: TelegramMediaItem[];
+		forwardedFrom: TelegramForwardedFrom | null;
 	} | null;
 	category: string[];
 	geo: string | null;

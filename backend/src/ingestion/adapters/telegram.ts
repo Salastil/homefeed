@@ -16,7 +16,7 @@
 // where those refs turn into an actual servable url.
 
 import type { Api } from 'telegram';
-import type { Source, TelegramMediaRef } from '../../storage/db/types.js';
+import type { Source, TelegramMediaRef, TelegramForwardedFrom } from '../../storage/db/types.js';
 import type { SourceAdapter, FetchedItem } from './base.js';
 import { logger } from '../../storage/db/logs.js';
 import { getClient, fetchChannelMessages } from '../../telegram/client.js';
@@ -67,6 +67,30 @@ function refForMessage(message: TgMessage): TelegramMediaRef | null {
 		return { type: 'photo', messageId: String(message.id), mimeType: null, width, height };
 	}
 	return null;
+}
+
+/**
+ * Detects a forwarded message and resolves where it came from. GramJS's `message.forward`
+ * wraps the raw fwdFrom header using entities Telegram already sent alongside the same
+ * getMessages response (the whole point of that header is letting clients show forward
+ * attribution without a separate resolve call) — `.chat` is the origin channel/group,
+ * `.sender` the origin user. Falls back to fwdFrom.fromName for the rarer case where the
+ * origin has no resolvable identity (e.g. a user who hid their account from forwards).
+ */
+function detectForward(message: TgMessage): TelegramForwardedFrom | null {
+	const fwd = message.fwdFrom;
+	if (!fwd) return null;
+
+	const chat = message.forward?.chat as { title?: string; username?: string } | undefined;
+	if (chat) return { name: chat.title ?? chat.username ?? 'Unknown', username: chat.username ?? null };
+
+	const sender = message.forward?.sender as { firstName?: string; lastName?: string; username?: string } | undefined;
+	if (sender) {
+		const name = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || sender.username || 'Unknown';
+		return { name, username: sender.username ?? null };
+	}
+
+	return { name: fwd.fromName ?? 'Unknown', username: null };
 }
 
 /** Groups consecutive messages sharing a non-null groupedId (Telegram's multi-photo/video "album" concept) into one entry each. */
@@ -144,7 +168,8 @@ export const telegramAdapter: SourceAdapter = {
 					channelName,
 					channelUsername,
 					messageId: String(group[0].id),
-					media
+					media,
+					forwardedFrom: detectForward(primary)
 				},
 				raw: { messageIds: group.map((m) => m.id) }
 			});

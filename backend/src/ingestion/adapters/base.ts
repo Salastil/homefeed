@@ -1,4 +1,4 @@
-import type { Source, ContentItem, TweetMediaItem, TelegramMediaRef } from '../../storage/db/types.js';
+import type { Source, ContentItem, TweetMediaItem, TelegramMediaRef, TelegramForwardedFrom } from '../../storage/db/types.js';
 import { cleanHtml, toSummary } from '../clean.js';
 
 export interface FetchedItem {
@@ -17,6 +17,7 @@ export interface FetchedItem {
 		channelUsername: string;
 		messageId: string;
 		media: TelegramMediaRef[];
+		forwardedFrom: TelegramForwardedFrom | null;
 	};
 	raw: unknown;
 }

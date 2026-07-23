@@ -45,6 +45,12 @@ export interface TelegramMediaRef {
 	height: number | null;
 }
 
+/** Where a forwarded Telegram message originated — username is null when the origin has no public handle (e.g. a private channel/user, or a sender who hid their identity), in which case the card falls back to showing just the name. */
+export interface TelegramForwardedFrom {
+	name: string;
+	username: string | null;
+}
+
 export interface ContentItem {
 	id: string;
 	sourceId: string;
@@ -70,6 +76,7 @@ export interface ContentItem {
 		channelUsername: string;
 		messageId: string;
 		media: TelegramMediaRef[];
+		forwardedFrom: TelegramForwardedFrom | null;
 	} | null;
 	raw: unknown;
 }
@@ -96,6 +103,7 @@ export interface MergedArticle {
 		channelAvatarUrl: string | null;
 		sourceItemId: string;
 		media: TelegramMediaItem[];
+		forwardedFrom: TelegramForwardedFrom | null;
 	} | null;
 	category: string[];
 	geo: string | null;

@@ -263,7 +263,8 @@ export async function publishDirect(item: ContentItem, settings: GlobalSettings)
 			channelUsername,
 			channelAvatarUrl: avatar.url,
 			sourceItemId: item.id,
-			media: resolvedMedia.media
+			media: resolvedMedia.media,
+			forwardedFrom: item.telegramMessage.forwardedFrom
 		};
 	}
 
