@@ -58,6 +58,7 @@ export function migrate() {
 			embedding TEXT, -- JSON float array
 			event_id TEXT,
 			cluster_id TEXT, -- set once assigned to a cluster awaiting synthesis
+			tweet TEXT, -- JSON {id, authorName, authorHandle, avatarUrl}, nitter-sourced items only
 			raw TEXT -- JSON, original payload
 		);
 		CREATE INDEX IF NOT EXISTS idx_content_items_source ON content_items(source_id);
@@ -82,7 +83,8 @@ export function migrate() {
 			thread_id TEXT NOT NULL,
 			previous_article_id TEXT,
 			next_article_id TEXT,
-			top_stories INTEGER NOT NULL DEFAULT 0 -- true if any contributing source opted into "Push to Top Stories?"
+			top_stories INTEGER NOT NULL DEFAULT 0, -- true if any contributing source opted into "Push to Top Stories?"
+			tweet TEXT -- JSON {authorName, authorHandle, avatarUrl, sourceItemId}, nitter-sourced articles only
 		);
 		CREATE INDEX IF NOT EXISTS idx_articles_published ON merged_articles(published_at);
 		CREATE INDEX IF NOT EXISTS idx_articles_thread ON merged_articles(thread_id);
@@ -165,7 +167,9 @@ export function migrate() {
 			raw_item_max_age_days INTEGER DEFAULT 7,
 			storage_cap_enabled INTEGER NOT NULL DEFAULT 1,
 			storage_cap_value INTEGER NOT NULL DEFAULT 500,
-			storage_cap_unit TEXT NOT NULL DEFAULT 'GB'
+			storage_cap_unit TEXT NOT NULL DEFAULT 'GB',
+			nitter_media_mode TEXT NOT NULL DEFAULT 'proxy', -- self-host | proxy | direct
+			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com'
 		);
 	`);
 
@@ -186,6 +190,18 @@ export function migrate() {
 	}
 	if (!hasColumn('merged_articles', 'top_stories')) {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN top_stories INTEGER NOT NULL DEFAULT 0');
+	}
+	if (!hasColumn('content_items', 'tweet')) {
+		db.exec('ALTER TABLE content_items ADD COLUMN tweet TEXT');
+	}
+	if (!hasColumn('merged_articles', 'tweet')) {
+		db.exec('ALTER TABLE merged_articles ADD COLUMN tweet TEXT');
+	}
+	if (!hasColumn('global_settings', 'nitter_media_mode')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN nitter_media_mode TEXT NOT NULL DEFAULT 'proxy'");
+	}
+	if (!hasColumn('global_settings', 'fxtwitter_base_url')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com'");
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

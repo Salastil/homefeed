@@ -54,7 +54,7 @@ export async function runPassthroughCycle(settings: GlobalSettings): Promise<num
 
 	for (const item of ranked) {
 		try {
-			const article = await publishDirect(item);
+			const article = await publishDirect(item, settings);
 			contentItemsDb.assignCluster([item.id], article.id);
 			published++;
 			logger.info('synthesis', `Published "${article.title}" directly (no AI available)`);
@@ -77,19 +77,22 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 	const items = contentItemsDb.unclusteredItemsExcludingSources(eventSourceIds);
 	if (items.length === 0) return 0;
 
-	// YouTube videos never get LLM-merged with anything — each is always its own
-	// article (title/video/date/description), same shape whether the AI service is up
-	// or not. Route them straight to publishDirect, same as the no-AI passthrough path.
-	const youtubeSourceIds = new Set(sourcesDb.listSources().filter((s) => s.type === 'youtube').map((s) => s.id));
-	const [youtubeItems, mergeableItems] = partition(items, (item) => youtubeSourceIds.has(item.sourceId));
+	// YouTube videos and Nitter tweets never get LLM-merged with anything else — each
+	// is always its own article, same shape whether the AI service is up or not. Route
+	// them straight to publishDirect, same as the no-AI passthrough path.
+	const directPublishSourceIds = new Set(
+		sourcesDb.listSources().filter((s) => s.type === 'youtube' || s.type === 'nitter').map((s) => s.id)
+	);
+	const [directItems, mergeableItems] = partition(items, (item) => directPublishSourceIds.has(item.sourceId));
 
 	let publishedDirect = 0;
-	for (const item of youtubeItems) {
+	for (const item of directItems) {
 		try {
-			const article = await publishDirect(item);
+			const article = await publishDirect(item, settings);
 			contentItemsDb.assignCluster([item.id], article.id);
 			publishedDirect++;
-			logger.info('synthesis', `Published "${article.title}" directly (YouTube)`);
+			const source = sourcesDb.getSource(item.sourceId);
+			logger.info('synthesis', `Published "${article.title}" directly (${source?.type ?? 'unknown'})`);
 		} catch (err) {
 			logger.error('synthesis', `Direct publish failed for "${item.title}": ${(err as Error).message}`);
 		}

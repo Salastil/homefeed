@@ -8,12 +8,22 @@ export interface ArticleSource {
 	publishedAt: string;
 }
 
+/** A single photo/video/gif attached to a tweet, in the tweet's own display order — capped at 4. */
+export interface TweetMediaItem {
+	type: 'photo' | 'video' | 'gif';
+	url: string;
+	thumbnailUrl: string | null;
+	width: number | null;
+	height: number | null;
+}
+
 export interface MergedArticle {
 	id: string;
 	title: string;
 	body: string;
 	heroImage: { url: string; sourceItemId: string; selectionReason: string } | null;
 	video: { url: string; provider?: string; embedUrl?: string; sourceItemId: string } | null;
+	tweet: { authorName: string; authorHandle: string; avatarUrl: string | null; sourceItemId: string; media: TweetMediaItem[] } | null;
 	category: string[];
 	geo: string | null;
 	eventId: string | null;

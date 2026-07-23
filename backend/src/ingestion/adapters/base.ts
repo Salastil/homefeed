@@ -1,4 +1,4 @@
-import type { Source, ContentItem } from '../../storage/db/types.js';
+import type { Source, ContentItem, TweetMediaItem } from '../../storage/db/types.js';
 import { cleanHtml, toSummary } from '../clean.js';
 
 export interface FetchedItem {
@@ -9,6 +9,8 @@ export interface FetchedItem {
 	videos: { url: string; provider?: string; embedHtml?: string }[];
 	link: string;
 	publishedAt: string;
+	/** Set by the Nitter adapter only — carries the tweet's author info through to ContentItem.tweet. */
+	tweet?: { id: string; authorName: string; authorHandle: string; avatarUrl: string | null; media: TweetMediaItem[] };
 	raw: unknown;
 }
 
@@ -40,6 +42,7 @@ export function toContentItem(source: Source, item: FetchedItem): Omit<ContentIt
 		embedding: null,
 		eventId: null,
 		clusterId: null,
+		tweet: item.tweet ? { ...item.tweet } : null,
 		raw: item.raw
 	};
 }

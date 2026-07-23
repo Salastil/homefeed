@@ -20,6 +20,7 @@ function rowToItem(row: any): ContentItem {
 		embedding: row.embedding ? JSON.parse(row.embedding) : null,
 		eventId: row.event_id,
 		clusterId: row.cluster_id,
+		tweet: row.tweet ? JSON.parse(row.tweet) : null,
 		raw: row.raw ? JSON.parse(row.raw) : null
 	};
 }
@@ -28,8 +29,8 @@ export function insertContentItem(item: Omit<ContentItem, 'id'>): ContentItem {
 	const id = `ci-${randomUUID()}`;
 	db.prepare(
 		`INSERT INTO content_items
-		 (id, source_id, type, title, summary, body, images, videos, link, published_at, fetched_at, tags, geo, embedding, event_id, cluster_id, raw)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		 (id, source_id, type, title, summary, body, images, videos, link, published_at, fetched_at, tags, geo, embedding, event_id, cluster_id, tweet, raw)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		id,
 		item.sourceId,
@@ -47,6 +48,7 @@ export function insertContentItem(item: Omit<ContentItem, 'id'>): ContentItem {
 		item.embedding ? JSON.stringify(item.embedding) : null,
 		item.eventId,
 		item.clusterId,
+		item.tweet ? JSON.stringify(item.tweet) : null,
 		item.raw ? JSON.stringify(item.raw) : null
 	);
 	return { ...item, id };

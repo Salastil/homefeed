@@ -5,6 +5,7 @@ import { rssAdapter } from './adapters/rss.js';
 import { telegramAdapter } from './adapters/telegram.js';
 import { apiAdapter } from './adapters/api.js';
 import { youtubeAdapter } from './adapters/youtube.js';
+import { nitterAdapter } from './adapters/nitter.js';
 import { toContentItem, type SourceAdapter, type FetchedItem } from './adapters/base.js';
 import { fetchFullArticle } from './articleFetcher.js';
 import type { Source } from '../storage/db/types.js';
@@ -14,6 +15,7 @@ const adapters: Record<Source['type'], SourceAdapter> = {
 	telegram: telegramAdapter,
 	api: apiAdapter,
 	youtube: youtubeAdapter,
+	nitter: nitterAdapter,
 	custom: apiAdapter
 };
 

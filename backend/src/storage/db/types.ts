@@ -1,7 +1,7 @@
 export interface Source {
 	id: string;
 	name: string;
-	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'custom';
+	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'nitter' | 'custom';
 	category: string[];
 	url: string | null;
 	config: Record<string, unknown>;
@@ -12,6 +12,16 @@ export interface Source {
 	lastPolledAt: string | null;
 	lastError: string | null;
 	createdAt: string;
+}
+
+/** A single photo/video/gif attached to a tweet, in the tweet's own display order — fxtwitter caps this at 4. */
+export interface TweetMediaItem {
+	type: 'photo' | 'video' | 'gif';
+	url: string;
+	/** Video/gif poster frame — null for photos. */
+	thumbnailUrl: string | null;
+	width: number | null;
+	height: number | null;
 }
 
 export interface ContentItem {
@@ -31,6 +41,8 @@ export interface ContentItem {
 	embedding: number[] | null;
 	eventId: string | null;
 	clusterId: string | null;
+	/** Nitter-sourced items only — null for everything else. */
+	tweet: { id: string; authorName: string; authorHandle: string; avatarUrl: string | null; media: TweetMediaItem[] } | null;
 	raw: unknown;
 }
 
@@ -47,6 +59,8 @@ export interface MergedArticle {
 	body: string;
 	heroImage: { url: string; sourceItemId: string; selectionReason: string } | null;
 	video: { url: string; provider?: string; embedUrl?: string; sourceItemId: string } | null;
+	/** Nitter-sourced articles only — the embed card's author info and attached media (see TweetCard.svelte). Never set alongside video. */
+	tweet: { authorName: string; authorHandle: string; avatarUrl: string | null; sourceItemId: string; media: TweetMediaItem[] } | null;
 	category: string[];
 	geo: string | null;
 	eventId: string | null;
@@ -115,6 +129,10 @@ export interface GlobalSettings {
 	aiServiceHost: string;
 	aiServicePort: number;
 	selectedModels: { embedding: string; image: string; synthesis: string };
+	/** How tweet media (attached photos, avatars) is served — see pipeline/publish.ts's resolveTweetMedia. */
+	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
+	/** Base URL of the fxtwitter-compatible enrichment API — defaults to the public instance, overridable for a self-hosted FixTweet mirror. */
+	fxtwitterBaseUrl: string;
 	retention: {
 		publishedArticleMaxAgeDays: number | null;
 		rawItemMaxAgeDays: number | null;

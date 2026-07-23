@@ -2,6 +2,7 @@
 	import type { PageData } from './$types';
 	import { timeAgo, exactTime } from '$lib/format';
 	import { resolveMediaUrl } from '$lib/config';
+	import TweetCard from '$lib/components/TweetCard.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const a = $derived(data.article);
@@ -22,9 +23,22 @@
 		<span>{a.category.join(', ')}</span>
 	</div>
 
-	<h1>{a.title}</h1>
+	{#if a.tweet}
+		<!-- Tweets have no separate "full article" concept — the embed card itself is the
+		     whole story, same as the list view. No <h1> (it would just duplicate the tweet
+		     text already shown in the card) and no hero-image/body paragraphs either. -->
+		<div class="dates">
+			<span>Published {timeAgo(a.publishedAt)} &middot; {exactTime(a.publishedAt)}</span>
+		</div>
 
-	{#if a.video?.provider === 'youtube'}
+		<TweetCard article={a} />
+
+		{#if a.sources[0]}
+			<a class="view-original" href={a.sources[0].link} target="_blank" rel="noreferrer">View original tweet →</a>
+		{/if}
+	{:else if a.video?.provider === 'youtube'}
+		<h1>{a.title}</h1>
+
 		<!-- YouTube's own layout: title, then the video itself, then when it was published
 		     and its description — no hero image (the embed already shows the thumbnail) and
 		     no cross-source merging (see backend priorityQueue.ts — YouTube items never merge). -->
@@ -46,6 +60,8 @@
 			<p>{paragraph}</p>
 		{/each}
 	{:else}
+		<h1>{a.title}</h1>
+
 		<div class="dates">
 			<span>Published {timeAgo(a.publishedAt)} &middot; {exactTime(a.publishedAt)}</span>
 			{#if a.updatedAt !== a.publishedAt}
@@ -179,6 +195,12 @@
 		width: 100%;
 		height: 100%;
 		border: none;
+	}
+	.view-original {
+		display: inline-block;
+		font-size: 13px;
+		color: var(--text-accent);
+		margin-bottom: 20px;
 	}
 	.tags {
 		display: flex;

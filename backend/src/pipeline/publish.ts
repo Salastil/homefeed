@@ -8,7 +8,7 @@ import { logger } from '../storage/db/logs.js';
 import * as articles from '../storage/db/articles.js';
 import * as tags from '../storage/db/tags.js';
 import * as sources from '../storage/db/sources.js';
-import type { GlobalSettings, MergedArticle, ContentItem } from '../storage/db/types.js';
+import type { GlobalSettings, MergedArticle, ContentItem, TweetMediaItem } from '../storage/db/types.js';
 
 const FOLLOW_UP_LOOKBACK_DAYS = 3;
 
@@ -33,9 +33,14 @@ function deriveTitle(body: string): string {
 }
 
 /**
- * Resolves the hero image for an article: try the best candidate from the source
- * items, download and locally host it; if there isn't one, fall back to the site's
- * favicon rather than leaving the article with no art at all.
+ * Resolves the hero image for a regular (non-tweet) article: try the best candidate
+ * from the source items, download and locally host it; if there isn't one, fall back
+ * to the site's favicon rather than leaving the article with no art at all. Tweets
+ * never reach this function — see resolveTweetMediaUrl below, which applies the
+ * admin-configured Nitter media mode instead of always downloading, and skips the
+ * favicon fallback entirely (a Nitter instance's own favicon slapped onto an
+ * image-less tweet reads as a mistake, not a placeholder; TweetCard.svelte already
+ * handles no-image tweets gracefully with no image at all).
  */
 async function resolveHeroImage(
 	items: ContentItem[],
@@ -70,6 +75,61 @@ async function resolveHeroImage(
 }
 
 /**
+ * Applies the admin-configured Nitter media mode (Retention tab) to a single
+ * externally-hosted tweet media URL — an attached photo or the author's avatar.
+ * 'self-host' downloads and serves it locally like any other article image;
+ * 'proxy' routes it through this server's own /media/proxy route so only this
+ * server's IP is ever exposed to Twitter/the Nitter instance's CDN (the
+ * "anonymity" the admin asked for) without persisting anything to disk; 'direct'
+ * hotlinks the original URL unchanged, the cheapest option with no server involvement.
+ */
+async function resolveTweetMediaUrl(
+	url: string,
+	mode: GlobalSettings['nitterMediaMode']
+): Promise<{ url: string; storedMediaId: string | null }> {
+	if (mode === 'direct') return { url, storedMediaId: null };
+
+	if (mode === 'proxy') {
+		return { url: `/media/proxy?url=${encodeURIComponent(url)}`, storedMediaId: null };
+	}
+
+	const stored = await downloadAndStore(url, 'published', {});
+	if (stored) return { url: stored.servedPath, storedMediaId: stored.id };
+	// Download failed — fall back to hotlinking rather than losing the media entirely.
+	return { url, storedMediaId: null };
+}
+
+/**
+ * Resolves every attached photo/video/gif's url — and, for video/gif, its poster
+ * thumbnail — through the admin's chosen Nitter media mode. Order and item count are
+ * preserved; TweetCard.svelte renders this array directly, there's no separate
+ * "hero image" concept for tweets the way there is for regular articles.
+ */
+async function resolveTweetMedia(
+	media: TweetMediaItem[],
+	mode: GlobalSettings['nitterMediaMode']
+): Promise<{ media: TweetMediaItem[]; storedMediaIds: string[] }> {
+	const storedMediaIds: string[] = [];
+	const resolved: TweetMediaItem[] = [];
+
+	for (const item of media) {
+		const url = await resolveTweetMediaUrl(item.url, mode);
+		if (url.storedMediaId) storedMediaIds.push(url.storedMediaId);
+
+		let thumbnailUrl = item.thumbnailUrl;
+		if (thumbnailUrl) {
+			const resolvedThumb = await resolveTweetMediaUrl(thumbnailUrl, mode);
+			thumbnailUrl = resolvedThumb.url;
+			if (resolvedThumb.storedMediaId) storedMediaIds.push(resolvedThumb.storedMediaId);
+		}
+
+		resolved.push({ ...item, url: url.url, thumbnailUrl });
+	}
+
+	return { media: resolved, storedMediaIds };
+}
+
+/**
  * Publishes a single item as-is, with no AI calls at all — used when the AI service
  * isn't reachable (e.g. Ollama hasn't been set up yet, per the "assume it arrives
  * after the backend launches" requirement). No rewriting, no tag extraction, no
@@ -79,18 +139,47 @@ async function resolveHeroImage(
  * tag-based thread detection — but these earlier articles aren't retroactively
  * rewritten or merged with anything after the fact.
  */
-export async function publishDirect(item: ContentItem): Promise<MergedArticle> {
+export async function publishDirect(item: ContentItem, settings: GlobalSettings): Promise<MergedArticle> {
 	const category = uniqueCategories([item]);
-	const { heroImage, storedMediaId } = await resolveHeroImage([item], item.link);
+	const storedMediaIds: string[] = [];
+
+	// Tweets never get a "hero image" — TweetCard.svelte renders tweet.media directly.
+	let heroImage: MergedArticle['heroImage'] = null;
+	if (!item.tweet) {
+		const resolved = await resolveHeroImage([item], item.link);
+		heroImage = resolved.heroImage;
+		if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
+	}
+
 	const video = item.videos[0]
 		? { url: item.videos[0].url, provider: item.videos[0].provider, embedUrl: item.videos[0].embedHtml, sourceItemId: item.id }
 		: null;
+
+	let tweet: MergedArticle['tweet'] = null;
+	if (item.tweet) {
+		let avatarUrl: string | null = null;
+		if (item.tweet.avatarUrl) {
+			const resolved = await resolveTweetMediaUrl(item.tweet.avatarUrl, settings.nitterMediaMode);
+			avatarUrl = resolved.url;
+			if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
+		}
+		const resolvedMedia = await resolveTweetMedia(item.tweet.media, settings.nitterMediaMode);
+		storedMediaIds.push(...resolvedMedia.storedMediaIds);
+		tweet = {
+			authorName: item.tweet.authorName,
+			authorHandle: item.tweet.authorHandle,
+			avatarUrl,
+			sourceItemId: item.id,
+			media: resolvedMedia.media
+		};
+	}
 
 	const article = await articles.insertArticle({
 		title: item.title,
 		body: item.body || item.summary,
 		heroImage,
 		video,
+		tweet,
 		category,
 		geo: item.geo,
 		eventId: item.eventId,
@@ -115,7 +204,7 @@ export async function publishDirect(item: ContentItem): Promise<MergedArticle> {
 		topStories: anyPushesToTopStories([item])
 	});
 
-	if (storedMediaId) promoteToPublished(storedMediaId, article.id);
+	for (const id of storedMediaIds) promoteToPublished(id, article.id);
 	return article;
 }
 
@@ -192,6 +281,7 @@ export async function publishCluster(
 		body,
 		heroImage,
 		video,
+		tweet: null, // tweets never reach clustering — see priorityQueue.ts's direct-publish bypass
 		category,
 		geo,
 		eventId: opts.eventId ?? items[0]?.eventId ?? null,
