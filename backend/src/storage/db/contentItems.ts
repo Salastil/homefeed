@@ -85,6 +85,12 @@ export function assignCluster(ids: string[], clusterId: string) {
 	for (const id of ids) stmt.run(clusterId, id);
 }
 
+/** Clears cluster_id back to NULL, making these items eligible for re-publish on the next poll/synthesis tick. */
+export function resetClusterForItems(ids: string[]) {
+	const stmt = db.prepare('UPDATE content_items SET cluster_id = NULL WHERE id = ?');
+	for (const id of ids) stmt.run(id);
+}
+
 export function itemsByCluster(clusterId: string): ContentItem[] {
 	const rows = db.prepare('SELECT * FROM content_items WHERE cluster_id = ?').all(clusterId);
 	return rows.map(rowToItem);

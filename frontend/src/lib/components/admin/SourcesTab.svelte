@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { AdminSource, CategoryPriority } from '$lib/adminTypes';
-	import { addSource, deleteSource, updateSource, pollSourceNow, clearSourceContent } from '$lib/adminApi';
+	import { addSource, deleteSource, updateSource, pollSourceNow, clearSourceContent, reissueSourceContent } from '$lib/adminApi';
 
 	let { sources: initial, categories }: { sources: AdminSource[]; categories: CategoryPriority[] } = $props();
 	let sources = $state([...initial]);
@@ -8,8 +8,10 @@
 	let editingId = $state<string | null>(null);
 	let pollingId = $state<string | null>(null);
 	let clearingId = $state<string | null>(null);
+	let reissuingId = $state<string | null>(null);
 	let justPolled = $state<{ id: string; count: number } | null>(null);
 	let justCleared = $state<{ id: string; items: number; articles: number } | null>(null);
+	let justReissued = $state<{ id: string; articles: number; items: number } | null>(null);
 
 	// "Top stories" isn't a real filterable tag — it's the homepage's all-categories,
 	// chronological view (see /api/feed's no-filter default and +layout.svelte's nav
@@ -115,6 +117,26 @@
 			}, 4000);
 		} finally {
 			clearingId = null;
+		}
+	}
+
+	async function handleReissue(source: AdminSource) {
+		if (
+			!confirm(
+				`Republish "${source.name}"'s content fresh? Its already-published articles will be deleted and rebuilt from the same raw items using the current pipeline — nothing is re-fetched from the feed. Articles merged with other sources are left alone.`
+			)
+		)
+			return;
+		reissuingId = source.id;
+		justReissued = null;
+		try {
+			const { articlesDeleted, itemsRequeued } = await reissueSourceContent(source.id);
+			justReissued = { id: source.id, articles: articlesDeleted, items: itemsRequeued };
+			setTimeout(() => {
+				if (justReissued?.id === source.id) justReissued = null;
+			}, 4000);
+		} finally {
+			reissuingId = null;
 		}
 	}
 
@@ -233,14 +255,16 @@
 			</button>
 			<div>
 				<div class="name">{source.name}</div>
-				{#if justCleared?.id === source.id || justPolled?.id === source.id || source.lastError}
+				{#if justCleared?.id === source.id || justReissued?.id === source.id || justPolled?.id === source.id || source.lastError}
 					<div
 						class="sub"
-						class:error={source.lastError && !justPolled && !justCleared}
-						class:success={justPolled?.id === source.id || justCleared?.id === source.id}
+						class:error={source.lastError && !justPolled && !justCleared && !justReissued}
+						class:success={justPolled?.id === source.id || justCleared?.id === source.id || justReissued?.id === source.id}
 					>
 						{#if justCleared?.id === source.id}
 							✓ cleared {justCleared.items} item(s), {justCleared.articles} article(s)
+						{:else if justReissued?.id === source.id}
+							✓ deleted {justReissued.articles} article(s), requeued {justReissued.items} item(s) — republishing within ~1 min
 						{:else if justPolled?.id === source.id}
 							{justPolled.count > 0 ? `✓ ${justPolled.count} new item(s)` : '✓ up to date, nothing new'}
 						{:else if source.lastError}
@@ -272,6 +296,14 @@
 					title="Clear content (keep source)"
 				>
 					⟲
+				</button>
+				<button
+					class="icon-btn"
+					onclick={() => handleReissue(source)}
+					disabled={reissuingId === source.id}
+					title="Reissue: delete published articles and republish from the same raw items"
+				>
+					🔁
 				</button>
 				<button class="icon-btn danger" onclick={() => handleDelete(source.id)} title="Delete">✕</button>
 			</div>

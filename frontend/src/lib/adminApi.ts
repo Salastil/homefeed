@@ -85,6 +85,11 @@ export const deleteSource = (id: string, fetchFn?: typeof fetch) =>
 export const pollSourceNow = (id: string, fetchFn?: typeof fetch) =>
 	request<{ ingested: number; source: AdminSource }>(`/api/admin/sources/${id}/poll`, { method: 'POST' }, fetchFn);
 
+// Deletes this source's published articles and requeues their raw items for republish —
+// picks up pipeline changes without needing the feed to resurface the same items.
+export const reissueSourceContent = (id: string, fetchFn?: typeof fetch) =>
+	request<{ articlesDeleted: number; itemsRequeued: number }>(`/api/admin/sources/${id}/reissue`, { method: 'POST' }, fetchFn);
+
 // Content clearing — wipe articles/media/a source's raw items so they can be repopulated fresh.
 export const clearSourceContent = (id: string, fetchFn?: typeof fetch) =>
 	request<{ itemsDeleted: number; articlesDeleted: number }>(`/api/admin/content/sources/${id}`, { method: 'DELETE' }, fetchFn);

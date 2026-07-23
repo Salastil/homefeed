@@ -15,6 +15,11 @@ export interface ClearResult {
 	articlesDeleted: number;
 }
 
+export interface ReissueResult {
+	articlesDeleted: number;
+	itemsRequeued: number;
+}
+
 /**
  * Removes every raw content item ingested from a source, plus any merged article that
  * was composed entirely from that source's items (so it doesn't linger on the site
@@ -42,6 +47,43 @@ export function clearSourceContent(sourceId: string): ClearResult {
 	contentItemsDb.deleteContentItemsForSource(sourceId);
 	logger.info('admin', `Cleared content for source ${sourceId}: ${itemIds.size} item(s), ${articlesDeleted} article(s)`);
 	return { itemsDeleted: itemIds.size, articlesDeleted };
+}
+
+/**
+ * Deletes a source's already-published articles (and their media) so they can be
+ * republished fresh through the current pipeline — unlike clearSourceContent, the raw
+ * content_items are kept, since Twitter/RSS feeds don't reliably keep serving the same
+ * historical items on the next poll. Reset cluster_id is what makes an item eligible
+ * again: the next scheduler tick (poll or synthesis, within about a minute) picks it up
+ * and re-publishes it exactly like a newly-ingested item.
+ *
+ * Same restriction as clearSourceContent: an article merged from this source's items
+ * together with other sources' is left alone entirely (and its items stay clustered) —
+ * there's no supported way to un-merge just one contributor's share back out of it.
+ */
+export function reissueSourceContent(sourceId: string): ReissueResult {
+	const items = contentItemsDb.itemsForSource(sourceId);
+	const itemIds = new Set(items.map((i) => i.id));
+
+	let articlesDeleted = 0;
+	const requeueIds = new Set<string>();
+	if (itemIds.size > 0) {
+		for (const article of articlesDb.allArticlesNewestFirst()) {
+			if (article.sources.length > 0 && article.sources.every((s) => itemIds.has(s.itemId))) {
+				deleteMediaByArticleId(article.id);
+				articlesDb.deleteArticle(article.id);
+				articlesDeleted++;
+				for (const s of article.sources) requeueIds.add(s.itemId);
+			}
+		}
+	}
+
+	contentItemsDb.resetClusterForItems([...requeueIds]);
+	logger.info(
+		'admin',
+		`Reissuing content for source ${sourceId}: ${articlesDeleted} article(s) deleted, ${requeueIds.size} item(s) requeued`
+	);
+	return { articlesDeleted, itemsRequeued: requeueIds.size };
 }
 
 /** Wipes every published article and its media, keeping raw ingested items intact so they can be re-synthesized fresh. */
