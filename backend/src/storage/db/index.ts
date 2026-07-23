@@ -137,7 +137,8 @@ export function migrate() {
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
 			priority_rank INTEGER NOT NULL,
-			is_default INTEGER NOT NULL DEFAULT 0
+			is_default INTEGER NOT NULL DEFAULT 0,
+			is_private INTEGER NOT NULL DEFAULT 0
 		);
 
 		CREATE TABLE IF NOT EXISTS logs (
@@ -186,6 +187,9 @@ export function migrate() {
 	}
 	if (!hasColumn('merged_articles', 'top_stories')) {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN top_stories INTEGER NOT NULL DEFAULT 0');
+	}
+	if (!hasColumn('categories', 'is_private')) {
+		db.exec('ALTER TABLE categories ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —
