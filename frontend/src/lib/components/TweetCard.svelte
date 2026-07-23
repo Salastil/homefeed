@@ -6,7 +6,9 @@
 	let { article }: { article: MergedArticle } = $props();
 
 	const sourceLabel = $derived(article.sources[0]?.sourceName ?? 'Nitter');
-	const media = $derived(article.tweet?.media.slice(0, 4) ?? []);
+	// article.tweet.media is undefined for tweets published before this field existed —
+	// older rows in the DB weren't backfilled, so this can't assume it's always an array.
+	const media = $derived(article.tweet?.media?.slice(0, 4) ?? []);
 
 	// Native <video controls> needs its clicks not to fall through to the card's own
 	// <a> navigation (play/pause/scrub would otherwise just open the article instead).
