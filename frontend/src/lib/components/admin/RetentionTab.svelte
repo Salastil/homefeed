@@ -36,6 +36,31 @@
 		{ label: 'Direct', value: 'direct' }
 	];
 
+	let telegramMediaMode = $state(settings.telegramMediaMode);
+	let telegramMediaStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+	let telegramMediaSaveTimer: ReturnType<typeof setTimeout>;
+
+	function scheduleTelegramMediaSave() {
+		telegramMediaStatus = 'saving';
+		clearTimeout(telegramMediaSaveTimer);
+		telegramMediaSaveTimer = setTimeout(async () => {
+			try {
+				await updateSettings({ telegramMediaMode });
+				telegramMediaStatus = 'saved';
+				setTimeout(() => (telegramMediaStatus = 'idle'), 1500);
+			} catch {
+				telegramMediaStatus = 'error';
+			}
+		}, 500);
+	}
+
+	// No "Direct" option here — unlike Twitter's CDN, Telegram has no public
+	// hotlinkable media URL, so there's nothing to hotlink straight from.
+	const telegramMediaModes: { label: string; value: 'self-host' | 'proxy' }[] = [
+		{ label: 'Self-host', value: 'self-host' },
+		{ label: 'Proxy', value: 'proxy' }
+	];
+
 	async function handleClearArticles() {
 		if (!confirm('Delete every published article and its media? Raw ingested items are kept, so sources can be re-synthesized fresh.')) return;
 		clearing = 'articles';
@@ -198,6 +223,36 @@
 		self-hosted FixTweet mirror (or another public instance) instead if you'd rather not depend on it.
 	</p>
 	<input type="text" bind:value={fxtwitterBaseUrl} oninput={scheduleNitterSave} placeholder="https://api.fxtwitter.com" style="width: 100%" />
+</div>
+
+<div class="panel">
+	<div class="head">
+		<span class="panel-title">Telegram (message media)</span>
+		<SaveStatus status={telegramMediaStatus} />
+	</div>
+	<p class="hint">
+		How photos/videos attached to ingested Telegram messages (and channel avatars) are served
+		to visitors. Telegram has no public URL for this media the way Twitter's CDN does — bytes
+		only ever come from the logged-in account (Connections tab), so there's no "Direct" option.
+		Self-hosting downloads and stores everything locally, same as regular article images.
+		Proxying re-fetches each request live through the logged-in account and streams it straight
+		through without persisting anything, so only this server ever touches Telegram's servers —
+		at the cost of a live round-trip to Telegram on every view (a short cache absorbs repeats).
+	</p>
+	<div class="pill-row">
+		{#each telegramMediaModes as mode}
+			<button
+				class="pill"
+				class:active={telegramMediaMode === mode.value}
+				onclick={() => {
+					telegramMediaMode = mode.value;
+					scheduleTelegramMediaSave();
+				}}
+			>
+				{mode.label}
+			</button>
+		{/each}
+	</div>
 </div>
 
 <div class="panel">

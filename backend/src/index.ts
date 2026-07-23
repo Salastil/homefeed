@@ -9,6 +9,7 @@ import { registerAuth } from './api/auth.js';
 import { registerPublicRoutes } from './api/public.js';
 import { registerAdminRoutes } from './api/admin.js';
 import { registerMediaProxy } from './api/mediaProxy.js';
+import { registerTelegramMediaProxy } from './api/telegramMediaProxy.js';
 import { registerPrivateAccess, privateAccessConfigured } from './api/privateAccess.js';
 import { startScheduler } from './queue/scheduler.js';
 import { initFromSavedSession } from './telegram/client.js';
@@ -91,10 +92,12 @@ async function main() {
 		return reply.send(fs.createReadStream(filePath));
 	});
 
-	// Static "/media/proxy" takes priority over the "/media/:filename" param route
-	// above regardless of registration order (find-my-way, Fastify's router, always
-	// prefers a static segment over a parametric one at the same depth).
+	// Static "/media/proxy" and "/media/telegram-proxy" take priority over the
+	// "/media/:filename" param route above regardless of registration order
+	// (find-my-way, Fastify's router, always prefers a static segment over a parametric
+	// one at the same depth).
 	await registerMediaProxy(app);
+	await registerTelegramMediaProxy(app);
 
 	app.get('/health', async () => ({ ok: true }));
 

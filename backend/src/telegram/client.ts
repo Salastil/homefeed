@@ -153,3 +153,26 @@ export async function fetchChannelMessages(channelIdentifier: string, limit: num
 	const messages = await client.getMessages(entity, { limit });
 	return { entity, messages };
 }
+
+/**
+ * Re-fetches a single message by id and downloads its attached media — used by
+ * pipeline/publish.ts (self-host mode, at publish time) and the live telegram-proxy
+ * route (proxy mode, on every view). Telegram media has no public URL; this
+ * authenticated call is the only way to get the bytes.
+ */
+export async function downloadMessageMedia(channelUsername: string, messageId: string): Promise<Buffer | null> {
+	if (!client) throw new Error('Telegram client not connected');
+	const entity = await client.getEntity(channelUsername);
+	const [message] = await client.getMessages(entity, { ids: [Number(messageId)] });
+	if (!message) return null;
+	const buffer = await message.downloadMedia();
+	return buffer && typeof buffer !== 'string' ? buffer : null;
+}
+
+/** Downloads a channel's current avatar — same on-demand, no-public-URL reasoning as downloadMessageMedia. */
+export async function downloadChannelAvatar(channelUsername: string): Promise<Buffer | null> {
+	if (!client) throw new Error('Telegram client not connected');
+	const entity = await client.getEntity(channelUsername);
+	const photo = await client.downloadProfilePhoto(entity);
+	return photo && typeof photo !== 'string' ? photo : null;
+}

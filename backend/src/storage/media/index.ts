@@ -63,21 +63,6 @@ export function storeMediaBuffer(
 	return { id, localPath, servedPath: `/media/${filename}`, sizeBytes: buffer.length };
 }
 
-/** Finds already-downloaded media for a content item (Telegram's adapter self-hosts at ingestion time) so publishDirect can promote them without threading media-asset IDs through the JSON blob. */
-export function mediaIdsForContentItem(contentItemId: string): string[] {
-	const rows = db.prepare('SELECT id FROM media_assets WHERE content_item_id = ?').all(contentItemId) as { id: string }[];
-	return rows.map((r) => r.id);
-}
-
-/**
- * Links media rows downloaded before their content item existed (Telegram's adapter —
- * see FetchedItem.telegramMediaAssetIds) to the content item id assigned once
- * insertContentItem runs. Called by poller.ts right after insertion.
- */
-export function attachToContentItem(mediaIds: string[], contentItemId: string): void {
-	const stmt = db.prepare('UPDATE media_assets SET content_item_id = ? WHERE id = ?');
-	for (const id of mediaIds) stmt.run(contentItemId, id);
-}
 
 /** Promotes a candidate-tier asset to published-tier so raw-item retention can no longer prune it. */
 export function promoteToPublished(mediaId: string, articleId: string) {

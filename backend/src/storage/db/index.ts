@@ -172,7 +172,8 @@ export function migrate() {
 			storage_cap_value INTEGER NOT NULL DEFAULT 500,
 			storage_cap_unit TEXT NOT NULL DEFAULT 'GB',
 			nitter_media_mode TEXT NOT NULL DEFAULT 'proxy', -- self-host | proxy | direct
-			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com'
+			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com',
+			telegram_media_mode TEXT NOT NULL DEFAULT 'self-host' -- self-host | proxy (no "direct" — Telegram has no public hotlinkable media URL)
 		);
 
 		-- Singleton row (see storage/crypto.ts) — encrypted Telegram API credentials and
@@ -231,6 +232,9 @@ export function migrate() {
 	}
 	if (!hasColumn('merged_articles', 'telegram_message')) {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN telegram_message TEXT');
+	}
+	if (!hasColumn('global_settings', 'telegram_media_mode')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN telegram_media_mode TEXT NOT NULL DEFAULT 'self-host'");
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

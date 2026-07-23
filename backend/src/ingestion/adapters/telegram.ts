@@ -7,13 +7,19 @@
 // reasoning as YouTube/Nitter: merging two unrelated channel posts into one
 // AI-rewritten story wouldn't make sense the way merging two outlets' coverage of the
 // same event does.
+//
+// Media is deliberately NOT downloaded here — Telegram has no public hotlinkable media
+// URL, so unlike every field pulled from the message itself, media can only be resolved
+// by re-authenticating to Telegram, which the admin's configured telegramMediaMode
+// (self-host vs. proxy) governs. This adapter only records *references* (message id,
+// kind, mime type, dimensions) — see pipeline/publish.ts's resolveTelegramMedia for
+// where those refs turn into an actual servable url.
 
 import type { Api } from 'telegram';
-import type { Source, TelegramMediaItem } from '../../storage/db/types.js';
+import type { Source, TelegramMediaRef } from '../../storage/db/types.js';
 import type { SourceAdapter, FetchedItem } from './base.js';
 import { logger } from '../../storage/db/logs.js';
 import { getClient, fetchChannelMessages } from '../../telegram/client.js';
-import { storeMediaBuffer } from '../../storage/media/index.js';
 
 /** Mirrors MAX_TWEET_MEDIA in nitter.ts — the frontend media grid only defines 1/2/3/4-item layouts. */
 const MAX_TELEGRAM_MEDIA = 4;
@@ -31,37 +37,36 @@ function normalizeChannelIdentifier(raw: string): string {
 		.replace(/\/+$/, '');
 }
 
-function guessExtension(mimeType: string, kind: 'photo' | 'video' | 'gif'): string {
-	if (mimeType.includes('png')) return '.png';
-	if (mimeType.includes('webp')) return '.webp';
-	if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return '.jpg';
-	if (mimeType.includes('mp4')) return '.mp4';
-	if (kind === 'photo') return '.jpg';
-	return '.mp4';
+function videoDimensions(document: { attributes?: { className?: string; w?: number; h?: number }[] } | undefined) {
+	const attr = document?.attributes?.find((a) => a.className === 'DocumentAttributeVideo');
+	return { width: attr?.w ?? null, height: attr?.h ?? null };
 }
 
-/** Downloads and self-hosts a single message's attached media, if any — Telegram has no public hotlinkable media URL, so this happens immediately rather than being deferred to publish time (that authenticated access could disappear later: message deleted, channel left, session revoked). */
-async function extractMedia(message: TgMessage): Promise<{ item: TelegramMediaItem; mediaId: string } | null> {
-	let kind: 'photo' | 'video' | 'gif';
-	let mimeType = '';
+function photoDimensions(photo: { sizes?: { w?: number; h?: number }[] } | undefined) {
+	const largest = photo?.sizes?.reduce<{ w?: number; h?: number } | undefined>(
+		(best, size) => (!best || (size.w ?? 0) > (best.w ?? 0) ? size : best),
+		undefined
+	);
+	return { width: largest?.w ?? null, height: largest?.h ?? null };
+}
+
+/** A reference to a single message's attached media, if any — no download, just what's needed to resolve it later. */
+function refForMessage(message: TgMessage): TelegramMediaRef | null {
 	if (message.video) {
-		kind = 'video';
-		mimeType = (message.video as unknown as { mimeType?: string }).mimeType ?? '';
-	} else if (message.gif) {
-		kind = 'gif';
-		mimeType = (message.gif as unknown as { mimeType?: string }).mimeType ?? '';
-	} else if (message.photo) {
-		kind = 'photo';
-	} else {
-		return null;
+		const doc = message.video as unknown as { mimeType?: string; attributes?: { className?: string; w?: number; h?: number }[] };
+		const { width, height } = videoDimensions(doc);
+		return { type: 'video', messageId: String(message.id), mimeType: doc.mimeType ?? null, width, height };
 	}
-
-	const buffer = await message.downloadMedia();
-	if (!buffer || typeof buffer === 'string') return null;
-
-	const ext = guessExtension(mimeType, kind);
-	const stored = storeMediaBuffer(buffer, ext, `telegram-message:${message.id}`, 'candidate', {});
-	return { item: { type: kind, url: stored.servedPath, thumbnailUrl: null, width: null, height: null }, mediaId: stored.id };
+	if (message.gif) {
+		const doc = message.gif as unknown as { mimeType?: string; attributes?: { className?: string; w?: number; h?: number }[] };
+		const { width, height } = videoDimensions(doc);
+		return { type: 'gif', messageId: String(message.id), mimeType: doc.mimeType ?? null, width, height };
+	}
+	if (message.photo) {
+		const { width, height } = photoDimensions(message.photo as unknown as { sizes?: { w?: number; h?: number }[] });
+		return { type: 'photo', messageId: String(message.id), mimeType: null, width, height };
+	}
+	return null;
 }
 
 /** Groups consecutive messages sharing a non-null groupedId (Telegram's multi-photo/video "album" concept) into one entry each. */
@@ -111,14 +116,6 @@ export const telegramAdapter: SourceAdapter = {
 		}
 		const channelName: string = entity?.title ?? channelUsername;
 
-		let avatarBuffer: Buffer | null = null;
-		try {
-			const photo = await client.downloadProfilePhoto(entity);
-			if (photo && typeof photo !== 'string') avatarBuffer = photo;
-		} catch (err) {
-			logger.warn('telegram', `Failed to download avatar for "${channelName}": ${(err as Error).message}`);
-		}
-
 		const items: FetchedItem[] = [];
 
 		for (const group of groupMessages(messages)) {
@@ -126,22 +123,11 @@ export const telegramAdapter: SourceAdapter = {
 			const text = primary.message ?? '';
 			const firstLine = text.split('\n')[0].trim();
 
-			const media: TelegramMediaItem[] = [];
-			const mediaAssetIds: string[] = [];
+			const media: TelegramMediaRef[] = [];
 			for (const message of group) {
 				if (media.length >= MAX_TELEGRAM_MEDIA) break;
-				const extracted = await extractMedia(message);
-				if (extracted) {
-					media.push(extracted.item);
-					mediaAssetIds.push(extracted.mediaId);
-				}
-			}
-
-			let channelAvatarUrl: string | null = null;
-			if (avatarBuffer) {
-				const stored = storeMediaBuffer(avatarBuffer, '.jpg', `telegram-avatar:${channelUsername}`, 'candidate', {});
-				channelAvatarUrl = stored.servedPath;
-				mediaAssetIds.push(stored.id);
+				const ref = refForMessage(message);
+				if (ref) media.push(ref);
 			}
 
 			if (!text && media.length === 0) continue; // nothing worth publishing (e.g. a service message)
@@ -157,11 +143,9 @@ export const telegramAdapter: SourceAdapter = {
 				telegramMessage: {
 					channelName,
 					channelUsername,
-					channelAvatarUrl,
 					messageId: String(group[0].id),
 					media
 				},
-				telegramMediaAssetIds: mediaAssetIds,
 				raw: { messageIds: group.map((m) => m.id) }
 			});
 		}

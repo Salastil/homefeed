@@ -27,6 +27,24 @@ export interface TweetMediaItem {
 /** Same shape as TweetMediaItem — distinct name for readability at Telegram call sites. */
 export type TelegramMediaItem = TweetMediaItem;
 
+/**
+ * A raw reference to a single message's attached media, captured at ingestion time —
+ * deliberately NOT a URL, since Telegram has no public hotlinkable media URL the way
+ * Twitter does; media bytes only ever come from the authenticated MTProto session.
+ * publish.ts resolves this into a real TelegramMediaItem (a servable url) according to
+ * the admin's configured telegramMediaMode, at publish time — mirroring how Nitter's
+ * tweet media URLs are resolved at publish time too, just starting from a message
+ * reference here instead of an already-public CDN URL.
+ */
+export interface TelegramMediaRef {
+	type: 'photo' | 'video' | 'gif';
+	/** This media's own message id (a grouped album's items are separate messages, each individually re-fetchable). */
+	messageId: string;
+	mimeType: string | null;
+	width: number | null;
+	height: number | null;
+}
+
 export interface ContentItem {
 	id: string;
 	sourceId: string;
@@ -46,13 +64,12 @@ export interface ContentItem {
 	clusterId: string | null;
 	/** Nitter-sourced items only — null for everything else. */
 	tweet: { id: string; authorName: string; authorHandle: string; avatarUrl: string | null; media: TweetMediaItem[] } | null;
-	/** Telegram-sourced items only — null for everything else. */
+	/** Telegram-sourced items only — null for everything else. Media is unresolved refs (see TelegramMediaRef); publish.ts resolves them (and the channel avatar) per the admin's configured media mode. */
 	telegramMessage: {
 		channelName: string;
 		channelUsername: string;
-		channelAvatarUrl: string | null;
 		messageId: string;
-		media: TelegramMediaItem[];
+		media: TelegramMediaRef[];
 	} | null;
 	raw: unknown;
 }
@@ -154,6 +171,8 @@ export interface GlobalSettings {
 	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
 	/** Base URL of the fxtwitter-compatible enrichment API — defaults to the public instance, overridable for a self-hosted FixTweet mirror. */
 	fxtwitterBaseUrl: string;
+	/** How Telegram message media (attached photos/videos, channel avatars) is served — see pipeline/publish.ts's resolveTelegramMedia. No "direct" option: Telegram has no public hotlinkable media URL, bytes only come from the authenticated MTProto session. */
+	telegramMediaMode: 'self-host' | 'proxy';
 	retention: {
 		publishedArticleMaxAgeDays: number | null;
 		rawItemMaxAgeDays: number | null;

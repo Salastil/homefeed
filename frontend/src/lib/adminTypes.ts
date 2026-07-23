@@ -28,6 +28,7 @@ export interface AdminSettings {
 	selectedModels: { embedding: string; image: string; synthesis: string };
 	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
 	fxtwitterBaseUrl: string;
+	telegramMediaMode: 'self-host' | 'proxy';
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
 }
