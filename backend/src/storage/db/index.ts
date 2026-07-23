@@ -86,7 +86,8 @@ export function migrate() {
 			next_article_id TEXT,
 			top_stories INTEGER NOT NULL DEFAULT 0, -- true if any contributing source opted into "Push to Top Stories?"
 			tweet TEXT, -- JSON {authorName, authorHandle, avatarUrl, sourceItemId}, nitter-sourced articles only
-			telegram_message TEXT -- JSON {channelName, channelUsername, channelAvatarUrl, sourceItemId, media}, telegram-sourced articles only
+			telegram_message TEXT, -- JSON {channelName, channelUsername, channelAvatarUrl, sourceItemId, media}, telegram-sourced articles only
+			is_recap INTEGER NOT NULL DEFAULT 0 -- true only for the AI-written periodic summary of a tracked event, see eventsRecap.ts
 		);
 		CREATE INDEX IF NOT EXISTS idx_articles_published ON merged_articles(published_at);
 		CREATE INDEX IF NOT EXISTS idx_articles_thread ON merged_articles(thread_id);
@@ -239,6 +240,9 @@ export function migrate() {
 	}
 	if (!hasColumn('tracked_events', 'keywords')) {
 		db.exec("ALTER TABLE tracked_events ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'");
+	}
+	if (!hasColumn('merged_articles', 'is_recap')) {
+		db.exec('ALTER TABLE merged_articles ADD COLUMN is_recap INTEGER NOT NULL DEFAULT 0');
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

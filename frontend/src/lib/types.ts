@@ -64,6 +64,8 @@ export interface MergedArticle {
 	threadId: string;
 	previousArticleId: string | null;
 	nextArticleId: string | null;
+	/** True only for the AI-written periodic summary of a tracked event — see the /event/[id] page. */
+	isRecap: boolean;
 }
 
 export interface Tag {

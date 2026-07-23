@@ -17,15 +17,18 @@ function partition<T>(items: T[], predicate: (item: T) => boolean): [T[], T[]] {
 }
 
 /**
- * An item is "claimed" by a tracked event — and so left for eventsRecap.ts to handle
- * instead of normal synthesis — only if it belongs to one of the event's sources AND
- * matches its keyword filter. An item from an event-linked source that doesn't match
+ * A tracked event is a displayed category like any other — matching items publish
+ * normally (individually or merged with same-story coverage, exactly like regular
+ * news), just tagged with the event's id so they're browsable under it and so
+ * eventsRecap.ts can periodically write an AI wrap-up from them. An item only counts as
+ * "claimed" if it belongs to one of the event's sources AND matches its keyword filter
  * (e.g. a general Middle-East feed assigned to an "Iran war" event, but this particular
- * item doesn't mention Iran) falls through to normal synthesis rather than being
- * silently dropped — it just isn't part of that event's recap.
+ * item doesn't mention Iran, just isn't part of that event — it still publishes, only
+ * without the tag).
  */
-function isClaimedByEvent(item: ContentItem, events: TrackedEvent[]): boolean {
-	return events.some((e) => e.sourceIds.includes(item.sourceId) && eventsDb.itemMatchesEventKeywords(item, e.keywords));
+function claimedEventId(item: ContentItem, events: TrackedEvent[]): string | null {
+	const match = events.find((e) => e.sourceIds.includes(item.sourceId) && eventsDb.itemMatchesEventKeywords(item, e.keywords));
+	return match?.id ?? null;
 }
 
 function primaryCategoryRank(item: ContentItem, rankByName: Map<string, number>): number {
@@ -52,7 +55,7 @@ function primaryCategoryRank(item: ContentItem, rankByName: Map<string, number>)
  */
 export async function runPassthroughCycle(settings: GlobalSettings): Promise<number> {
 	const activeEvents = eventsDb.listActiveEvents();
-	const items = contentItemsDb.unclusteredItemsExcludingSources([]).filter((item) => !isClaimedByEvent(item, activeEvents));
+	const items = contentItemsDb.unclusteredItemsExcludingSources([]);
 	if (items.length === 0) return 0;
 
 	const categories = categoriesDb.listCategories();
@@ -66,7 +69,8 @@ export async function runPassthroughCycle(settings: GlobalSettings): Promise<num
 
 	for (const item of ranked) {
 		try {
-			const article = await publishDirect(item, settings);
+			const eventId = claimedEventId(item, activeEvents) ?? undefined;
+			const article = await publishDirect(item, settings, { eventId });
 			contentItemsDb.assignCluster([item.id], article.id);
 			published++;
 			logger.info('synthesis', `Published "${article.title}" directly (no AI available)`);
@@ -79,15 +83,17 @@ export async function runPassthroughCycle(settings: GlobalSettings): Promise<num
 }
 
 /**
- * One pass of the synthesis queue: cluster whatever's unclustered (excluding items
- * claimed by a tracked event — belonging to one of its sources AND matching its
- * keyword filter, if any — which are handled by eventsRecap.ts instead), ordered by
+ * One pass of the synthesis queue: cluster whatever's unclustered, ordered by
  * admin-defined category priority, and publish clusters that have cleared the
- * hold-before-publish window.
+ * hold-before-publish window. Items claimed by an active tracked event (belonging to
+ * one of its sources and matching its keyword filter, if any) publish exactly like
+ * everything else — individually or merged with same-story coverage — just tagged with
+ * the event's id so they're browsable under it and eligible for eventsRecap.ts's
+ * periodic AI wrap-up.
  */
 export async function runSynthesisCycle(provider: InferenceProvider, settings: GlobalSettings): Promise<number> {
 	const activeEvents = eventsDb.listActiveEvents();
-	const items = contentItemsDb.unclusteredItemsExcludingSources([]).filter((item) => !isClaimedByEvent(item, activeEvents));
+	const items = contentItemsDb.unclusteredItemsExcludingSources([]);
 	if (items.length === 0) return 0;
 
 	// YouTube videos, Nitter tweets, and Telegram messages never get LLM-merged with
@@ -104,7 +110,8 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 	let publishedDirect = 0;
 	for (const item of directItems) {
 		try {
-			const article = await publishDirect(item, settings);
+			const eventId = claimedEventId(item, activeEvents) ?? undefined;
+			const article = await publishDirect(item, settings, { eventId });
 			contentItemsDb.assignCluster([item.id], article.id);
 			publishedDirect++;
 			const source = sourcesDb.getSource(item.sourceId);
@@ -140,7 +147,11 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 		}
 
 		try {
-			const article = await publishCluster(provider, settings, cluster);
+			// A cluster's event tag comes from whichever of its items (if any) is claimed —
+			// in practice a cluster's items are all near-duplicate coverage of the same
+			// story, so they'd all match the same event's filter anyway when they match at all.
+			const eventId = cluster.items.map((i) => claimedEventId(i, activeEvents)).find((id) => id !== null) ?? undefined;
+			const article = await publishCluster(provider, settings, cluster, { eventId });
 			contentItemsDb.assignCluster(
 				cluster.items.map((i) => i.id),
 				cluster.id
