@@ -7,10 +7,13 @@
 // two outlets' coverage of the same news event does — same reasoning as YouTube.
 
 import Parser from 'rss-parser';
-import type { Source } from '../../storage/db/types.js';
+import type { Source, TweetMediaItem } from '../../storage/db/types.js';
 import type { SourceAdapter, FetchedItem } from './base.js';
 import { logger } from '../../storage/db/logs.js';
 import { getSettings } from '../../storage/db/settings.js';
+
+/** fxtwitter caps a tweet at 4 attached photos/videos/gifs, in tweet display order. */
+const MAX_TWEET_MEDIA = 4;
 
 const parser = new Parser<Record<string, unknown>>();
 
@@ -18,18 +21,40 @@ const USER_AGENT = 'Mozilla/5.0 (compatible; HomefeedBot/1.0; self-hosted RSS re
 const FETCH_TIMEOUT_MS = 10_000;
 
 /**
- * Shape confirmed against a real `curl https://api.fxtwitter.com/<handle>/status/<id>`
- * response: `text`, `created_timestamp` (unix seconds), `author.name`/`avatar_url` all
- * verified exactly as read below. `media.photos[].url` is still unconfirmed — that
- * response had no attached photo — but is read with optional chaining regardless, so a
- * shape mismatch there just falls back to the RSS description's own <img> (see
- * fetch()'s photoUrl fallback) rather than breaking ingestion.
+ * Shape confirmed against two real `curl https://api.fxtwitter.com/<handle>/status/<id>`
+ * responses: `text`, `created_timestamp` (unix seconds), `author.name`/`avatar_url`, and
+ * (from a second, video-attached tweet) `media.all[]` — an ordered array covering both
+ * photos and videos, each with `type` ('photo' | 'video' | 'gif'), `url` (the direct
+ * playable/displayable URL — for video this is a real .mp4, not the .m3u8 playlist also
+ * present under `formats`), `thumbnail_url` (video/gif poster frame), and `width`/`height`.
+ * `media.all` is preferred over `media.photos`/`media.videos` since it's the only field
+ * that preserves the tweet's original media order.
  */
+interface FxTweetMedia {
+	type?: string;
+	url?: string;
+	thumbnail_url?: string;
+	width?: number;
+	height?: number;
+}
+
 interface FxTweet {
 	text?: string;
 	created_timestamp?: number;
 	author?: { name?: string; screen_name?: string; avatar_url?: string };
-	media?: { photos?: { url?: string }[] };
+	media?: { all?: FxTweetMedia[]; photos?: FxTweetMedia[] };
+}
+
+/** Maps fxtwitter's media shape to our own, capped at the 4 items a tweet can carry. */
+function toTweetMedia(enrichment: FxTweet | null): TweetMediaItem[] {
+	const items = enrichment?.media?.all ?? enrichment?.media?.photos ?? [];
+	return items.slice(0, MAX_TWEET_MEDIA).map((m): TweetMediaItem => ({
+		type: m.type === 'video' || m.type === 'gif' ? m.type : 'photo',
+		url: m.url ?? '',
+		thumbnailUrl: m.thumbnail_url ?? null,
+		width: m.width ?? null,
+		height: m.height ?? null
+	})).filter((m) => m.url);
 }
 
 /**
@@ -103,7 +128,12 @@ export const nitterAdapter: SourceAdapter = {
 			const authorName = enrichment?.author?.name ?? handle;
 			const avatarUrl = enrichment?.author?.avatar_url ?? null;
 			const text = enrichment?.text ?? ownHtml;
-			const photoUrl = enrichment?.media?.photos?.[0]?.url ?? rssImageUrl;
+			// Enrichment failed (or came back with no media) — fall back to the RSS
+			// description's own <img> as a single photo, same as before multi-media support.
+			const media = toTweetMedia(enrichment);
+			if (media.length === 0 && rssImageUrl) {
+				media.push({ type: 'photo', url: rssImageUrl, thumbnailUrl: null, width: null, height: null });
+			}
 			const publishedAt = enrichment?.created_timestamp
 				? new Date(enrichment.created_timestamp * 1000).toISOString()
 				: (item.isoDate ?? item.pubDate ?? new Date().toISOString());
@@ -112,11 +142,11 @@ export const nitterAdapter: SourceAdapter = {
 				title: item.title || text.slice(0, 100),
 				summary: text.slice(0, 500),
 				body: text,
-				images: photoUrl ? [{ url: photoUrl }] : [],
+				images: [],
 				videos: [],
 				link: item.link,
 				publishedAt,
-				tweet: { id: tweetId, authorName, authorHandle: handle, avatarUrl },
+				tweet: { id: tweetId, authorName, authorHandle: handle, avatarUrl, media },
 				raw: { rss: item, fxtwitter: enrichment }
 			});
 		}

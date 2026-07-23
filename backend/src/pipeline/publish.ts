@@ -8,7 +8,7 @@ import { logger } from '../storage/db/logs.js';
 import * as articles from '../storage/db/articles.js';
 import * as tags from '../storage/db/tags.js';
 import * as sources from '../storage/db/sources.js';
-import type { GlobalSettings, MergedArticle, ContentItem } from '../storage/db/types.js';
+import type { GlobalSettings, MergedArticle, ContentItem, TweetMediaItem } from '../storage/db/types.js';
 
 const FOLLOW_UP_LOOKBACK_DAYS = 3;
 
@@ -100,6 +100,36 @@ async function resolveTweetMediaUrl(
 }
 
 /**
+ * Resolves every attached photo/video/gif's url — and, for video/gif, its poster
+ * thumbnail — through the admin's chosen Nitter media mode. Order and item count are
+ * preserved; TweetCard.svelte renders this array directly, there's no separate
+ * "hero image" concept for tweets the way there is for regular articles.
+ */
+async function resolveTweetMedia(
+	media: TweetMediaItem[],
+	mode: GlobalSettings['nitterMediaMode']
+): Promise<{ media: TweetMediaItem[]; storedMediaIds: string[] }> {
+	const storedMediaIds: string[] = [];
+	const resolved: TweetMediaItem[] = [];
+
+	for (const item of media) {
+		const url = await resolveTweetMediaUrl(item.url, mode);
+		if (url.storedMediaId) storedMediaIds.push(url.storedMediaId);
+
+		let thumbnailUrl = item.thumbnailUrl;
+		if (thumbnailUrl) {
+			const resolvedThumb = await resolveTweetMediaUrl(thumbnailUrl, mode);
+			thumbnailUrl = resolvedThumb.url;
+			if (resolvedThumb.storedMediaId) storedMediaIds.push(resolvedThumb.storedMediaId);
+		}
+
+		resolved.push({ ...item, url: url.url, thumbnailUrl });
+	}
+
+	return { media: resolved, storedMediaIds };
+}
+
+/**
  * Publishes a single item as-is, with no AI calls at all — used when the AI service
  * isn't reachable (e.g. Ollama hasn't been set up yet, per the "assume it arrives
  * after the backend launches" requirement). No rewriting, no tag extraction, no
@@ -113,15 +143,9 @@ export async function publishDirect(item: ContentItem, settings: GlobalSettings)
 	const category = uniqueCategories([item]);
 	const storedMediaIds: string[] = [];
 
+	// Tweets never get a "hero image" — TweetCard.svelte renders tweet.media directly.
 	let heroImage: MergedArticle['heroImage'] = null;
-	if (item.tweet) {
-		const selected = selectBestImage([item]);
-		if (selected) {
-			const resolved = await resolveTweetMediaUrl(selected.url, settings.nitterMediaMode);
-			heroImage = { url: resolved.url, sourceItemId: selected.sourceItemId, selectionReason: selected.selectionReason };
-			if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
-		}
-	} else {
+	if (!item.tweet) {
 		const resolved = await resolveHeroImage([item], item.link);
 		heroImage = resolved.heroImage;
 		if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
@@ -139,7 +163,15 @@ export async function publishDirect(item: ContentItem, settings: GlobalSettings)
 			avatarUrl = resolved.url;
 			if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
 		}
-		tweet = { authorName: item.tweet.authorName, authorHandle: item.tweet.authorHandle, avatarUrl, sourceItemId: item.id };
+		const resolvedMedia = await resolveTweetMedia(item.tweet.media, settings.nitterMediaMode);
+		storedMediaIds.push(...resolvedMedia.storedMediaIds);
+		tweet = {
+			authorName: item.tweet.authorName,
+			authorHandle: item.tweet.authorHandle,
+			avatarUrl,
+			sourceItemId: item.id,
+			media: resolvedMedia.media
+		};
 	}
 
 	const article = await articles.insertArticle({

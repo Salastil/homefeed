@@ -14,6 +14,16 @@ export interface Source {
 	createdAt: string;
 }
 
+/** A single photo/video/gif attached to a tweet, in the tweet's own display order — fxtwitter caps this at 4. */
+export interface TweetMediaItem {
+	type: 'photo' | 'video' | 'gif';
+	url: string;
+	/** Video/gif poster frame — null for photos. */
+	thumbnailUrl: string | null;
+	width: number | null;
+	height: number | null;
+}
+
 export interface ContentItem {
 	id: string;
 	sourceId: string;
@@ -32,7 +42,7 @@ export interface ContentItem {
 	eventId: string | null;
 	clusterId: string | null;
 	/** Nitter-sourced items only — null for everything else. */
-	tweet: { id: string; authorName: string; authorHandle: string; avatarUrl: string | null } | null;
+	tweet: { id: string; authorName: string; authorHandle: string; avatarUrl: string | null; media: TweetMediaItem[] } | null;
 	raw: unknown;
 }
 
@@ -49,8 +59,8 @@ export interface MergedArticle {
 	body: string;
 	heroImage: { url: string; sourceItemId: string; selectionReason: string } | null;
 	video: { url: string; provider?: string; embedUrl?: string; sourceItemId: string } | null;
-	/** Nitter-sourced articles only — the embed card's author info (see TweetCard.svelte). Never set alongside video. */
-	tweet: { authorName: string; authorHandle: string; avatarUrl: string | null; sourceItemId: string } | null;
+	/** Nitter-sourced articles only — the embed card's author info and attached media (see TweetCard.svelte). Never set alongside video. */
+	tweet: { authorName: string; authorHandle: string; avatarUrl: string | null; sourceItemId: string; media: TweetMediaItem[] } | null;
 	category: string[];
 	geo: string | null;
 	eventId: string | null;

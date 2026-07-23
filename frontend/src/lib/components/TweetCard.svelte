@@ -6,6 +6,14 @@
 	let { article }: { article: MergedArticle } = $props();
 
 	const sourceLabel = $derived(article.sources[0]?.sourceName ?? 'Nitter');
+	const media = $derived(article.tweet?.media.slice(0, 4) ?? []);
+
+	// Native <video controls> needs its clicks not to fall through to the card's own
+	// <a> navigation (play/pause/scrub would otherwise just open the article instead).
+	// Plain images keep navigating as before — only the video element itself is exempted.
+	function handleMediaClick(e: MouseEvent) {
+		if ((e.target as HTMLElement).tagName === 'VIDEO') e.preventDefault();
+	}
 </script>
 
 <a class="tweet-card" href={`/article/${article.id}`}>
@@ -26,8 +34,28 @@
 		<span class="handle">@{article.tweet?.authorHandle}</span>
 	</div>
 	<div class="text">{article.body}</div>
-	{#if article.heroImage}
-		<img class="tweet-img" src={resolveMediaUrl(article.heroImage.url)} alt="" loading="lazy" />
+	{#if media.length > 0}
+		<div class="media-grid" data-count={media.length} onclick={handleMediaClick} role="presentation">
+			{#each media as item, i (item.url)}
+				<div class="media-cell" class:span-2={media.length === 3 && i === 0}>
+					{#if item.type === 'video' || item.type === 'gif'}
+						<video
+							class="media-el"
+							controls
+							preload="metadata"
+							playsinline
+							loop={item.type === 'gif'}
+							muted={item.type === 'gif'}
+							poster={item.thumbnailUrl ? resolveMediaUrl(item.thumbnailUrl) : undefined}
+						>
+							<source src={resolveMediaUrl(item.url)} />
+						</video>
+					{:else}
+						<img class="media-el" src={resolveMediaUrl(item.url)} alt="" loading="lazy" />
+					{/if}
+				</div>
+			{/each}
+		</div>
 	{/if}
 	<div class="time">{timeAgo(article.publishedAt)} &middot; {exactTime(article.publishedAt)}</div>
 </a>
@@ -86,10 +114,47 @@
 		white-space: pre-line;
 		margin-bottom: 8px;
 	}
-	.tweet-img {
-		width: 100%;
+	/* Fixed cell heights (rather than max-height on an auto-height image) so a tall
+	   portrait photo or video is cropped to a sensible box instead of dictating the
+	   whole card's height — this is what keeps a single vertical image from taking
+	   over the column. Twitter's own 1/2/3/4-item grid shapes, at a size that fits
+	   this app's narrower single-column feed. */
+	.media-grid {
+		display: grid;
+		gap: 3px;
 		border-radius: var(--radius);
+		overflow: hidden;
 		margin-bottom: 8px;
+		background: var(--surface-1);
+	}
+	.media-grid[data-count='1'] {
+		grid-template-columns: 1fr;
+		height: 380px;
+	}
+	.media-grid[data-count='2'] {
+		grid-template-columns: 1fr 1fr;
+		height: 240px;
+	}
+	.media-grid[data-count='3'] {
+		grid-template-columns: 1fr 1fr;
+		grid-template-rows: 1fr 1fr;
+		height: 300px;
+	}
+	.media-grid[data-count='4'] {
+		grid-template-columns: 1fr 1fr;
+		grid-template-rows: 1fr 1fr;
+		height: 300px;
+	}
+	.media-cell {
+		overflow: hidden;
+	}
+	.media-cell.span-2 {
+		grid-row: 1 / 3;
+	}
+	.media-el {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 		display: block;
 		background: var(--surface-1);
 	}
