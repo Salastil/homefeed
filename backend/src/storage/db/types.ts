@@ -116,8 +116,6 @@ export interface Category {
 	name: string;
 	priorityRank: number;
 	isDefault: boolean;
-	/** Hidden from /api/categories, /api/feed, and article detail for anyone without a valid private-access cookie. */
-	isPrivate: boolean;
 }
 
 export interface GlobalSettings {

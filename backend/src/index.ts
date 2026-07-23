@@ -1,6 +1,5 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import cookie from '@fastify/cookie';
 import fs from 'node:fs';
 import path from 'node:path';
 import { migrate } from './storage/db/index.js';
@@ -9,7 +8,6 @@ import { registerAuth } from './api/auth.js';
 import { registerPublicRoutes } from './api/public.js';
 import { registerAdminRoutes } from './api/admin.js';
 import { registerMediaProxy } from './api/mediaProxy.js';
-import { registerPrivateAccess, privateAccessConfigured } from './api/privateAccess.js';
 import { startScheduler } from './queue/scheduler.js';
 import { logger } from './storage/db/logs.js';
 
@@ -41,16 +39,10 @@ async function main() {
 	// every PATCH (settings saves) and DELETE (removing sources/events) gets silently
 	// blocked by the browser at the CORS preflight stage, before the request ever
 	// reaches a route handler.
-	// credentials: true is required for the browser to send/accept the private-category
-	// login cookie cross-origin — safe only because origin is a specific value above,
-	// never a wildcard (the two are mutually exclusive per the CORS spec anyway).
 	await app.register(cors, {
 		origin: FRONTEND_ORIGIN,
-		credentials: true,
 		methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'OPTIONS']
 	});
-
-	await app.register(cookie);
 
 	// Overrides Fastify's default JSON body parser, which throws "Body cannot be empty
 	// when content-type is set to 'application/json'" for any bodyless request (DELETE,
@@ -69,7 +61,6 @@ async function main() {
 	await registerAuth(app);
 	await registerPublicRoutes(app);
 	await registerAdminRoutes(app);
-	await registerPrivateAccess(app);
 
 	// Fastify's own logger is off (see below) — without this, an unhandled exception
 	// in any route handler produces a bare 500 with zero trace anywhere, including the
@@ -98,9 +89,6 @@ async function main() {
 
 	await app.listen({ port: PORT, host: '0.0.0.0' });
 	logger.info('server', `Listening on :${PORT} (frontend origin: ${FRONTEND_ORIGIN})`);
-	if (!privateAccessConfigured()) {
-		logger.info('server', 'Private categories disabled — set PRIVATE_ACCESS_PASSWORD to enable');
-	}
 
 	startScheduler();
 }

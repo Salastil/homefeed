@@ -9,7 +9,6 @@
 	let status = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
 	let saveTimer: ReturnType<typeof setTimeout>;
 	let newCategoryName = $state('');
-	let newCategoryPrivate = $state(false);
 	let addingCategory = $state(false);
 
 	function scheduleSave() {
@@ -40,18 +39,12 @@
 		if (!name) return;
 		addingCategory = true;
 		try {
-			const created = await createCategory(name, newCategoryPrivate);
+			const created = await createCategory(name);
 			local.categoryPriority = [...local.categoryPriority, created];
 			newCategoryName = '';
-			newCategoryPrivate = false;
 		} finally {
 			addingCategory = false;
 		}
-	}
-
-	function togglePrivate(id: string) {
-		local.categoryPriority = local.categoryPriority.map((c) => (c.id === id ? { ...c, isPrivate: !c.isPrivate } : c));
-		scheduleSave();
 	}
 
 	async function removeCategory(id: string, isDefault: boolean, name: string) {
@@ -151,21 +144,13 @@
 	<p class="hint">
 		Synthesis queue processes higher-ranked categories first. Nothing is dropped — lower
 		categories just wait longer when the queue is busy. This list also drives the site's nav —
-		remove anything you're not interested in (Business, Culture, etc.) or add your own. A
-		private category (and everything in it) is hidden from the public site until a visitor
-		logs in with the lock icon in the masthead.
+		remove anything you're not interested in (Business, Culture, etc.) or add your own.
 	</p>
 	<div class="priority-list">
 		{#each local.categoryPriority as cat, i (cat.id)}
 			<div class="priority-row">
 				<span class="rank">{i + 1}</span>
 				<span class="name">{cat.name}</span>
-				{#if cat.name.toLowerCase() !== 'top stories'}
-					<label class="private-toggle">
-						<input type="checkbox" checked={cat.isPrivate} onchange={() => togglePrivate(cat.id)} />
-						Private
-					</label>
-				{/if}
 				<button class="icon-btn" onclick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">▲</button>
 				<button
 					class="icon-btn"
@@ -188,10 +173,6 @@
 			bind:value={newCategoryName}
 			onkeydown={(e) => e.key === 'Enter' && addCategory()}
 		/>
-		<label class="private-toggle">
-			<input type="checkbox" bind:checked={newCategoryPrivate} />
-			Private
-		</label>
 		<button onclick={addCategory} disabled={addingCategory || !newCategoryName.trim()}>
 			{addingCategory ? 'Adding…' : '+ Add'}
 		</button>
@@ -301,17 +282,6 @@
 		font-size: 11px;
 		color: var(--text-muted);
 		width: 16px;
-	}
-	.private-toggle {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 11px;
-		color: var(--text-secondary);
-		white-space: nowrap;
-	}
-	.private-toggle input {
-		width: auto;
 	}
 	.name {
 		font-size: 13px;

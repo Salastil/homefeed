@@ -12,7 +12,6 @@ export interface CategoryPriority {
 	name: string;
 	priorityRank: number;
 	isDefault: boolean;
-	isPrivate: boolean;
 }
 
 export interface AdminSettings {

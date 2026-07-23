@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db } from './index.js';
 import type { MergedArticle } from './types.js';
-import { listPrivateCategoryNames } from './categories.js';
 
 function rowToArticle(row: any): MergedArticle {
 	return {
@@ -71,29 +70,16 @@ export function allArticlesNewestFirst(): MergedArticle[] {
 	return rows.map(rowToArticle);
 }
 
-export function queryFeed(
-	filters: {
-		category?: string;
-		geo?: string;
-		eventId?: string;
-		tag?: string;
-		before?: string;
-		limit?: number;
-	},
-	includePrivate = false
-): MergedArticle[] {
+export function queryFeed(filters: {
+	category?: string;
+	geo?: string;
+	eventId?: string;
+	tag?: string;
+	before?: string;
+	limit?: number;
+}): MergedArticle[] {
 	let sql = 'SELECT * FROM merged_articles WHERE 1=1';
 	const params: unknown[] = [];
-
-	// Without a valid private-access cookie, an article belonging to ANY private
-	// category is excluded entirely — including from a public category it's also
-	// tagged with, so a private source can't leak in sideways through a shared tag.
-	if (!includePrivate) {
-		for (const name of listPrivateCategoryNames()) {
-			sql += ' AND category NOT LIKE ?';
-			params.push(`%"${name}"%`);
-		}
-	}
 
 	// The bare feed (no category/geo/eventId/tag — i.e. the homepage/"Top stories") only
 	// shows articles whose contributing source(s) opted into "Push to Top Stories?" —
