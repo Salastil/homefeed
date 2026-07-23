@@ -71,6 +71,12 @@ export interface AiStatus {
 	gpu: string;
 }
 
+export interface TelegramStatus {
+	credentialsConfigured: boolean;
+	connected: boolean;
+	phone: string | null;
+}
+
 export interface LogEntry {
 	id: number;
 	timestamp: string;

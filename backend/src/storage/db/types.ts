@@ -24,6 +24,9 @@ export interface TweetMediaItem {
 	height: number | null;
 }
 
+/** Same shape as TweetMediaItem — distinct name for readability at Telegram call sites. */
+export type TelegramMediaItem = TweetMediaItem;
+
 export interface ContentItem {
 	id: string;
 	sourceId: string;
@@ -43,6 +46,14 @@ export interface ContentItem {
 	clusterId: string | null;
 	/** Nitter-sourced items only — null for everything else. */
 	tweet: { id: string; authorName: string; authorHandle: string; avatarUrl: string | null; media: TweetMediaItem[] } | null;
+	/** Telegram-sourced items only — null for everything else. */
+	telegramMessage: {
+		channelName: string;
+		channelUsername: string;
+		channelAvatarUrl: string | null;
+		messageId: string;
+		media: TelegramMediaItem[];
+	} | null;
 	raw: unknown;
 }
 
@@ -61,6 +72,14 @@ export interface MergedArticle {
 	video: { url: string; provider?: string; embedUrl?: string; sourceItemId: string } | null;
 	/** Nitter-sourced articles only — the embed card's author info and attached media (see TweetCard.svelte). Never set alongside video. */
 	tweet: { authorName: string; authorHandle: string; avatarUrl: string | null; sourceItemId: string; media: TweetMediaItem[] } | null;
+	/** Telegram-sourced articles only — the embed card's channel info and attached media (see TelegramCard.svelte). Never set alongside video. */
+	telegramMessage: {
+		channelName: string;
+		channelUsername: string;
+		channelAvatarUrl: string | null;
+		sourceItemId: string;
+		media: TelegramMediaItem[];
+	} | null;
 	category: string[];
 	geo: string | null;
 	eventId: string | null;

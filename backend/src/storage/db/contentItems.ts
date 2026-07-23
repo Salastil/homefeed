@@ -21,6 +21,7 @@ function rowToItem(row: any): ContentItem {
 		eventId: row.event_id,
 		clusterId: row.cluster_id,
 		tweet: row.tweet ? JSON.parse(row.tweet) : null,
+		telegramMessage: row.telegram_message ? JSON.parse(row.telegram_message) : null,
 		raw: row.raw ? JSON.parse(row.raw) : null
 	};
 }
@@ -29,8 +30,8 @@ export function insertContentItem(item: Omit<ContentItem, 'id'>): ContentItem {
 	const id = `ci-${randomUUID()}`;
 	db.prepare(
 		`INSERT INTO content_items
-		 (id, source_id, type, title, summary, body, images, videos, link, published_at, fetched_at, tags, geo, embedding, event_id, cluster_id, tweet, raw)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		 (id, source_id, type, title, summary, body, images, videos, link, published_at, fetched_at, tags, geo, embedding, event_id, cluster_id, tweet, telegram_message, raw)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		id,
 		item.sourceId,
@@ -49,6 +50,7 @@ export function insertContentItem(item: Omit<ContentItem, 'id'>): ContentItem {
 		item.eventId,
 		item.clusterId,
 		item.tweet ? JSON.stringify(item.tweet) : null,
+		item.telegramMessage ? JSON.stringify(item.telegramMessage) : null,
 		item.raw ? JSON.stringify(item.raw) : null
 	);
 	return { ...item, id };

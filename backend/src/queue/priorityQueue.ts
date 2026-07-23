@@ -77,11 +77,14 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 	const items = contentItemsDb.unclusteredItemsExcludingSources(eventSourceIds);
 	if (items.length === 0) return 0;
 
-	// YouTube videos and Nitter tweets never get LLM-merged with anything else — each
-	// is always its own article, same shape whether the AI service is up or not. Route
-	// them straight to publishDirect, same as the no-AI passthrough path.
+	// YouTube videos, Nitter tweets, and Telegram messages never get LLM-merged with
+	// anything else — each is always its own article, same shape whether the AI service
+	// is up or not. Route them straight to publishDirect, same as the no-AI passthrough path.
 	const directPublishSourceIds = new Set(
-		sourcesDb.listSources().filter((s) => s.type === 'youtube' || s.type === 'nitter').map((s) => s.id)
+		sourcesDb
+			.listSources()
+			.filter((s) => s.type === 'youtube' || s.type === 'nitter' || s.type === 'telegram')
+			.map((s) => s.id)
 	);
 	const [directItems, mergeableItems] = partition(items, (item) => directPublishSourceIds.has(item.sourceId));
 

@@ -11,6 +11,7 @@ import { registerAdminRoutes } from './api/admin.js';
 import { registerMediaProxy } from './api/mediaProxy.js';
 import { registerPrivateAccess, privateAccessConfigured } from './api/privateAccess.js';
 import { startScheduler } from './queue/scheduler.js';
+import { initFromSavedSession } from './telegram/client.js';
 import { logger } from './storage/db/logs.js';
 
 const PORT = Number(process.env.PORT) || 4000;
@@ -32,6 +33,7 @@ function printApiKeyBanner() {
 async function main() {
 	migrate();
 	printApiKeyBanner();
+	await initFromSavedSession();
 
 	const app = Fastify({ logger: false });
 

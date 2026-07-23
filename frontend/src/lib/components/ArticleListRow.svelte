@@ -3,6 +3,7 @@
 	import { timeAgo, exactTime, excerpt } from '$lib/format';
 	import { resolveMediaUrl } from '$lib/config';
 	import TweetCard from './TweetCard.svelte';
+	import TelegramCard from './TelegramCard.svelte';
 
 	let { article }: { article: MergedArticle } = $props();
 
@@ -15,6 +16,8 @@
 
 {#if article.tweet}
 	<TweetCard {article} />
+{:else if article.telegramMessage}
+	<TelegramCard {article} />
 {:else}
 	<a class="row" href={`/article/${article.id}`}>
 		{#if article.heroImage}

@@ -1,5 +1,6 @@
 import * as sourcesDb from '../storage/db/sources.js';
 import * as contentItemsDb from '../storage/db/contentItems.js';
+import { attachToContentItem } from '../storage/media/index.js';
 import { logger } from '../storage/db/logs.js';
 import { rssAdapter } from './adapters/rss.js';
 import { telegramAdapter } from './adapters/telegram.js';
@@ -47,7 +48,10 @@ async function pollOne(source: Source): Promise<number> {
 
 			const finalItem = FOLLOWS_LINK_FOR_FULL_ARTICLE.includes(source.type) ? await withFullArticle(item) : item;
 
-			contentItemsDb.insertContentItem(toContentItem(source, finalItem));
+			const created = contentItemsDb.insertContentItem(toContentItem(source, finalItem));
+			if (finalItem.telegramMediaAssetIds?.length) {
+				attachToContentItem(finalItem.telegramMediaAssetIds, created.id);
+			}
 			ingested++;
 		}
 		sourcesDb.markPolled(source.id, null);

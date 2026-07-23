@@ -3,7 +3,7 @@ import type { InferenceProvider } from '../inference/provider.js';
 import type { Cluster } from './clustering.js';
 import { synthesizeArticle } from './synthesis.js';
 import { selectBestImage, faviconUrlFor } from './image-selection.js';
-import { downloadAndStore, promoteToPublished } from '../storage/media/index.js';
+import { downloadAndStore, promoteToPublished, mediaIdsForContentItem } from '../storage/media/index.js';
 import { logger } from '../storage/db/logs.js';
 import * as articles from '../storage/db/articles.js';
 import * as tags from '../storage/db/tags.js';
@@ -143,9 +143,10 @@ export async function publishDirect(item: ContentItem, settings: GlobalSettings)
 	const category = uniqueCategories([item]);
 	const storedMediaIds: string[] = [];
 
-	// Tweets never get a "hero image" — TweetCard.svelte renders tweet.media directly.
+	// Tweets and Telegram messages never get a "hero image" — their own card components
+	// render tweet.media / telegramMessage.media directly.
 	let heroImage: MergedArticle['heroImage'] = null;
-	if (!item.tweet) {
+	if (!item.tweet && !item.telegramMessage) {
 		const resolved = await resolveHeroImage([item], item.link);
 		heroImage = resolved.heroImage;
 		if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
@@ -174,12 +175,29 @@ export async function publishDirect(item: ContentItem, settings: GlobalSettings)
 		};
 	}
 
+	// Telegram media (attached photos/videos and the channel avatar) is already
+	// downloaded and self-hosted by the adapter at ingestion time — there's no separate
+	// media-mode resolution step the way Nitter has; just find those already-stored
+	// assets by content item id and promote them alongside everything else below.
+	let telegramMessage: MergedArticle['telegramMessage'] = null;
+	if (item.telegramMessage) {
+		storedMediaIds.push(...mediaIdsForContentItem(item.id));
+		telegramMessage = {
+			channelName: item.telegramMessage.channelName,
+			channelUsername: item.telegramMessage.channelUsername,
+			channelAvatarUrl: item.telegramMessage.channelAvatarUrl,
+			sourceItemId: item.id,
+			media: item.telegramMessage.media
+		};
+	}
+
 	const article = await articles.insertArticle({
 		title: item.title,
 		body: item.body || item.summary,
 		heroImage,
 		video,
 		tweet,
+		telegramMessage,
 		category,
 		geo: item.geo,
 		eventId: item.eventId,
@@ -282,6 +300,7 @@ export async function publishCluster(
 		heroImage,
 		video,
 		tweet: null, // tweets never reach clustering — see priorityQueue.ts's direct-publish bypass
+		telegramMessage: null, // telegram messages never reach clustering either — same bypass
 		category,
 		geo,
 		eventId: opts.eventId ?? items[0]?.eventId ?? null,

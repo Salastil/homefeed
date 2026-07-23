@@ -17,6 +17,9 @@ export interface TweetMediaItem {
 	height: number | null;
 }
 
+/** Same shape as TweetMediaItem — distinct name for readability at Telegram call sites. */
+export type TelegramMediaItem = TweetMediaItem;
+
 export interface MergedArticle {
 	id: string;
 	title: string;
@@ -24,6 +27,13 @@ export interface MergedArticle {
 	heroImage: { url: string; sourceItemId: string; selectionReason: string } | null;
 	video: { url: string; provider?: string; embedUrl?: string; sourceItemId: string } | null;
 	tweet: { authorName: string; authorHandle: string; avatarUrl: string | null; sourceItemId: string; media: TweetMediaItem[] } | null;
+	telegramMessage: {
+		channelName: string;
+		channelUsername: string;
+		channelAvatarUrl: string | null;
+		sourceItemId: string;
+		media: TelegramMediaItem[];
+	} | null;
 	category: string[];
 	geo: string | null;
 	eventId: string | null;

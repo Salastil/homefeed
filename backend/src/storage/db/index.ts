@@ -59,6 +59,7 @@ export function migrate() {
 			event_id TEXT,
 			cluster_id TEXT, -- set once assigned to a cluster awaiting synthesis
 			tweet TEXT, -- JSON {id, authorName, authorHandle, avatarUrl}, nitter-sourced items only
+			telegram_message TEXT, -- JSON {channelName, channelUsername, channelAvatarUrl, messageId, media}, telegram-sourced items only
 			raw TEXT -- JSON, original payload
 		);
 		CREATE INDEX IF NOT EXISTS idx_content_items_source ON content_items(source_id);
@@ -84,7 +85,8 @@ export function migrate() {
 			previous_article_id TEXT,
 			next_article_id TEXT,
 			top_stories INTEGER NOT NULL DEFAULT 0, -- true if any contributing source opted into "Push to Top Stories?"
-			tweet TEXT -- JSON {authorName, authorHandle, avatarUrl, sourceItemId}, nitter-sourced articles only
+			tweet TEXT, -- JSON {authorName, authorHandle, avatarUrl, sourceItemId}, nitter-sourced articles only
+			telegram_message TEXT -- JSON {channelName, channelUsername, channelAvatarUrl, sourceItemId, media}, telegram-sourced articles only
 		);
 		CREATE INDEX IF NOT EXISTS idx_articles_published ON merged_articles(published_at);
 		CREATE INDEX IF NOT EXISTS idx_articles_thread ON merged_articles(thread_id);
@@ -172,7 +174,24 @@ export function migrate() {
 			nitter_media_mode TEXT NOT NULL DEFAULT 'proxy', -- self-host | proxy | direct
 			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com'
 		);
+
+		-- Singleton row (see storage/crypto.ts) — encrypted Telegram API credentials and
+		-- the resulting login session. Deliberately its own table, not part of
+		-- global_settings, so these encrypted blobs never ride along in the generic
+		-- GET /api/admin/settings payload.
+		CREATE TABLE IF NOT EXISTS telegram_credentials (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			api_id_enc TEXT,
+			api_hash_enc TEXT,
+			session_enc TEXT,
+			phone_enc TEXT
+		);
 	`);
+
+	const existingTelegramCreds = db.prepare('SELECT id FROM telegram_credentials WHERE id = 1').get();
+	if (!existingTelegramCreds) {
+		db.prepare('INSERT INTO telegram_credentials (id) VALUES (1)').run();
+	}
 
 	// Seed the singleton settings row if it doesn't exist yet.
 	const existing = db.prepare('SELECT id FROM global_settings WHERE id = 1').get();
@@ -206,6 +225,12 @@ export function migrate() {
 	}
 	if (!hasColumn('categories', 'is_private')) {
 		db.exec('ALTER TABLE categories ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
+	}
+	if (!hasColumn('content_items', 'telegram_message')) {
+		db.exec('ALTER TABLE content_items ADD COLUMN telegram_message TEXT');
+	}
+	if (!hasColumn('merged_articles', 'telegram_message')) {
+		db.exec('ALTER TABLE merged_articles ADD COLUMN telegram_message TEXT');
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

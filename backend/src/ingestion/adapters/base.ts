@@ -1,4 +1,4 @@
-import type { Source, ContentItem, TweetMediaItem } from '../../storage/db/types.js';
+import type { Source, ContentItem, TweetMediaItem, TelegramMediaItem } from '../../storage/db/types.js';
 import { cleanHtml, toSummary } from '../clean.js';
 
 export interface FetchedItem {
@@ -11,6 +11,24 @@ export interface FetchedItem {
 	publishedAt: string;
 	/** Set by the Nitter adapter only — carries the tweet's author info through to ContentItem.tweet. */
 	tweet?: { id: string; authorName: string; authorHandle: string; avatarUrl: string | null; media: TweetMediaItem[] };
+	/** Set by the Telegram adapter only — carries the channel/message info through to ContentItem.telegramMessage. */
+	telegramMessage?: {
+		channelName: string;
+		channelUsername: string;
+		channelAvatarUrl: string | null;
+		messageId: string;
+		media: TelegramMediaItem[];
+	};
+	/**
+	 * Set by the Telegram adapter only — media_assets row IDs already downloaded and
+	 * self-hosted at fetch time (before this item's ContentItem even exists, since the
+	 * authenticated Telegram access producing them could disappear later). Not part of
+	 * ContentItem itself — poller.ts uses this right after insertContentItem to attach
+	 * these rows to the real content item id (see storage/media/index.ts's
+	 * attachToContentItem), so publishDirect can later find and promote them via
+	 * mediaIdsForContentItem without threading ids through the JSON blob.
+	 */
+	telegramMediaAssetIds?: string[];
 	raw: unknown;
 }
 
@@ -43,6 +61,7 @@ export function toContentItem(source: Source, item: FetchedItem): Omit<ContentIt
 		eventId: null,
 		clusterId: null,
 		tweet: item.tweet ? { ...item.tweet } : null,
+		telegramMessage: item.telegramMessage ? { ...item.telegramMessage } : null,
 		raw: item.raw
 	};
 }

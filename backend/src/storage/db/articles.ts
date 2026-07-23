@@ -23,7 +23,8 @@ function rowToArticle(row: any): MergedArticle {
 		previousArticleId: row.previous_article_id,
 		nextArticleId: row.next_article_id,
 		topStories: !!row.top_stories,
-		tweet: row.tweet ? JSON.parse(row.tweet) : null
+		tweet: row.tweet ? JSON.parse(row.tweet) : null,
+		telegramMessage: row.telegram_message ? JSON.parse(row.telegram_message) : null
 	};
 }
 
@@ -31,8 +32,8 @@ export function insertArticle(article: Omit<MergedArticle, 'id'>): MergedArticle
 	const id = `art-${randomUUID()}`;
 	db.prepare(
 		`INSERT INTO merged_articles
-		 (id, title, body, hero_image, video, category, geo, event_id, source_count, sources, published_at, updated_at, merge_confidence, tags, thread_id, previous_article_id, next_article_id, top_stories, tweet)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		 (id, title, body, hero_image, video, category, geo, event_id, source_count, sources, published_at, updated_at, merge_confidence, tags, thread_id, previous_article_id, next_article_id, top_stories, tweet, telegram_message)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		id,
 		article.title,
@@ -52,7 +53,8 @@ export function insertArticle(article: Omit<MergedArticle, 'id'>): MergedArticle
 		article.previousArticleId,
 		article.nextArticleId,
 		article.topStories ? 1 : 0,
-		article.tweet ? JSON.stringify(article.tweet) : null
+		article.tweet ? JSON.stringify(article.tweet) : null,
+		article.telegramMessage ? JSON.stringify(article.telegramMessage) : null
 	);
 	if (article.previousArticleId) {
 		db.prepare('UPDATE merged_articles SET next_article_id = ? WHERE id = ?').run(id, article.previousArticleId);
