@@ -155,6 +155,8 @@ export interface MergedArticle {
 	nextArticleId: string | null;
 	/** True if any contributing source opted into "Push to Top Stories?" — gates the homepage feed, see articles.queryFeed. */
 	topStories: boolean;
+	/** True only for the AI-written periodic summary of a tracked event (see eventsRecap.ts) — distinguishes it from the individual articles published under the same eventId. */
+	isRecap: boolean;
 }
 
 export interface Tag {
@@ -174,6 +176,8 @@ export interface TrackedEvent {
 	name: string;
 	description: string;
 	sourceIds: string[];
+	/** Only items whose title/summary/body contain at least one of these (case-insensitive) qualify for this event — empty means "match everything from sourceIds", the original behavior. */
+	keywords: string[];
 	cadence: 'continuous' | 'daily' | 'hourly' | 'custom';
 	cadenceTime: string | null;
 	active: boolean;

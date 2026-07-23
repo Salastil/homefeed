@@ -17,6 +17,10 @@
 
 <article>
 	<div class="meta">
+		{#if a.isRecap}
+			<span>🧵 AI Recap</span>
+			<span>&middot;</span>
+		{/if}
 		{#if a.sourceCount > 1}
 			<span>⇄ Merged from {a.sourceCount} sources</span>
 			<span>&middot;</span>

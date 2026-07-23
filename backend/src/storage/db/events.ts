@@ -8,6 +8,7 @@ function rowToEvent(row: any): TrackedEvent {
 		name: row.name,
 		description: row.description,
 		sourceIds: JSON.parse(row.source_ids),
+		keywords: JSON.parse(row.keywords),
 		cadence: row.cadence,
 		cadenceTime: row.cadence_time,
 		active: !!row.active,
@@ -15,6 +16,21 @@ function rowToEvent(row: any): TrackedEvent {
 		lastRecapAt: row.last_recap_at,
 		createdAt: row.created_at
 	};
+}
+
+/**
+ * Whether an item qualifies for a tracked event's keyword filter — empty keywords
+ * means "match everything" (the original, filter-less behavior). Matching is a plain
+ * case-insensitive substring check against title+summary+body; works the same for a
+ * word/phrase ("Tehran") or an emoji ("🇮🇷", which has no case to fold).
+ */
+export function itemMatchesEventKeywords(
+	item: { title: string; summary: string; body: string | null },
+	keywords: string[]
+): boolean {
+	if (keywords.length === 0) return true;
+	const haystack = `${item.title} ${item.summary} ${item.body ?? ''}`.toLowerCase();
+	return keywords.some((k) => haystack.includes(k.toLowerCase()));
 }
 
 export function listEvents(): TrackedEvent[] {
@@ -36,13 +52,14 @@ export function createEvent(input: Partial<TrackedEvent>): TrackedEvent {
 	const id = `evt-${randomUUID()}`;
 	const now = new Date().toISOString();
 	db.prepare(
-		`INSERT INTO tracked_events (id, name, description, source_ids, cadence, cadence_time, active, retention_override_days, last_recap_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
+		`INSERT INTO tracked_events (id, name, description, source_ids, keywords, cadence, cadence_time, active, retention_override_days, last_recap_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
 	).run(
 		id,
 		input.name ?? 'Untitled event',
 		input.description ?? '',
 		JSON.stringify(input.sourceIds ?? []),
+		JSON.stringify(input.keywords ?? []),
 		input.cadence ?? 'continuous',
 		input.cadenceTime ?? null,
 		input.active === false ? 0 : 1,
@@ -57,11 +74,12 @@ export function updateEvent(id: string, patch: Partial<TrackedEvent>): TrackedEv
 	if (!existing) return null;
 	const merged = { ...existing, ...patch };
 	db.prepare(
-		`UPDATE tracked_events SET name=?, description=?, source_ids=?, cadence=?, cadence_time=?, active=?, retention_override_days=?, last_recap_at=? WHERE id=?`
+		`UPDATE tracked_events SET name=?, description=?, source_ids=?, keywords=?, cadence=?, cadence_time=?, active=?, retention_override_days=?, last_recap_at=? WHERE id=?`
 	).run(
 		merged.name,
 		merged.description,
 		JSON.stringify(merged.sourceIds),
+		JSON.stringify(merged.keywords),
 		merged.cadence,
 		merged.cadenceTime,
 		merged.active ? 1 : 0,

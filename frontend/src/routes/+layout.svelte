@@ -30,12 +30,18 @@
 	// isn't itself a filterable category — it always means "everything, chronological",
 	// i.e. the homepage. Every other admin-defined category gets its own /category/:slug
 	// page. See MergeTab's category priority list for where these are managed.
-	const navItems = $derived(
-		data.categories.map((cat) => ({
+	//
+	// A tracked event is a displayed category too, just backed by a source+keyword
+	// filter instead of manual per-source category checkboxes, and periodically
+	// AI-recapped — see EventsTab.svelte. Active ones get their own /event/:id tab,
+	// appended after the regular categories.
+	const navItems = $derived([
+		...data.categories.map((cat) => ({
 			label: cat.name,
 			href: cat.name.toLowerCase() === 'top stories' ? '/' : `/category/${slugify(cat.name)}`
-		}))
-	);
+		})),
+		...data.events.map((event) => ({ label: event.name, href: `/event/${event.id}` }))
+	]);
 
 	function isActive(href: string): boolean {
 		if (href === '/') return $page.url.pathname === '/';

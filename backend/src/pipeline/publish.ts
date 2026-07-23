@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { InferenceProvider } from '../inference/provider.js';
 import type { Cluster } from './clustering.js';
-import { synthesizeArticle } from './synthesis.js';
+import { synthesizeArticle, synthesizeRecap } from './synthesis.js';
 import { selectBestImage, faviconUrlFor } from './image-selection.js';
 import { downloadAndStore, promoteToPublished, storeMediaBuffer } from '../storage/media/index.js';
 import { downloadMessageMedia, downloadChannelAvatar } from '../telegram/client.js';
@@ -16,7 +16,8 @@ import type {
 	TweetMediaItem,
 	QuotedTweet,
 	TelegramMediaItem,
-	TelegramMediaRef
+	TelegramMediaRef,
+	TrackedEvent
 } from '../storage/db/types.js';
 
 const FOLLOW_UP_LOOKBACK_DAYS = 3;
@@ -233,7 +234,11 @@ async function resolveQuotedTweet(
  * tag-based thread detection — but these earlier articles aren't retroactively
  * rewritten or merged with anything after the fact.
  */
-export async function publishDirect(item: ContentItem, settings: GlobalSettings): Promise<MergedArticle> {
+export async function publishDirect(
+	item: ContentItem,
+	settings: GlobalSettings,
+	opts: { eventId?: string } = {}
+): Promise<MergedArticle> {
 	const category = uniqueCategories([item]);
 	const storedMediaIds: string[] = [];
 
@@ -315,7 +320,7 @@ export async function publishDirect(item: ContentItem, settings: GlobalSettings)
 		telegramMessage,
 		category,
 		geo: item.geo,
-		eventId: item.eventId,
+		eventId: opts.eventId ?? item.eventId,
 		sourceCount: 1,
 		sources: [
 			{
@@ -334,7 +339,8 @@ export async function publishDirect(item: ContentItem, settings: GlobalSettings)
 		threadId: randomUUID(),
 		previousArticleId: null,
 		nextArticleId: null,
-		topStories: anyPushesToTopStories([item])
+		topStories: anyPushesToTopStories([item]),
+		isRecap: false
 	});
 
 	for (const id of storedMediaIds) promoteToPublished(id, article.id);
@@ -428,7 +434,8 @@ export async function publishCluster(
 		threadId,
 		previousArticleId,
 		nextArticleId: null,
-		topStories: anyPushesToTopStories(items)
+		topStories: anyPushesToTopStories(items),
+		isRecap: false
 	});
 
 	if (storedMediaId) {
@@ -436,4 +443,58 @@ export async function publishCluster(
 	}
 
 	return article;
+}
+
+/**
+ * Builds the periodic AI recap for a tracked event — a standalone summary article of
+ * everything published under this event since the last recap, additive alongside those
+ * individual articles rather than replacing or consuming them (see eventsRecap.ts).
+ * Deliberately much lighter than publishCluster: no embedding/clustering, no follow-up
+ * thread detection (each recap stands alone), hero image and sources are just carried
+ * over from the constituent articles rather than re-resolved from raw content items.
+ */
+export async function publishEventRecap(
+	provider: InferenceProvider,
+	settings: GlobalSettings,
+	event: TrackedEvent,
+	constituents: MergedArticle[]
+): Promise<MergedArticle> {
+	const { body, tagLabels } = await synthesizeRecap(provider, settings.selectedModels.synthesis, event.name, constituents);
+
+	const resolvedTags = [];
+	for (const label of tagLabels) {
+		try {
+			const embedding = await provider.embed(label, { model: settings.selectedModels.embedding });
+			resolvedTags.push(tags.resolveOrCreateTag(label, embedding, settings.tagDedupThreshold));
+		} catch (err) {
+			logger.error('events', `Tag embedding failed for "${label}": ${(err as Error).message}`);
+		}
+	}
+
+	const category = [...new Set(constituents.flatMap((a) => a.category))];
+	const heroImage = constituents.find((a) => a.heroImage)?.heroImage ?? null;
+	const now = new Date().toISOString();
+
+	return articles.insertArticle({
+		title: `${event.name}: recap`,
+		body,
+		heroImage,
+		video: null,
+		tweet: null,
+		telegramMessage: null,
+		category,
+		geo: constituents.find((a) => a.geo)?.geo ?? null,
+		eventId: event.id,
+		sourceCount: constituents.flatMap((a) => a.sources).length,
+		sources: constituents.flatMap((a) => a.sources),
+		publishedAt: now,
+		updatedAt: now,
+		mergeConfidence: 1.0,
+		tags: resolvedTags.map((t) => t.id),
+		threadId: randomUUID(),
+		previousArticleId: null,
+		nextArticleId: null,
+		topStories: constituents.some((a) => a.topStories),
+		isRecap: true
+	});
 }

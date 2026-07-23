@@ -24,7 +24,8 @@ function rowToArticle(row: any): MergedArticle {
 		nextArticleId: row.next_article_id,
 		topStories: !!row.top_stories,
 		tweet: row.tweet ? JSON.parse(row.tweet) : null,
-		telegramMessage: row.telegram_message ? JSON.parse(row.telegram_message) : null
+		telegramMessage: row.telegram_message ? JSON.parse(row.telegram_message) : null,
+		isRecap: !!row.is_recap
 	};
 }
 
@@ -32,8 +33,8 @@ export function insertArticle(article: Omit<MergedArticle, 'id'>): MergedArticle
 	const id = `art-${randomUUID()}`;
 	db.prepare(
 		`INSERT INTO merged_articles
-		 (id, title, body, hero_image, video, category, geo, event_id, source_count, sources, published_at, updated_at, merge_confidence, tags, thread_id, previous_article_id, next_article_id, top_stories, tweet, telegram_message)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		 (id, title, body, hero_image, video, category, geo, event_id, source_count, sources, published_at, updated_at, merge_confidence, tags, thread_id, previous_article_id, next_article_id, top_stories, tweet, telegram_message, is_recap)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		id,
 		article.title,
@@ -54,7 +55,8 @@ export function insertArticle(article: Omit<MergedArticle, 'id'>): MergedArticle
 		article.nextArticleId,
 		article.topStories ? 1 : 0,
 		article.tweet ? JSON.stringify(article.tweet) : null,
-		article.telegramMessage ? JSON.stringify(article.telegramMessage) : null
+		article.telegramMessage ? JSON.stringify(article.telegramMessage) : null,
+		article.isRecap ? 1 : 0
 	);
 	if (article.previousArticleId) {
 		db.prepare('UPDATE merged_articles SET next_article_id = ? WHERE id = ?').run(id, article.previousArticleId);
@@ -130,6 +132,14 @@ export function queryFeed(
 	sql += ' ORDER BY published_at DESC LIMIT ?';
 	params.push(Math.min(filters.limit ?? 15, 50));
 	const rows = db.prepare(sql).all(...(params as any[]));
+	return rows.map(rowToArticle);
+}
+
+/** Individual (non-recap) articles published under a tracked event since a timestamp — the recap job's input, see eventsRecap.ts. */
+export function articlesForEventSince(eventId: string, since: string): MergedArticle[] {
+	const rows = db
+		.prepare('SELECT * FROM merged_articles WHERE event_id = ? AND is_recap = 0 AND published_at > ? ORDER BY published_at')
+		.all(eventId, since);
 	return rows.map(rowToArticle);
 }
 

@@ -28,6 +28,10 @@
 
 		<div class="content">
 			<div class="meta">
+				{#if article.isRecap}
+					<span>🧵 AI Recap</span>
+					<span>&middot;</span>
+				{/if}
 				<span>{article.category[0] ?? ''}</span>
 				<span>&middot;</span>
 				<span>{sourceLabel}</span>

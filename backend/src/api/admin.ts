@@ -4,15 +4,23 @@ import * as sourcesDb from '../storage/db/sources.js';
 import * as eventsDb from '../storage/db/events.js';
 import * as categoriesDb from '../storage/db/categories.js';
 import { clearSourceContent, reissueSourceContent, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
+import { totalStorageBytes } from '../storage/media/index.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import { pollSourceNow } from '../ingestion/poller.js';
 import { logger, listLogs } from '../storage/db/logs.js';
 import * as telegramClient from '../telegram/client.js';
 
+// Not part of GlobalSettings itself (nothing to persist) — computed fresh on every
+// settings read/write so the Retention tab's "currently using" line and usage bar
+// always reflect the real total, not whatever was true when the row was last saved.
+function withStorageUsed(settings: ReturnType<typeof settingsDb.getSettings>) {
+	return { ...settings, retention: { ...settings.retention, storageUsedMB: Math.round(totalStorageBytes() / (1024 * 1024)) } };
+}
+
 export async function registerAdminRoutes(app: FastifyInstance) {
 	// --- Settings ---
 	app.get('/api/admin/settings', async () => {
-		const settings = settingsDb.getSettings();
+		const settings = withStorageUsed(settingsDb.getSettings());
 		return { ...settings, categoryPriority: categoriesDb.listCategories() };
 	});
 
@@ -22,7 +30,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 			categoriesDb.setCategoryOrder(body.categoryPriority);
 			delete body.categoryPriority;
 		}
-		const settings = settingsDb.updateSettings(body);
+		const settings = withStorageUsed(settingsDb.updateSettings(body));
 		return { ...settings, categoryPriority: categoriesDb.listCategories() };
 	});
 
