@@ -3,7 +3,7 @@ import * as settingsDb from '../storage/db/settings.js';
 import * as sourcesDb from '../storage/db/sources.js';
 import * as eventsDb from '../storage/db/events.js';
 import * as categoriesDb from '../storage/db/categories.js';
-import { clearSourceContent, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
+import { clearSourceContent, reissueSourceContent, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import { pollSourceNow } from '../ingestion/poller.js';
 import { logger, listLogs } from '../storage/db/logs.js';
@@ -93,6 +93,17 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const ingested = await pollSourceNow(source);
 		logger.info('poller', `Manual poll of "${source.name}" — ${ingested} new item(s)`);
 		return { ingested, source: sourcesDb.getSource(id) };
+	});
+
+	// Deletes this source's already-published articles and requeues their raw items for
+	// re-publish (see contentCascade.reissueSourceContent) — for picking up pipeline
+	// changes (e.g. a new tweet card layout) without waiting on the feed to resurface
+	// the same items again.
+	app.post('/api/admin/sources/:id/reissue', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		const source = sourcesDb.getSource(id);
+		if (!source) return reply.code(404).send({ error: 'not found' });
+		return reissueSourceContent(id);
 	});
 
 	// --- Tracked events ---
