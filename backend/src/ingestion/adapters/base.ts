@@ -1,4 +1,4 @@
-import type { Source, ContentItem, TweetMediaItem } from '../../storage/db/types.js';
+import type { Source, ContentItem, TweetMediaItem, QuotedTweet } from '../../storage/db/types.js';
 import { cleanHtml, toSummary } from '../clean.js';
 
 export interface FetchedItem {
@@ -10,7 +10,15 @@ export interface FetchedItem {
 	link: string;
 	publishedAt: string;
 	/** Set by the Nitter adapter only — carries the tweet's author info through to ContentItem.tweet. */
-	tweet?: { id: string; authorName: string; authorHandle: string; avatarUrl: string | null; media: TweetMediaItem[] };
+	tweet?: {
+		id: string;
+		authorName: string;
+		authorHandle: string;
+		avatarUrl: string | null;
+		media: TweetMediaItem[];
+		repostedByHandle: string | null;
+		quotedTweet: QuotedTweet | null;
+	};
 	raw: unknown;
 }
 

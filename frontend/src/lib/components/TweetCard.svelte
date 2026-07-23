@@ -26,9 +26,19 @@
 		e.preventDefault();
 		window.open(resolveMediaUrl(url), '_blank', 'noopener,noreferrer');
 	}
+
+	// The nested quoted-tweet frame opens its own permalink — a Nitter URL already, not
+	// backend-hosted media, so no resolveMediaUrl needed here.
+	function openQuoted(e: MouseEvent, link: string) {
+		e.preventDefault();
+		window.open(link, '_blank', 'noopener,noreferrer');
+	}
 </script>
 
 <a class="tweet-card" href={tweetUrl} target="_blank" rel="noreferrer">
+	{#if article.tweet?.repostedByHandle}
+		<div class="repost-line">🔁 Reposted by @{article.tweet.repostedByHandle}</div>
+	{/if}
 	<div class="meta">
 		<span>{article.category[0] ?? ''}</span>
 		<span>&middot;</span>
@@ -72,6 +82,20 @@
 			{/each}
 		</div>
 	{/if}
+	{#if article.tweet?.quotedTweet}
+		{@const quoted = article.tweet.quotedTweet}
+		<div class="quote-label">↩️ Replying to @{quoted.authorHandle}</div>
+		<button type="button" class="quoted-card" onclick={(e) => openQuoted(e, quoted.link)}>
+			<div class="quoted-author-row">
+				<span class="quoted-name">{quoted.authorName}</span>
+				<span class="quoted-handle">@{quoted.authorHandle}</span>
+			</div>
+			<div class="quoted-text">{quoted.text}</div>
+			{#if quoted.imageUrl}
+				<img class="quoted-img" src={resolveMediaUrl(quoted.imageUrl)} alt="" loading="lazy" />
+			{/if}
+		</button>
+	{/if}
 	<div class="time">{timeAgo(article.publishedAt)} &middot; {exactTime(article.publishedAt)}</div>
 </a>
 
@@ -88,6 +112,12 @@
 	.tweet-card:hover {
 		text-decoration: none;
 		border-color: var(--border-accent);
+	}
+	.repost-line {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-secondary);
+		margin-bottom: 10px;
 	}
 	.meta {
 		font-size: 11px;
@@ -181,6 +211,61 @@
 		object-fit: cover;
 		display: block;
 		background: var(--surface-1);
+	}
+	/* Nested inside the same outer frame — deliberately lighter-weight than the card
+	   itself (no independent hover border, tighter radius, tinted background instead of
+	   its own border-forward "card" look) so it reads as inset content, not a second card. */
+	.quote-label {
+		font-size: 11.5px;
+		font-weight: 600;
+		color: var(--text-secondary);
+		margin-bottom: 6px;
+	}
+	.quoted-card {
+		display: block;
+		width: 100%;
+		text-align: left;
+		border: none;
+		border-radius: 8px;
+		padding: 10px;
+		margin-bottom: 8px;
+		background: var(--surface-1);
+		color: inherit;
+		cursor: pointer;
+	}
+	.quoted-author-row {
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
+		margin-bottom: 3px;
+	}
+	.quoted-name {
+		font-size: 12.5px;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+	.quoted-handle {
+		font-size: 12px;
+		color: var(--text-muted);
+	}
+	.quoted-text {
+		font-size: 12.5px;
+		line-height: 1.45;
+		color: var(--text-secondary);
+		white-space: pre-line;
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	.quoted-img {
+		width: 100%;
+		max-height: 140px;
+		object-fit: cover;
+		border-radius: 6px;
+		margin-top: 6px;
+		display: block;
+		background: var(--surface-2);
 	}
 	.time {
 		font-size: 11px;
