@@ -11,7 +11,7 @@ import type { Source, TweetMediaItem, QuotedTweet } from '../../storage/db/types
 import type { SourceAdapter, FetchedItem } from './base.js';
 import { logger } from '../../storage/db/logs.js';
 import { getSettings } from '../../storage/db/settings.js';
-import { cleanHtml, toSummary } from '../clean.js';
+import { cleanHtml } from '../clean.js';
 
 /** fxtwitter caps a tweet at 4 attached photos/videos/gifs, in tweet display order. */
 const MAX_TWEET_MEDIA = 4;
@@ -136,7 +136,7 @@ function extractQuotedTweet(descriptionHtml: string): QuotedTweet | null {
 	return {
 		authorName: authorMatch[1].trim(),
 		authorHandle: authorMatch[2].trim(),
-		text: toSummary(cleanHtml(beforeFooter), 240),
+		text: cleanHtml(beforeFooter),
 		imageUrl: extractImageUrl(inner),
 		link: linkMatch[1]
 	};

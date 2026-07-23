@@ -253,10 +253,6 @@
 		line-height: 1.45;
 		color: var(--text-secondary);
 		white-space: pre-line;
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
 	}
 	.quoted-img {
 		width: 100%;
