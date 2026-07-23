@@ -28,6 +28,7 @@ export interface AdminSettings {
 	selectedModels: { embedding: string; image: string; synthesis: string };
 	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
 	fxtwitterBaseUrl: string;
+	telegramMediaMode: 'self-host' | 'proxy';
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
 }
@@ -69,6 +70,12 @@ export interface AiStatus {
 	port: number;
 	ramGB: number;
 	gpu: string;
+}
+
+export interface TelegramStatus {
+	credentialsConfigured: boolean;
+	connected: boolean;
+	phone: string | null;
 }
 
 export interface LogEntry {

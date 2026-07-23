@@ -15,6 +15,7 @@ function rowToSettings(row: any): GlobalSettings {
 		selectedModels: JSON.parse(row.selected_models),
 		nitterMediaMode: row.nitter_media_mode,
 		fxtwitterBaseUrl: row.fxtwitter_base_url,
+		telegramMediaMode: row.telegram_media_mode,
 		retention: {
 			publishedArticleMaxAgeDays: row.published_article_max_age_days,
 			rawItemMaxAgeDays: row.raw_item_max_age_days,
@@ -43,7 +44,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			merge_strictness=?, default_poll_interval_minutes=?, hold_before_publish_minutes=?,
 			tag_dedup_threshold=?, tag_expiry_days=?, follow_up_min_hours_since_last=?, follow_up_min_new_sources=?,
 			ai_service_host=?, ai_service_port=?, selected_models=?,
-			nitter_media_mode=?, fxtwitter_base_url=?,
+			nitter_media_mode=?, fxtwitter_base_url=?, telegram_media_mode=?,
 			published_article_max_age_days=?, raw_item_max_age_days=?,
 			storage_cap_enabled=?, storage_cap_value=?, storage_cap_unit=?
 		 WHERE id = 1`
@@ -60,6 +61,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		JSON.stringify(merged.selectedModels),
 		merged.nitterMediaMode,
 		merged.fxtwitterBaseUrl,
+		merged.telegramMediaMode,
 		merged.retention.publishedArticleMaxAgeDays,
 		merged.retention.rawItemMaxAgeDays,
 		merged.retention.storageCapEnabled ? 1 : 0,

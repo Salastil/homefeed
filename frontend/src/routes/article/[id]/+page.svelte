@@ -3,6 +3,7 @@
 	import { timeAgo, exactTime } from '$lib/format';
 	import { resolveMediaUrl } from '$lib/config';
 	import TweetCard from '$lib/components/TweetCard.svelte';
+	import TelegramCard from '$lib/components/TelegramCard.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const a = $derived(data.article);
@@ -35,6 +36,18 @@
 
 		{#if a.sources[0]}
 			<a class="view-original" href={a.sources[0].link} target="_blank" rel="noreferrer">View original tweet →</a>
+		{/if}
+	{:else if a.telegramMessage}
+		<!-- Telegram messages have no separate "full article" concept either — same
+		     reasoning as tweets above. -->
+		<div class="dates">
+			<span>Published {timeAgo(a.publishedAt)} &middot; {exactTime(a.publishedAt)}</span>
+		</div>
+
+		<TelegramCard article={a} />
+
+		{#if a.sources[0]}
+			<a class="view-original" href={a.sources[0].link} target="_blank" rel="noreferrer">View original message on Telegram →</a>
 		{/if}
 	{:else if a.video?.provider === 'youtube'}
 		<h1>{a.title}</h1>

@@ -26,6 +26,9 @@ export interface QuotedTweet {
 	link: string;
 }
 
+/** Same shape as TweetMediaItem — distinct name for readability at Telegram call sites. */
+export type TelegramMediaItem = TweetMediaItem;
+
 export interface MergedArticle {
 	id: string;
 	title: string;
@@ -40,6 +43,14 @@ export interface MergedArticle {
 		media: TweetMediaItem[];
 		repostedByHandle: string | null;
 		quotedTweet: QuotedTweet | null;
+	} | null;
+	telegramMessage: {
+		channelName: string;
+		channelUsername: string | null;
+		channelAvatarUrl: string | null;
+		sourceItemId: string;
+		media: TelegramMediaItem[];
+		repostedByHandle: string | null;
 	} | null;
 	category: string[];
 	geo: string | null;

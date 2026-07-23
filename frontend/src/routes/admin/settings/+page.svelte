@@ -46,7 +46,7 @@
 	{:else if active === 'events'}
 		<EventsTab events={data.events} sources={data.sources} />
 	{:else if active === 'connections'}
-		<ConnectionsTab settings={data.settings} aiStatus={data.aiStatus} />
+		<ConnectionsTab settings={data.settings} aiStatus={data.aiStatus} telegramStatus={data.telegramStatus} />
 	{:else if active === 'logs'}
 		<LogsTab logs={data.logs} />
 	{/if}

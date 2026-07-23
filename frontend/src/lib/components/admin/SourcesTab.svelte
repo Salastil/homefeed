@@ -202,6 +202,8 @@
 				<input placeholder="Channel URL (@handle or /channel/UC…), or channel ID" bind:value={form.channelId} />
 			{:else if form.type === 'nitter'}
 				<input placeholder="Nitter list/user RSS feed URL" bind:value={form.url} />
+			{:else if form.type === 'telegram'}
+				<input placeholder="Channel username (e.g. @channelname) or t.me/channelname link" bind:value={form.url} />
 			{:else}
 				<input placeholder="URL or channel" bind:value={form.url} />
 			{/if}
@@ -211,6 +213,9 @@
 				<option value={60}>Every hour</option>
 			</select>
 		</div>
+		{#if form.type === 'telegram'}
+			<span class="hint">Public channels only for now — private channels without a public username aren't supported yet.</span>
+		{/if}
 		<div class="categories-label">Categories</div>
 		<div class="category-checks">
 			{#each assignableCategories as cat (cat.id)}

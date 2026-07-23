@@ -29,24 +29,40 @@ export async function downloadAndStore(
 		const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(10_000) });
 		if (!res.ok) return null;
 		const buffer = Buffer.from(await res.arrayBuffer());
-
 		const ext = guessExtension(res.headers.get('content-type') ?? '', sourceUrl);
-		const id = randomUUID();
-		const filename = `${id}${ext}`;
-		const localPath = path.join(MEDIA_DIR, filename);
-		fs.writeFileSync(localPath, buffer);
-
-		db.prepare(
-			`INSERT INTO media_assets (id, source_url, local_path, size_bytes, downloaded_at, tier, content_item_id, article_id)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-		).run(id, sourceUrl, localPath, buffer.length, new Date().toISOString(), tier, refs.contentItemId ?? null, refs.articleId ?? null);
-
-		return { id, localPath, servedPath: `/media/${filename}`, sizeBytes: buffer.length };
+		return storeMediaBuffer(buffer, ext, sourceUrl, tier, refs);
 	} catch (err) {
 		logger.error('media', `Failed to download ${sourceUrl}: ${(err as Error).message}`);
 		return null;
 	}
 }
+
+/**
+ * Writes an already-downloaded buffer to disk and records it in media_assets — the
+ * common tail of downloadAndStore, extracted so the Telegram adapter (which downloads
+ * media itself via the authenticated GramJS session rather than a plain fetch()) can
+ * reuse the same storage/bookkeeping logic.
+ */
+export function storeMediaBuffer(
+	buffer: Buffer,
+	ext: string,
+	sourceUrl: string,
+	tier: 'candidate' | 'published',
+	refs: { contentItemId?: string; articleId?: string }
+): StoredMedia {
+	const id = randomUUID();
+	const filename = `${id}${ext}`;
+	const localPath = path.join(MEDIA_DIR, filename);
+	fs.writeFileSync(localPath, buffer);
+
+	db.prepare(
+		`INSERT INTO media_assets (id, source_url, local_path, size_bytes, downloaded_at, tier, content_item_id, article_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	).run(id, sourceUrl, localPath, buffer.length, new Date().toISOString(), tier, refs.contentItemId ?? null, refs.articleId ?? null);
+
+	return { id, localPath, servedPath: `/media/${filename}`, sizeBytes: buffer.length };
+}
+
 
 /** Promotes a candidate-tier asset to published-tier so raw-item retention can no longer prune it. */
 export function promoteToPublished(mediaId: string, articleId: string) {

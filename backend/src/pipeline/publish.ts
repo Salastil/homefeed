@@ -3,12 +3,21 @@ import type { InferenceProvider } from '../inference/provider.js';
 import type { Cluster } from './clustering.js';
 import { synthesizeArticle } from './synthesis.js';
 import { selectBestImage, faviconUrlFor } from './image-selection.js';
-import { downloadAndStore, promoteToPublished } from '../storage/media/index.js';
+import { downloadAndStore, promoteToPublished, storeMediaBuffer } from '../storage/media/index.js';
+import { downloadMessageMedia, downloadChannelAvatar } from '../telegram/client.js';
 import { logger } from '../storage/db/logs.js';
 import * as articles from '../storage/db/articles.js';
 import * as tags from '../storage/db/tags.js';
 import * as sources from '../storage/db/sources.js';
-import type { GlobalSettings, MergedArticle, ContentItem, TweetMediaItem, QuotedTweet } from '../storage/db/types.js';
+import type {
+	GlobalSettings,
+	MergedArticle,
+	ContentItem,
+	TweetMediaItem,
+	QuotedTweet,
+	TelegramMediaItem,
+	TelegramMediaRef
+} from '../storage/db/types.js';
 
 const FOLLOW_UP_LOOKBACK_DAYS = 3;
 
@@ -129,6 +138,81 @@ async function resolveTweetMedia(
 	return { media: resolved, storedMediaIds };
 }
 
+function guessTelegramExtension(mimeType: string | null, kind: 'photo' | 'video' | 'gif'): string {
+	if (mimeType?.includes('png')) return '.png';
+	if (mimeType?.includes('webp')) return '.webp';
+	if (mimeType?.includes('jpeg') || mimeType?.includes('jpg')) return '.jpg';
+	if (mimeType?.includes('mp4')) return '.mp4';
+	return kind === 'photo' ? '.jpg' : '.mp4';
+}
+
+/**
+ * Resolves a single Telegram media reference into a servable url per the admin's
+ * chosen telegramMediaMode (Retention tab). Unlike Nitter — which starts from an
+ * already-public CDN URL — Telegram media only exists behind the authenticated MTProto
+ * session, so there's no 'direct' hotlink option: 'self-host' downloads it now (via the
+ * live session) and stores it locally exactly like every other self-hosted image;
+ * 'proxy' doesn't touch Telegram at all here, it just builds a url the live
+ * telegram-proxy route resolves (via that same session) on each view.
+ */
+async function resolveTelegramMediaUrl(
+	channelUsername: string,
+	ref: TelegramMediaRef,
+	mode: GlobalSettings['telegramMediaMode']
+): Promise<{ item: TelegramMediaItem; storedMediaId: string | null } | null> {
+	if (mode === 'proxy') {
+		const url = `/media/telegram-proxy?channel=${encodeURIComponent(channelUsername)}&message=${encodeURIComponent(ref.messageId)}&type=${ref.type}`;
+		return { item: { type: ref.type, url, thumbnailUrl: null, width: ref.width, height: ref.height }, storedMediaId: null };
+	}
+
+	try {
+		const buffer = await downloadMessageMedia(channelUsername, ref.messageId);
+		if (!buffer) return null;
+		const ext = guessTelegramExtension(ref.mimeType, ref.type);
+		const stored = storeMediaBuffer(buffer, ext, `telegram-message:${channelUsername}:${ref.messageId}`, 'published', {});
+		return { item: { type: ref.type, url: stored.servedPath, thumbnailUrl: null, width: ref.width, height: ref.height }, storedMediaId: stored.id };
+	} catch (err) {
+		logger.error('telegram', `Failed to self-host media for message ${ref.messageId}: ${(err as Error).message}`);
+		return null;
+	}
+}
+
+/** Resolves every attached photo/video/gif ref for one message — order preserved, failed items dropped rather than leaving a broken entry. */
+async function resolveTelegramMedia(
+	channelUsername: string,
+	refs: TelegramMediaRef[],
+	mode: GlobalSettings['telegramMediaMode']
+): Promise<{ media: TelegramMediaItem[]; storedMediaIds: string[] }> {
+	const media: TelegramMediaItem[] = [];
+	const storedMediaIds: string[] = [];
+	for (const ref of refs) {
+		const resolved = await resolveTelegramMediaUrl(channelUsername, ref, mode);
+		if (resolved) {
+			media.push(resolved.item);
+			if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
+		}
+	}
+	return { media, storedMediaIds };
+}
+
+async function resolveTelegramAvatarUrl(
+	channelUsername: string,
+	mode: GlobalSettings['telegramMediaMode']
+): Promise<{ url: string | null; storedMediaId: string | null }> {
+	if (mode === 'proxy') {
+		return { url: `/media/telegram-proxy?channel=${encodeURIComponent(channelUsername)}&avatar=1`, storedMediaId: null };
+	}
+	try {
+		const buffer = await downloadChannelAvatar(channelUsername);
+		if (!buffer) return { url: null, storedMediaId: null };
+		const stored = storeMediaBuffer(buffer, '.jpg', `telegram-avatar:${channelUsername}`, 'published', {});
+		return { url: stored.servedPath, storedMediaId: stored.id };
+	} catch (err) {
+		logger.error('telegram', `Failed to self-host avatar for "${channelUsername}": ${(err as Error).message}`);
+		return { url: null, storedMediaId: null };
+	}
+}
+
 /** Resolves a quote-tweet's embedded image (if any) through the Nitter media mode, same as any other tweet media. */
 async function resolveQuotedTweet(
 	quoted: QuotedTweet,
@@ -153,9 +237,10 @@ export async function publishDirect(item: ContentItem, settings: GlobalSettings)
 	const category = uniqueCategories([item]);
 	const storedMediaIds: string[] = [];
 
-	// Tweets never get a "hero image" — TweetCard.svelte renders tweet.media directly.
+	// Tweets and Telegram messages never get a "hero image" — their own card components
+	// render tweet.media / telegramMessage.media directly.
 	let heroImage: MergedArticle['heroImage'] = null;
-	if (!item.tweet) {
+	if (!item.tweet && !item.telegramMessage) {
 		const resolved = await resolveHeroImage([item], item.link);
 		heroImage = resolved.heroImage;
 		if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
@@ -194,12 +279,40 @@ export async function publishDirect(item: ContentItem, settings: GlobalSettings)
 		};
 	}
 
+	let telegramMessage: MergedArticle['telegramMessage'] = null;
+	if (item.telegramMessage) {
+		const { channelUsername, sourceChannelUsername } = item.telegramMessage;
+
+		// The avatar shown is whoever is DISPLAYED (the origin channel on a forward) — if
+		// that has no public handle, there's no avatar to fetch at all, regardless of mode.
+		const avatar = channelUsername
+			? await resolveTelegramAvatarUrl(channelUsername, settings.telegramMediaMode)
+			: { url: null, storedMediaId: null };
+		if (avatar.storedMediaId) storedMediaIds.push(avatar.storedMediaId);
+
+		// Attached media always lives on the polled channel's own copy of the message
+		// (forward or not), so media resolution uses sourceChannelUsername, never the
+		// (possibly different, possibly null) displayed channelUsername.
+		const resolvedMedia = await resolveTelegramMedia(sourceChannelUsername, item.telegramMessage.media, settings.telegramMediaMode);
+		storedMediaIds.push(...resolvedMedia.storedMediaIds);
+
+		telegramMessage = {
+			channelName: item.telegramMessage.channelName,
+			channelUsername,
+			channelAvatarUrl: avatar.url,
+			sourceItemId: item.id,
+			media: resolvedMedia.media,
+			repostedByHandle: item.telegramMessage.repostedByHandle
+		};
+	}
+
 	const article = await articles.insertArticle({
 		title: item.title,
 		body: item.body || item.summary,
 		heroImage,
 		video,
 		tweet,
+		telegramMessage,
 		category,
 		geo: item.geo,
 		eventId: item.eventId,
@@ -302,6 +415,7 @@ export async function publishCluster(
 		heroImage,
 		video,
 		tweet: null, // tweets never reach clustering — see priorityQueue.ts's direct-publish bypass
+		telegramMessage: null, // telegram messages never reach clustering either — same bypass
 		category,
 		geo,
 		eventId: opts.eventId ?? items[0]?.eventId ?? null,

@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageLoad } from './$types';
-import { getSettings, getSources, getEvents, getModels, getAiStatus, getLogs } from '$lib/adminApi';
-import type { ModelCatalog, AiStatus } from '$lib/adminTypes';
+import { getSettings, getSources, getEvents, getModels, getAiStatus, getTelegramStatus, getLogs } from '$lib/adminApi';
+import type { ModelCatalog, AiStatus, TelegramStatus } from '$lib/adminTypes';
 
 const EMPTY_MODELS: ModelCatalog = { embedding: [], image: [], synthesis: [] };
 
@@ -24,7 +24,11 @@ export const load: PageLoad = async ({ fetch }) => {
 			// swallow — surfaced instead via aiStatus.connected in the UI
 		}
 
-		return { settings, sources, events, models, aiStatus, logs };
+		const telegramStatus: TelegramStatus = await getTelegramStatus(fetch).catch(
+			() => ({ credentialsConfigured: false, connected: false, phone: null })
+		);
+
+		return { settings, sources, events, models, aiStatus, telegramStatus, logs };
 	} catch (err) {
 		if ((err as { status?: number }).status === 401) {
 			throw redirect(302, '/admin/login?redirectTo=/admin/settings');

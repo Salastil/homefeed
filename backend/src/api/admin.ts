@@ -7,6 +7,7 @@ import { clearSourceContent, reissueSourceContent, clearAllArticles, clearAllMed
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import { pollSourceNow } from '../ingestion/poller.js';
 import { logger, listLogs } from '../storage/db/logs.js';
+import * as telegramClient from '../telegram/client.js';
 
 export async function registerAdminRoutes(app: FastifyInstance) {
 	// --- Settings ---
@@ -146,6 +147,51 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const provider = new OllamaProvider(settings.aiServiceHost, settings.aiServicePort);
 		const connected = await provider.isReachable();
 		return { connected, host: settings.aiServiceHost, port: settings.aiServicePort, ramGB: null, gpu: null };
+	});
+
+	// --- Telegram account (Connections tab — see telegram/client.ts and credentials.ts.
+	// API ID/hash and the resulting login session are stored encrypted at rest; none of
+	// these routes ever echo them back to the client.) ---
+	app.get('/api/admin/telegram/status', async () => telegramClient.getStatus());
+
+	app.post('/api/admin/telegram/credentials', async (req, reply) => {
+		const { apiId, apiHash } = req.body as { apiId?: number; apiHash?: string };
+		if (!apiId || !apiHash) return reply.code(400).send({ error: 'apiId and apiHash are required' });
+		telegramClient.saveApiCredentials(apiId, apiHash);
+		return { credentialsConfigured: true };
+	});
+
+	app.post('/api/admin/telegram/login/start', async (req, reply) => {
+		const { phoneNumber } = req.body as { phoneNumber?: string };
+		if (!phoneNumber) return reply.code(400).send({ error: 'phoneNumber is required' });
+		try {
+			await telegramClient.startLogin(phoneNumber);
+			return { phase: 'code-sent' };
+		} catch (err) {
+			return reply.code(400).send({ error: (err as Error).message });
+		}
+	});
+
+	app.post('/api/admin/telegram/login/verify', async (req, reply) => {
+		const { code, password } = req.body as { code?: string; password?: string };
+		try {
+			if (password !== undefined) {
+				await telegramClient.verifyPassword(password);
+				return { phase: 'connected', ...telegramClient.getStatus() };
+			}
+			if (code !== undefined) {
+				const phase = await telegramClient.verifyCode(code);
+				return phase === 'connected' ? { phase, ...telegramClient.getStatus() } : { phase };
+			}
+			return reply.code(400).send({ error: 'code or password is required' });
+		} catch (err) {
+			return reply.code(400).send({ error: (err as Error).message });
+		}
+	});
+
+	app.post('/api/admin/telegram/logout', async (_req, reply) => {
+		await telegramClient.logout();
+		return reply.code(200).send(telegramClient.getStatus());
 	});
 
 	// --- Logs ---

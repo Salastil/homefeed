@@ -6,6 +6,7 @@ import type {
 	AdminTrackedEvent,
 	ModelCatalog,
 	AiStatus,
+	TelegramStatus,
 	LogEntry
 } from './adminTypes';
 
@@ -119,6 +120,43 @@ export const getModels = (fetchFn?: typeof fetch) =>
 
 export const getAiStatus = (fetchFn?: typeof fetch) =>
 	request<AiStatus>('/api/admin/ai-status', {}, fetchFn);
+
+// Telegram account (Connections tab) — API ID/hash and the resulting login session are
+// stored encrypted at rest server-side (see backend telegram/credentials.ts); none of
+// these ever come back from the server, only status flags.
+export const getTelegramStatus = (fetchFn?: typeof fetch) =>
+	request<TelegramStatus>('/api/admin/telegram/status', {}, fetchFn);
+
+export const saveTelegramCredentials = (apiId: number, apiHash: string, fetchFn?: typeof fetch) =>
+	request<{ credentialsConfigured: boolean }>(
+		'/api/admin/telegram/credentials',
+		{ method: 'POST', body: JSON.stringify({ apiId, apiHash }) },
+		fetchFn
+	);
+
+export const startTelegramLogin = (phoneNumber: string, fetchFn?: typeof fetch) =>
+	request<{ phase: 'code-sent' }>(
+		'/api/admin/telegram/login/start',
+		{ method: 'POST', body: JSON.stringify({ phoneNumber }) },
+		fetchFn
+	);
+
+export const verifyTelegramCode = (code: string, fetchFn?: typeof fetch) =>
+	request<{ phase: 'connected' | 'password-needed'; connected?: boolean; phone?: string | null }>(
+		'/api/admin/telegram/login/verify',
+		{ method: 'POST', body: JSON.stringify({ code }) },
+		fetchFn
+	);
+
+export const verifyTelegramPassword = (password: string, fetchFn?: typeof fetch) =>
+	request<{ phase: 'connected'; connected?: boolean; phone?: string | null }>(
+		'/api/admin/telegram/login/verify',
+		{ method: 'POST', body: JSON.stringify({ password }) },
+		fetchFn
+	);
+
+export const telegramLogout = (fetchFn?: typeof fetch) =>
+	request<TelegramStatus>('/api/admin/telegram/logout', { method: 'POST' }, fetchFn);
 
 // Logs
 export const getLogs = (filters: { level?: 'info' | 'warn' | 'error'; limit?: number } = {}, fetchFn?: typeof fetch) => {

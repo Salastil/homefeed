@@ -1,4 +1,10 @@
-import type { Source, ContentItem, TweetMediaItem, QuotedTweet } from '../../storage/db/types.js';
+import type {
+	Source,
+	ContentItem,
+	TweetMediaItem,
+	QuotedTweet,
+	TelegramMediaRef
+} from '../../storage/db/types.js';
 import { cleanHtml, toSummary } from '../clean.js';
 
 export interface FetchedItem {
@@ -18,6 +24,15 @@ export interface FetchedItem {
 		media: TweetMediaItem[];
 		repostedByHandle: string | null;
 		quotedTweet: QuotedTweet | null;
+	};
+	/** Set by the Telegram adapter only — carries the channel/message info through to ContentItem.telegramMessage. Media is unresolved refs; publish.ts resolves them per the admin's configured telegramMediaMode. */
+	telegramMessage?: {
+		channelName: string;
+		channelUsername: string | null;
+		sourceChannelUsername: string;
+		messageId: string;
+		media: TelegramMediaRef[];
+		repostedByHandle: string | null;
 	};
 	raw: unknown;
 }
@@ -51,6 +66,7 @@ export function toContentItem(source: Source, item: FetchedItem): Omit<ContentIt
 		eventId: null,
 		clusterId: null,
 		tweet: item.tweet ? { ...item.tweet } : null,
+		telegramMessage: item.telegramMessage ? { ...item.telegramMessage } : null,
 		raw: item.raw
 	};
 }
