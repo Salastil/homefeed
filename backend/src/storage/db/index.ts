@@ -308,9 +308,9 @@ export function migrate() {
 	const tickerCount = db.prepare('SELECT COUNT(*) as c FROM stock_tickers').get() as { c: number };
 	if (tickerCount.c === 0) {
 		const defaults: [string, string][] = [
-			['Dow Jones', '^dji'],
-			['S&P 500', '^spx'],
-			['Bitcoin', 'btcusd']
+			['Dow Jones', '^DJI'],
+			['S&P 500', '^GSPC'],
+			['Bitcoin', 'BTC-USD']
 		];
 		const stmt = db.prepare(
 			'INSERT INTO stock_tickers (id, label, symbol, priority_rank, created_at) VALUES (?, ?, ?, ?, ?)'
@@ -318,6 +318,19 @@ export function migrate() {
 		defaults.forEach(([label, symbol], i) => {
 			stmt.run(`stk-${symbol.replace(/[^a-z0-9]+/gi, '-')}`, label, symbol, i + 1, new Date().toISOString());
 		});
+	}
+
+	// Stocks switched data providers from Stooq (walled off behind a proof-of-work
+	// challenge) to Yahoo Finance, which uses different symbol syntax — rewrites only
+	// rows still holding exactly one of the three old Stooq-format default symbols we
+	// ourselves seeded, never touching a symbol the admin typed in themselves.
+	const stooqToYahooSymbols: [string, string][] = [
+		['^dji', '^DJI'],
+		['^spx', '^GSPC'],
+		['btcusd', 'BTC-USD']
+	];
+	for (const [oldSymbol, newSymbol] of stooqToYahooSymbols) {
+		db.prepare('UPDATE stock_tickers SET symbol = ? WHERE symbol = ?').run(newSymbol, oldSymbol);
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

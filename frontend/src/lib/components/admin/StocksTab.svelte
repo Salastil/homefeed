@@ -49,16 +49,16 @@
 	<div class="add-panel">
 		<div class="add-grid">
 			<input placeholder="Label, e.g. Apple" bind:value={newTicker.label} />
-			<input placeholder="Stooq symbol, e.g. aapl.us" bind:value={newTicker.symbol} />
+			<input placeholder="Yahoo symbol, e.g. AAPL" bind:value={newTicker.symbol} />
 		</div>
 		<div class="add-actions">
 			<button onclick={() => (showAdd = false)}>Cancel</button>
 			<button class="primary" onclick={handleAdd}>Create</button>
 		</div>
 		<p class="hint">
-			Stooq has no symbol search, so type the exact syntax: indices use a caret (^dji, ^spx),
-			stocks use a country suffix (aapl.us), crypto pairs have none (btcusd). Polled every 15
-			minutes; a new ticker is polled immediately.
+			Yahoo Finance has no symbol search, so type the exact syntax: stocks are plain tickers
+			(AAPL), indices use a caret (^DJI, ^GSPC), crypto pairs use a dash (BTC-USD). Polled
+			every 15 minutes; a new ticker is polled immediately.
 		</p>
 	</div>
 {/if}
