@@ -56,6 +56,16 @@
 		{ label: '°F', value: 'fahrenheit' },
 		{ label: '°C', value: 'celsius' }
 	];
+
+	const windUnits: { label: string; value: 'mph' | 'kph' }[] = [
+		{ label: 'mph', value: 'mph' },
+		{ label: 'kph', value: 'kph' }
+	];
+
+	const pressureUnits: { label: string; value: 'inHg' | 'hPa' }[] = [
+		{ label: 'inHg', value: 'inHg' },
+		{ label: 'hPa', value: 'hPa' }
+	];
 </script>
 
 <div class="panel">
@@ -96,7 +106,8 @@
 		</span>
 	</div>
 
-	<div class="pill-row" style="margin-top: 10px;">
+	<div class="field-label">Temperature</div>
+	<div class="pill-row">
 		{#each units as unit}
 			<button
 				class="pill"
@@ -111,10 +122,42 @@
 		{/each}
 	</div>
 
+	<div class="field-label">Wind speed</div>
+	<div class="pill-row">
+		{#each windUnits as unit}
+			<button
+				class="pill"
+				class:active={weather.windUnit === unit.value}
+				onclick={() => {
+					weather.windUnit = unit.value;
+					scheduleSave();
+				}}
+			>
+				{unit.label}
+			</button>
+		{/each}
+	</div>
+
+	<div class="field-label">Pressure</div>
+	<div class="pill-row">
+		{#each pressureUnits as unit}
+			<button
+				class="pill"
+				class:active={weather.pressureUnit === unit.value}
+				onclick={() => {
+					weather.pressureUnit = unit.value;
+					scheduleSave();
+				}}
+			>
+				{unit.label}
+			</button>
+		{/each}
+	</div>
+
 	<p class="hint" style="margin-top: 14px; margin-bottom: 0;">
 		{#if weather.current}
-			Currently showing: {Math.round(weather.current.temp)}° · {weather.current.conditionText}
-			(updated {timeAgo(weather.updatedAt ?? '')})
+			Currently showing: {Math.round(weather.current.temp)}° (feels like {Math.round(weather.current.feelsLike)}°) ·
+			{weather.current.conditionText} (updated {timeAgo(weather.updatedAt ?? '')})
 		{:else}
 			Not showing any data yet — configure a location above, it polls immediately.
 		{/if}
@@ -175,6 +218,11 @@
 	.usage-label {
 		font-size: 12px;
 		color: var(--text-muted);
+	}
+	.field-label {
+		font-size: 11px;
+		color: var(--text-muted);
+		margin: 12px 0 6px;
 	}
 	.pill-row {
 		display: flex;

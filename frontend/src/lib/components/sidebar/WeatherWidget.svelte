@@ -5,13 +5,14 @@
 </script>
 
 <a class="widget" href="/weather">
-	<span class="title">Weather</span>
+	<span class="title">Weather{weather.locationName ? ` - ${weather.locationName}` : ''}</span>
 	{#if weather.current}
 		<div class="body">
 			<span class="icon">{weather.current.icon}</span>
 			<div class="readout">
 				<span class="temp">{Math.round(weather.current.temp)}°{weather.unit === 'celsius' ? 'C' : 'F'}</span>
 				<span class="condition">{weather.current.conditionText}</span>
+				<span class="feels-like">Feels like {Math.round(weather.current.feelsLike)}°</span>
 			</div>
 		</div>
 	{:else}
@@ -32,9 +33,13 @@
 		background: var(--surface-2);
 	}
 	.title {
+		display: block;
 		font-size: 12px;
 		font-weight: 500;
 		color: var(--text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.body {
 		display: flex;
@@ -57,6 +62,10 @@
 	.condition {
 		font-size: 12px;
 		color: var(--text-secondary);
+	}
+	.feels-like {
+		font-size: 11px;
+		color: var(--text-muted);
 	}
 	.empty {
 		font-size: 12px;

@@ -20,11 +20,58 @@
 	<div class="current">
 		<span class="icon">{weather.current.icon}</span>
 		<div class="readout">
-			<span class="temp">{Math.round(weather.current.temp)}°{unitLabel}</span>
+			<div class="temp-row">
+				<span class="temp">{Math.round(weather.current.temp)}°{unitLabel}</span>
+				<span class="feels-like">Feels like {Math.round(weather.current.feelsLike)}°</span>
+			</div>
 			<span class="condition">{weather.current.conditionText}</span>
 			<span class="updated">Updated {timeAgo(weather.updatedAt ?? '')}</span>
 		</div>
 	</div>
+
+	<div class="conditions-grid">
+		<div class="stat">
+			<span class="stat-label">Humidity</span>
+			<span class="stat-value">{weather.current.humidity}%</span>
+		</div>
+		<div class="stat">
+			<span class="stat-label">Precip. chance</span>
+			<span class="stat-value">{weather.current.precipitationChance}%</span>
+		</div>
+		<div class="stat">
+			<span class="stat-label">Wind</span>
+			<span class="stat-value">{weather.current.windDirection} {Math.round(weather.current.windSpeed)} {weather.windUnit}</span>
+		</div>
+		<div class="stat">
+			<span class="stat-label">Pressure</span>
+			<span class="stat-value">{weather.current.pressure} {weather.pressureUnit}</span>
+		</div>
+		<div class="stat">
+			<span class="stat-label">Sunrise</span>
+			<span class="stat-value">{new Date(weather.current.sunrise).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+		</div>
+		<div class="stat">
+			<span class="stat-label">Sunset</span>
+			<span class="stat-value">{new Date(weather.current.sunset).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+		</div>
+	</div>
+
+	{#if weather.alerts.length > 0}
+		<div class="section">
+			<span class="section-title">Weather alerts</span>
+			<div class="alerts-list">
+				{#each weather.alerts as alert (alert.id)}
+					<div class="alert-row severity-{alert.severity.toLowerCase()}">
+						<div class="alert-head">
+							<span class="alert-event">{alert.event}</span>
+							<span class="alert-expires">Until {new Date(alert.expires).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+						</div>
+						<p class="alert-headline">{alert.headline}</p>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
 
 	<div class="section">
 		<span class="section-title">Hourly</span>
@@ -88,9 +135,18 @@
 		display: flex;
 		flex-direction: column;
 	}
+	.temp-row {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+	}
 	.temp {
 		font-size: 40px;
 		font-weight: 500;
+	}
+	.feels-like {
+		font-size: 13px;
+		color: var(--text-muted);
 	}
 	.condition {
 		font-size: 15px;
@@ -101,6 +157,29 @@
 		color: var(--text-muted);
 		margin-top: 4px;
 	}
+	.conditions-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+		gap: 16px;
+		max-width: 640px;
+		margin-bottom: 28px;
+		padding: 16px;
+		background: var(--surface-1);
+		border-radius: 12px;
+	}
+	.stat {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.stat-label {
+		font-size: 11px;
+		color: var(--text-muted);
+	}
+	.stat-value {
+		font-size: 15px;
+		font-weight: 500;
+	}
 	.section {
 		margin-bottom: 28px;
 	}
@@ -110,18 +189,55 @@
 		font-weight: 500;
 		margin-bottom: 12px;
 	}
-	.hourly-strip {
+	.alerts-list {
 		display: flex;
-		gap: 18px;
-		overflow-x: auto;
-		padding-bottom: 6px;
+		flex-direction: column;
+		gap: 10px;
+		max-width: 640px;
+	}
+	.alert-row {
+		border-left: 3px solid var(--text-muted);
+		background: var(--surface-1);
+		border-radius: 0 var(--radius) var(--radius) 0;
+		padding: 10px 14px;
+	}
+	.alert-row.severity-extreme,
+	.alert-row.severity-severe {
+		border-left-color: var(--text-danger);
+	}
+	.alert-row.severity-moderate {
+		border-left-color: var(--border-accent);
+	}
+	.alert-head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 10px;
+	}
+	.alert-event {
+		font-size: 13px;
+		font-weight: 500;
+	}
+	.alert-expires {
+		font-size: 11px;
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+	.alert-headline {
+		font-size: 12px;
+		color: var(--text-secondary);
+		margin: 4px 0 0;
+	}
+	.hourly-strip {
+		display: grid;
+		grid-template-columns: repeat(12, 1fr);
+		gap: 14px 8px;
 	}
 	.hour-col {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 4px;
-		flex-shrink: 0;
 	}
 	.hour-time {
 		font-size: 11px;
@@ -132,6 +248,11 @@
 	}
 	.hour-temp {
 		font-size: 13px;
+	}
+	@media (max-width: 640px) {
+		.hourly-strip {
+			grid-template-columns: repeat(6, 1fr);
+		}
 	}
 	.daily-list {
 		display: flex;

@@ -181,9 +181,14 @@ export function migrate() {
 			weather_latitude REAL,
 			weather_longitude REAL,
 			weather_unit TEXT NOT NULL DEFAULT 'fahrenheit', -- celsius | fahrenheit
-			weather_current TEXT, -- JSON {temp, conditionText, icon}, NULL pre-first-poll
+			weather_wind_unit TEXT NOT NULL DEFAULT 'mph', -- mph | kph
+			weather_pressure_unit TEXT NOT NULL DEFAULT 'inHg', -- inHg | hPa
+			-- JSON {temp, feelsLike, conditionText, icon, humidity, precipitationChance,
+			-- windSpeed, windDirection, pressure, sunrise, sunset}, NULL pre-first-poll
+			weather_current TEXT,
 			weather_hourly TEXT NOT NULL DEFAULT '[]', -- JSON array
 			weather_daily TEXT NOT NULL DEFAULT '[]', -- JSON array
+			weather_alerts TEXT NOT NULL DEFAULT '[]', -- JSON array — active NWS alerts for the configured location, US-only (see weather/client.ts)
 			weather_updated_at TEXT -- ISO timestamp, NULL pre-first-poll
 		);
 
@@ -291,6 +296,11 @@ export function migrate() {
 		db.exec("ALTER TABLE global_settings ADD COLUMN weather_hourly TEXT NOT NULL DEFAULT '[]'");
 		db.exec("ALTER TABLE global_settings ADD COLUMN weather_daily TEXT NOT NULL DEFAULT '[]'");
 		db.exec('ALTER TABLE global_settings ADD COLUMN weather_updated_at TEXT');
+	}
+	if (!hasColumn('global_settings', 'weather_wind_unit')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_wind_unit TEXT NOT NULL DEFAULT 'mph'");
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_pressure_unit TEXT NOT NULL DEFAULT 'inHg'");
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_alerts TEXT NOT NULL DEFAULT '[]'");
 	}
 
 	// Seed a handful of sensible default tickers so the Stocks widget isn't empty on a

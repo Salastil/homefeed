@@ -28,10 +28,13 @@ function rowToSettings(row: any): GlobalSettings {
 			latitude: row.weather_latitude,
 			longitude: row.weather_longitude,
 			unit: row.weather_unit,
+			windUnit: row.weather_wind_unit,
+			pressureUnit: row.weather_pressure_unit,
 			// Unlike retention, this is genuinely absent pre-first-poll (and pre-location-config) — null-safe parse.
 			current: row.weather_current ? JSON.parse(row.weather_current) : null,
 			hourly: JSON.parse(row.weather_hourly),
 			daily: JSON.parse(row.weather_daily),
+			alerts: JSON.parse(row.weather_alerts),
 			updatedAt: row.weather_updated_at
 		}
 	};
@@ -60,7 +63,8 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			published_article_max_age_days=?, raw_item_max_age_days=?,
 			storage_cap_enabled=?, storage_cap_value=?, storage_cap_unit=?,
 			weather_location_name=?, weather_latitude=?, weather_longitude=?, weather_unit=?,
-			weather_current=?, weather_hourly=?, weather_daily=?, weather_updated_at=?
+			weather_wind_unit=?, weather_pressure_unit=?,
+			weather_current=?, weather_hourly=?, weather_daily=?, weather_alerts=?, weather_updated_at=?
 		 WHERE id = 1`
 	).run(
 		merged.mergeStrictness,
@@ -85,9 +89,12 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		merged.weather.latitude,
 		merged.weather.longitude,
 		merged.weather.unit,
+		merged.weather.windUnit,
+		merged.weather.pressureUnit,
 		merged.weather.current ? JSON.stringify(merged.weather.current) : null,
 		JSON.stringify(merged.weather.hourly),
 		JSON.stringify(merged.weather.daily),
+		JSON.stringify(merged.weather.alerts),
 		merged.weather.updatedAt
 	);
 	return getSettings();

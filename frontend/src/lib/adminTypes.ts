@@ -31,14 +31,39 @@ export interface WeatherDayEntry {
 	icon: string;
 }
 
+export interface WeatherCurrentConditions {
+	temp: number;
+	feelsLike: number;
+	conditionText: string;
+	icon: string;
+	humidity: number;
+	precipitationChance: number;
+	windSpeed: number;
+	windDirection: string;
+	pressure: number;
+	sunrise: string;
+	sunset: string;
+}
+
+export interface WeatherAlert {
+	id: string;
+	event: string;
+	headline: string;
+	severity: string;
+	expires: string;
+}
+
 export interface AdminWeatherSettings {
 	locationName: string | null;
 	latitude: number | null;
 	longitude: number | null;
 	unit: 'celsius' | 'fahrenheit';
-	current: { temp: number; conditionText: string; icon: string } | null;
+	windUnit: 'mph' | 'kph';
+	pressureUnit: 'inHg' | 'hPa';
+	current: WeatherCurrentConditions | null;
 	hourly: WeatherHourEntry[];
 	daily: WeatherDayEntry[];
+	alerts: WeatherAlert[];
 	updatedAt: string | null;
 }
 

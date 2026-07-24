@@ -272,9 +272,39 @@ export interface GlobalSettings {
 		latitude: number | null;
 		longitude: number | null;
 		unit: 'celsius' | 'fahrenheit';
-		current: { temp: number; conditionText: string; icon: string } | null;
+		windUnit: 'mph' | 'kph';
+		pressureUnit: 'inHg' | 'hPa';
+		current: {
+			temp: number;
+			/** Apparent temperature (Open-Meteo's own heat-index/wind-chill blend) — "Feels like". */
+			feelsLike: number;
+			conditionText: string;
+			icon: string;
+			/** Percent, 0-100. */
+			humidity: number;
+			/** Percent, 0-100 — the current hour's forecast precipitation probability (there's no true instantaneous "chance of rain" measurement). */
+			precipitationChance: number;
+			/** Already in the admin's configured windUnit. */
+			windSpeed: number;
+			/** 8-point compass abbreviation, e.g. "NW". */
+			windDirection: string;
+			/** Already in the admin's configured pressureUnit. */
+			pressure: number;
+			sunrise: string;
+			sunset: string;
+		} | null;
 		hourly: WeatherHourEntry[];
 		daily: WeatherDayEntry[];
+		/** Active NWS alerts (flash flood, hurricane, blizzard, etc.) for the configured location — US-only, empty elsewhere. See weather/client.ts's fetchActiveAlerts. */
+		alerts: WeatherAlert[];
 		updatedAt: string | null;
 	};
+}
+
+export interface WeatherAlert {
+	id: string;
+	event: string;
+	headline: string;
+	severity: string;
+	expires: string;
 }
