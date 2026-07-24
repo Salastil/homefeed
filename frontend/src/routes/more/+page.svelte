@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { timeAgo, slugify } from '$lib/format';
+	import { slugify } from '$lib/format';
+	import ArticleListRow from '$lib/components/ArticleListRow.svelte';
 
 	let { data }: { data: PageData } = $props();
 </script>
@@ -14,12 +15,9 @@
 		{#if section.articles.length > 0}
 			<section class="cat-section">
 				<a class="cat-name" href={`/category/${slugify(section.category.name)}`}>{section.category.name}</a>
-				<div class="preview-list">
+				<div class="list">
 					{#each section.articles as article (article.id)}
-						<a class="preview-row" href={`/article/${article.id}`}>
-							<span class="preview-title">{article.title}</span>
-							<span class="preview-time">{timeAgo(article.publishedAt)}</span>
-						</a>
+						<ArticleListRow {article} />
 					{/each}
 				</div>
 			</section>
@@ -56,36 +54,7 @@
 	.cat-name:hover {
 		color: var(--text-accent);
 	}
-	.preview-list {
-		display: flex;
-		flex-direction: column;
-	}
-	.preview-row {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 8px 0;
-		border-top: 0.5px solid var(--border);
-		color: inherit;
-	}
-	.preview-row:first-child {
-		border-top: none;
-	}
-	.preview-row:hover {
-		text-decoration: none;
-	}
-	.preview-row:hover .preview-title {
-		text-decoration: underline;
-	}
-	.preview-title {
-		font-size: 14px;
-		line-height: 1.4;
-	}
-	.preview-time {
-		font-size: 11px;
-		color: var(--text-muted);
-		white-space: nowrap;
-		flex-shrink: 0;
+	.list {
+		max-width: 720px;
 	}
 </style>

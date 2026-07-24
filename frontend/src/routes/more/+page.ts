@@ -1,7 +1,7 @@
 import type { PageLoad } from './$types';
 import { getFeed } from '$lib/api';
 
-const PREVIEW_COUNT = 4;
+const PREVIEW_COUNT = 5;
 
 // The "More »" nav tab (see +layout.svelte) leads here — one section per spillover
 // category (see MergeTab.svelte's "More" toggle) with its few newest articles, the
