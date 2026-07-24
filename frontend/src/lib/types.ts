@@ -91,3 +91,42 @@ export interface Category {
 	isPrivate: boolean;
 	isSpillover: boolean;
 }
+
+export interface WeatherHourEntry {
+	time: string;
+	temp: number;
+	conditionText: string;
+	icon: string;
+}
+
+export interface WeatherDayEntry {
+	date: string;
+	tempMax: number;
+	tempMin: number;
+	conditionText: string;
+	icon: string;
+}
+
+export interface Weather {
+	locationName: string | null;
+	unit: 'celsius' | 'fahrenheit';
+	current: { temp: number; conditionText: string; icon: string } | null;
+	hourly: WeatherHourEntry[];
+	daily: WeatherDayEntry[];
+	updatedAt: string | null;
+}
+
+export interface StockTicker {
+	id: string;
+	label: string;
+	symbol: string;
+	lastPrice: number | null;
+	lastChangePercent: number | null;
+}
+
+export interface Bookmark {
+	id: string;
+	name: string;
+	url: string;
+	isPrivate: boolean;
+}

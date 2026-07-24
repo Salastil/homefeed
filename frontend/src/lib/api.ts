@@ -1,5 +1,5 @@
 import { getBackendUrl } from './config';
-import type { MergedArticle, Tag, TrackedEventPublic, Category } from './types';
+import type { MergedArticle, Tag, TrackedEventPublic, Category, Weather, StockTicker, Bookmark } from './types';
 
 async function get<T>(path: string, fetchFn: typeof fetch = fetch): Promise<T> {
 	// credentials: 'include' so the private-access cookie (see lib/privateAccess.ts)
@@ -40,4 +40,16 @@ export function getEvents(fetchFn?: typeof fetch): Promise<TrackedEventPublic[]>
 
 export function getCategories(fetchFn?: typeof fetch): Promise<Category[]> {
 	return get<Category[]>('/api/categories', fetchFn);
+}
+
+export function getWeather(fetchFn?: typeof fetch): Promise<Weather> {
+	return get<Weather>('/api/weather', fetchFn);
+}
+
+export function getStocks(fetchFn?: typeof fetch): Promise<StockTicker[]> {
+	return get<StockTicker[]>('/api/stocks', fetchFn);
+}
+
+export function getBookmarks(fetchFn?: typeof fetch): Promise<Bookmark[]> {
+	return get<Bookmark[]>('/api/bookmarks', fetchFn);
 }

@@ -4,6 +4,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import PrivateAccessModal from '$lib/components/PrivateAccessModal.svelte';
+	import Sidebar from '$lib/components/sidebar/Sidebar.svelte';
 	import { logoutPrivateAccess } from '$lib/privateAccess';
 	import { slugify } from '$lib/format';
 	import type { LayoutData } from './$types';
@@ -11,6 +12,11 @@
 	let { children, data }: { children: any; data: LayoutData } = $props();
 
 	let showLoginModal = $state(false);
+
+	// Admin pages already use full page width for their own tab UI — the sidebar's utility
+	// widgets don't belong there, unlike every reader-facing route (home, category,
+	// article, event, more, weather).
+	const showSidebar = $derived(!$page.url.pathname.startsWith('/admin'));
 
 	async function handleLockClick() {
 		if (data.privateAccess.authenticated) {
@@ -106,8 +112,13 @@
 	<PrivateAccessModal onClose={() => (showLoginModal = false)} onSuccess={handleLoginSuccess} />
 {/if}
 
-<main class="page">
-	{@render children()}
+<main class="page" class:with-sidebar={showSidebar}>
+	<div class="main-col">
+		{@render children()}
+	</div>
+	{#if showSidebar}
+		<Sidebar weather={data.weather} stocks={data.stocks} bookmarks={data.bookmarks} />
+	{/if}
 </main>
 
 <style>
@@ -189,5 +200,19 @@
 		text-decoration: none;
 		background: var(--surface-1);
 		color: var(--text-primary);
+	}
+	.page.with-sidebar {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 300px;
+		gap: 32px;
+		align-items: start;
+	}
+	.main-col {
+		min-width: 0; /* keeps wide content, e.g. tweet media grids, from forcing the track wider */
+	}
+	@media (max-width: 900px) {
+		.page.with-sidebar {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>

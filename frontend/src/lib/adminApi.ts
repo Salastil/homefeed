@@ -8,7 +8,10 @@ import type {
 	ModelCatalog,
 	AiStatus,
 	TelegramStatus,
-	LogEntry
+	LogEntry,
+	GeocodeResult,
+	AdminStockTicker,
+	AdminBookmark
 } from './adminTypes';
 
 async function request<T>(path: string, options: RequestInit = {}, fetchFn: typeof fetch = fetch): Promise<T> {
@@ -164,3 +167,38 @@ export const getLogs = (filters: { level?: 'info' | 'warn' | 'error'; limit?: nu
 	const qs = new URLSearchParams(filters as Record<string, string>).toString();
 	return request<LogEntry[]>(`/api/admin/logs${qs ? `?${qs}` : ''}`, {}, fetchFn);
 };
+
+// Weather — config/cache lives on AdminSettings.weather (see updateSettings above); this
+// is just the geocoding lookup used to resolve a typed city name to lat/lon.
+export const geocodeLocation = (query: string, fetchFn?: typeof fetch) =>
+	request<GeocodeResult[]>(`/api/admin/weather/geocode?query=${encodeURIComponent(query)}`, {}, fetchFn);
+
+// Stocks
+export const getStockTickers = (fetchFn?: typeof fetch) =>
+	request<AdminStockTicker[]>('/api/admin/stocks', {}, fetchFn);
+
+export const addStockTicker = (label: string, symbol: string, fetchFn?: typeof fetch) =>
+	request<AdminStockTicker>('/api/admin/stocks', { method: 'POST', body: JSON.stringify({ label, symbol }) }, fetchFn);
+
+export const updateStockTicker = (id: string, patch: { label?: string; symbol?: string }, fetchFn?: typeof fetch) =>
+	request<AdminStockTicker>(`/api/admin/stocks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
+
+export const deleteStockTicker = (id: string, fetchFn?: typeof fetch) =>
+	request<void>(`/api/admin/stocks/${id}`, { method: 'DELETE' }, fetchFn);
+
+// Bookmarks
+export const getAdminBookmarks = (fetchFn?: typeof fetch) =>
+	request<AdminBookmark[]>('/api/admin/bookmarks', {}, fetchFn);
+
+export const addBookmark = (name: string, url: string, isPrivate = false, fetchFn?: typeof fetch) =>
+	request<AdminBookmark>(
+		'/api/admin/bookmarks',
+		{ method: 'POST', body: JSON.stringify({ name, url, isPrivate }) },
+		fetchFn
+	);
+
+export const updateBookmark = (id: string, patch: { name?: string; url?: string; isPrivate?: boolean }, fetchFn?: typeof fetch) =>
+	request<AdminBookmark>(`/api/admin/bookmarks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
+
+export const deleteBookmark = (id: string, fetchFn?: typeof fetch) =>
+	request<void>(`/api/admin/bookmarks/${id}`, { method: 'DELETE' }, fetchFn);

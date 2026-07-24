@@ -176,7 +176,41 @@ export function migrate() {
 			storage_cap_unit TEXT NOT NULL DEFAULT 'GB',
 			nitter_media_mode TEXT NOT NULL DEFAULT 'proxy', -- self-host | proxy | direct
 			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com',
-			telegram_media_mode TEXT NOT NULL DEFAULT 'self-host' -- self-host | proxy (no "direct" — Telegram has no public hotlinkable media URL)
+			telegram_media_mode TEXT NOT NULL DEFAULT 'self-host', -- self-host | proxy (no "direct" — Telegram has no public hotlinkable media URL)
+			weather_location_name TEXT,
+			weather_latitude REAL,
+			weather_longitude REAL,
+			weather_unit TEXT NOT NULL DEFAULT 'fahrenheit', -- celsius | fahrenheit
+			weather_current TEXT, -- JSON {temp, conditionText, icon}, NULL pre-first-poll
+			weather_hourly TEXT NOT NULL DEFAULT '[]', -- JSON array
+			weather_daily TEXT NOT NULL DEFAULT '[]', -- JSON array
+			weather_updated_at TEXT -- ISO timestamp, NULL pre-first-poll
+		);
+
+		-- Sidebar "Stocks" widget — polled every 15 minutes from Stooq (see stocks/poller.ts).
+		-- Price/change/poll-state live directly on the row, same as sources.last_polled_at,
+		-- rather than a separate quote-cache table.
+		CREATE TABLE IF NOT EXISTS stock_tickers (
+			id TEXT PRIMARY KEY,
+			label TEXT NOT NULL,
+			symbol TEXT NOT NULL, -- Stooq symbol syntax, e.g. "^dji", "aapl.us", "btcusd"
+			priority_rank INTEGER NOT NULL,
+			last_price REAL,
+			last_change_percent REAL,
+			last_polled_at TEXT,
+			last_error TEXT,
+			created_at TEXT NOT NULL
+		);
+
+		-- Sidebar "Bookmarks" widget — admin-curated links, each independently hidden/public
+		-- via is_private (same private-access lock feature as categories.is_private).
+		CREATE TABLE IF NOT EXISTS bookmarks (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			url TEXT NOT NULL,
+			priority_rank INTEGER NOT NULL,
+			is_private INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL
 		);
 
 		-- Singleton row (see storage/crypto.ts) — encrypted Telegram API credentials and
@@ -247,6 +281,33 @@ export function migrate() {
 	}
 	if (!hasColumn('merged_articles', 'is_recap')) {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN is_recap INTEGER NOT NULL DEFAULT 0');
+	}
+	if (!hasColumn('global_settings', 'weather_unit')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN weather_location_name TEXT');
+		db.exec('ALTER TABLE global_settings ADD COLUMN weather_latitude REAL');
+		db.exec('ALTER TABLE global_settings ADD COLUMN weather_longitude REAL');
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_unit TEXT NOT NULL DEFAULT 'fahrenheit'");
+		db.exec('ALTER TABLE global_settings ADD COLUMN weather_current TEXT');
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_hourly TEXT NOT NULL DEFAULT '[]'");
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_daily TEXT NOT NULL DEFAULT '[]'");
+		db.exec('ALTER TABLE global_settings ADD COLUMN weather_updated_at TEXT');
+	}
+
+	// Seed a handful of sensible default tickers so the Stocks widget isn't empty on a
+	// fresh install — the admin can remove/replace any of them via the Stocks tab.
+	const tickerCount = db.prepare('SELECT COUNT(*) as c FROM stock_tickers').get() as { c: number };
+	if (tickerCount.c === 0) {
+		const defaults: [string, string][] = [
+			['Dow Jones', '^dji'],
+			['S&P 500', '^spx'],
+			['Bitcoin', 'btcusd']
+		];
+		const stmt = db.prepare(
+			'INSERT INTO stock_tickers (id, label, symbol, priority_rank, created_at) VALUES (?, ?, ?, ?, ?)'
+		);
+		defaults.forEach(([label, symbol], i) => {
+			stmt.run(`stk-${symbol.replace(/[^a-z0-9]+/gi, '-')}`, label, symbol, i + 1, new Date().toISOString());
+		});
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

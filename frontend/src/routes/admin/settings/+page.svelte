@@ -5,6 +5,9 @@
 	import ModelsTab from '$lib/components/admin/ModelsTab.svelte';
 	import RetentionTab from '$lib/components/admin/RetentionTab.svelte';
 	import EventsTab from '$lib/components/admin/EventsTab.svelte';
+	import WeatherTab from '$lib/components/admin/WeatherTab.svelte';
+	import StocksTab from '$lib/components/admin/StocksTab.svelte';
+	import BookmarksTab from '$lib/components/admin/BookmarksTab.svelte';
 	import ConnectionsTab from '$lib/components/admin/ConnectionsTab.svelte';
 	import LogsTab from '$lib/components/admin/LogsTab.svelte';
 
@@ -16,6 +19,9 @@
 		{ id: 'models', label: 'Models' },
 		{ id: 'retention', label: 'Retention' },
 		{ id: 'events', label: 'Tracked events' },
+		{ id: 'weather', label: 'Weather' },
+		{ id: 'stocks', label: 'Stocks' },
+		{ id: 'bookmarks', label: 'Bookmarks' },
 		{ id: 'connections', label: 'Connections' },
 		{ id: 'logs', label: 'Logs' }
 	];
@@ -45,6 +51,12 @@
 		<RetentionTab settings={data.settings} />
 	{:else if active === 'events'}
 		<EventsTab events={data.events} sources={data.sources} />
+	{:else if active === 'weather'}
+		<WeatherTab settings={data.settings} />
+	{:else if active === 'stocks'}
+		<StocksTab tickers={data.stockTickers} />
+	{:else if active === 'bookmarks'}
+		<BookmarksTab bookmarks={data.bookmarks} />
 	{:else if active === 'connections'}
 		<ConnectionsTab settings={data.settings} aiStatus={data.aiStatus} telegramStatus={data.telegramStatus} />
 	{:else if active === 'logs'}

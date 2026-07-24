@@ -206,6 +206,42 @@ export interface Category {
 	isSpillover: boolean;
 }
 
+export interface WeatherHourEntry {
+	time: string;
+	temp: number;
+	conditionText: string;
+	icon: string;
+}
+
+export interface WeatherDayEntry {
+	date: string;
+	tempMax: number;
+	tempMin: number;
+	conditionText: string;
+	icon: string;
+}
+
+export interface StockTicker {
+	id: string;
+	label: string;
+	symbol: string;
+	priorityRank: number;
+	lastPrice: number | null;
+	lastChangePercent: number | null;
+	lastPolledAt: string | null;
+	lastError: string | null;
+	createdAt: string;
+}
+
+export interface Bookmark {
+	id: string;
+	name: string;
+	url: string;
+	priorityRank: number;
+	isPrivate: boolean;
+	createdAt: string;
+}
+
 export interface GlobalSettings {
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	defaultPollIntervalMinutes: number;
@@ -229,5 +265,16 @@ export interface GlobalSettings {
 		storageCapEnabled: boolean;
 		storageCapValue: number;
 		storageCapUnit: 'MB' | 'GB';
+	};
+	/** Sidebar "Weather" widget config + cache — see weather/poller.ts. Singleton, since there's only ever one configured location. */
+	weather: {
+		locationName: string | null;
+		latitude: number | null;
+		longitude: number | null;
+		unit: 'celsius' | 'fahrenheit';
+		current: { temp: number; conditionText: string; icon: string } | null;
+		hourly: WeatherHourEntry[];
+		daily: WeatherDayEntry[];
+		updatedAt: string | null;
 	};
 }

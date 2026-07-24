@@ -22,6 +22,17 @@ function rowToSettings(row: any): GlobalSettings {
 			storageCapEnabled: !!row.storage_cap_enabled,
 			storageCapValue: row.storage_cap_value,
 			storageCapUnit: row.storage_cap_unit
+		},
+		weather: {
+			locationName: row.weather_location_name,
+			latitude: row.weather_latitude,
+			longitude: row.weather_longitude,
+			unit: row.weather_unit,
+			// Unlike retention, this is genuinely absent pre-first-poll (and pre-location-config) — null-safe parse.
+			current: row.weather_current ? JSON.parse(row.weather_current) : null,
+			hourly: JSON.parse(row.weather_hourly),
+			daily: JSON.parse(row.weather_daily),
+			updatedAt: row.weather_updated_at
 		}
 	};
 }
@@ -37,7 +48,8 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		...current,
 		...patch,
 		retention: { ...current.retention, ...(patch.retention ?? {}) },
-		selectedModels: { ...current.selectedModels, ...(patch.selectedModels ?? {}) }
+		selectedModels: { ...current.selectedModels, ...(patch.selectedModels ?? {}) },
+		weather: { ...current.weather, ...(patch.weather ?? {}) }
 	};
 	db.prepare(
 		`UPDATE global_settings SET
@@ -46,7 +58,9 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			ai_service_host=?, ai_service_port=?, selected_models=?,
 			nitter_media_mode=?, fxtwitter_base_url=?, telegram_media_mode=?,
 			published_article_max_age_days=?, raw_item_max_age_days=?,
-			storage_cap_enabled=?, storage_cap_value=?, storage_cap_unit=?
+			storage_cap_enabled=?, storage_cap_value=?, storage_cap_unit=?,
+			weather_location_name=?, weather_latitude=?, weather_longitude=?, weather_unit=?,
+			weather_current=?, weather_hourly=?, weather_daily=?, weather_updated_at=?
 		 WHERE id = 1`
 	).run(
 		merged.mergeStrictness,
@@ -66,7 +80,15 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		merged.retention.rawItemMaxAgeDays,
 		merged.retention.storageCapEnabled ? 1 : 0,
 		merged.retention.storageCapValue,
-		merged.retention.storageCapUnit
+		merged.retention.storageCapUnit,
+		merged.weather.locationName,
+		merged.weather.latitude,
+		merged.weather.longitude,
+		merged.weather.unit,
+		merged.weather.current ? JSON.stringify(merged.weather.current) : null,
+		JSON.stringify(merged.weather.hourly),
+		JSON.stringify(merged.weather.daily),
+		merged.weather.updatedAt
 	);
 	return getSettings();
 }

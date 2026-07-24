@@ -1,17 +1,29 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageLoad } from './$types';
-import { getSettings, getSources, getEvents, getModels, getAiStatus, getTelegramStatus, getLogs } from '$lib/adminApi';
+import {
+	getSettings,
+	getSources,
+	getEvents,
+	getModels,
+	getAiStatus,
+	getTelegramStatus,
+	getLogs,
+	getStockTickers,
+	getAdminBookmarks
+} from '$lib/adminApi';
 import type { ModelCatalog, AiStatus, TelegramStatus } from '$lib/adminTypes';
 
 const EMPTY_MODELS: ModelCatalog = { embedding: [], image: [], synthesis: [] };
 
 export const load: PageLoad = async ({ fetch }) => {
 	try {
-		const [settings, sources, events, logs] = await Promise.all([
+		const [settings, sources, events, logs, stockTickers, bookmarks] = await Promise.all([
 			getSettings(fetch),
 			getSources(fetch),
 			getEvents(fetch),
-			getLogs({}, fetch)
+			getLogs({}, fetch),
+			getStockTickers(fetch),
+			getAdminBookmarks(fetch)
 		]);
 
 		// The AI service (Ollama) may not be running yet — that shouldn't take down the
@@ -28,7 +40,7 @@ export const load: PageLoad = async ({ fetch }) => {
 			() => ({ credentialsConfigured: false, connected: false, phone: null })
 		);
 
-		return { settings, sources, events, models, aiStatus, telegramStatus, logs };
+		return { settings, sources, events, models, aiStatus, telegramStatus, logs, stockTickers, bookmarks };
 	} catch (err) {
 		if ((err as { status?: number }).status === 401) {
 			throw redirect(302, '/admin/login?redirectTo=/admin/settings');
