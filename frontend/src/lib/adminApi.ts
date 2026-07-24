@@ -4,6 +4,7 @@ import type {
 	AdminSettings,
 	AdminSource,
 	AdminTrackedEvent,
+	CategoryPriority,
 	ModelCatalog,
 	AiStatus,
 	TelegramStatus,
@@ -60,10 +61,10 @@ export const updateSettings = (patch: Partial<AdminSettings>, fetchFn?: typeof f
 	request<AdminSettings>('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
 
 // Categories
-export const createCategory = (name: string, isPrivate = false, fetchFn?: typeof fetch) =>
-	request<{ id: string; name: string; priorityRank: number; isDefault: boolean; isPrivate: boolean }>(
+export const createCategory = (name: string, isPrivate = false, isSpillover = false, fetchFn?: typeof fetch) =>
+	request<CategoryPriority>(
 		'/api/admin/categories',
-		{ method: 'POST', body: JSON.stringify({ name, isPrivate }) },
+		{ method: 'POST', body: JSON.stringify({ name, isPrivate, isSpillover }) },
 		fetchFn
 	);
 

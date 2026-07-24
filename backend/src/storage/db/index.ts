@@ -144,7 +144,8 @@ export function migrate() {
 			name TEXT NOT NULL,
 			priority_rank INTEGER NOT NULL,
 			is_default INTEGER NOT NULL DEFAULT 0,
-			is_private INTEGER NOT NULL DEFAULT 0
+			is_private INTEGER NOT NULL DEFAULT 0,
+			is_spillover INTEGER NOT NULL DEFAULT 0 -- collapsed into the nav's "More »" overflow page instead of its own tab
 		);
 
 		CREATE TABLE IF NOT EXISTS logs (
@@ -228,6 +229,9 @@ export function migrate() {
 	}
 	if (!hasColumn('categories', 'is_private')) {
 		db.exec('ALTER TABLE categories ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
+	}
+	if (!hasColumn('categories', 'is_spillover')) {
+		db.exec('ALTER TABLE categories ADD COLUMN is_spillover INTEGER NOT NULL DEFAULT 0');
 	}
 	if (!hasColumn('content_items', 'telegram_message')) {
 		db.exec('ALTER TABLE content_items ADD COLUMN telegram_message TEXT');

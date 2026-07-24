@@ -89,4 +89,5 @@ export interface Category {
 	priorityRank: number;
 	isDefault: boolean;
 	isPrivate: boolean;
+	isSpillover: boolean;
 }

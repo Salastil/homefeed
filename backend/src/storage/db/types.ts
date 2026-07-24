@@ -202,6 +202,8 @@ export interface Category {
 	isDefault: boolean;
 	/** Hidden from /api/categories, /api/feed, and article detail for anyone without a valid private-access cookie. */
 	isPrivate: boolean;
+	/** Grouped into the nav's "More »" overflow page instead of getting its own top-level tab — see +layout.svelte and /more. */
+	isSpillover: boolean;
 }
 
 export interface GlobalSettings {

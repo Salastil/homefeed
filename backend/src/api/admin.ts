@@ -36,9 +36,9 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
 	// --- Categories (add/remove — reordering/privacy is via PATCH /settings above) ---
 	app.post('/api/admin/categories', async (req, reply) => {
-		const { name, isPrivate } = req.body as { name?: string; isPrivate?: boolean };
+		const { name, isPrivate, isSpillover } = req.body as { name?: string; isPrivate?: boolean; isSpillover?: boolean };
 		if (!name || !name.trim()) return reply.code(400).send({ error: 'name required' });
-		const created = categoriesDb.createCategory(name.trim(), !!isPrivate);
+		const created = categoriesDb.createCategory(name.trim(), !!isPrivate, !!isSpillover);
 		return reply.code(201).send(created);
 	});
 

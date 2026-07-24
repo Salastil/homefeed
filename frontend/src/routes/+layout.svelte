@@ -29,18 +29,24 @@
 	// "Top stories" is a real Category row (it drives synthesis queue priority) but
 	// isn't itself a filterable category — it always means "everything, chronological",
 	// i.e. the homepage. Every other admin-defined category gets its own /category/:slug
-	// page. See MergeTab's category priority list for where these are managed.
+	// page, unless it's flagged "spillover" (see MergeTab.svelte's category priority
+	// list) — those collapse into a single trailing "More »" tab instead, so the nav
+	// doesn't get too wide or wrap once there are more than a handful of categories.
 	//
 	// A tracked event is a displayed category too, just backed by a source+keyword
 	// filter instead of manual per-source category checkboxes, and periodically
 	// AI-recapped — see EventsTab.svelte. Active ones get their own /event/:id tab,
 	// appended after the regular categories.
+	const primaryCategories = $derived(data.categories.filter((c) => !c.isSpillover));
+	const spilloverCategories = $derived(data.categories.filter((c) => c.isSpillover));
+
 	const navItems = $derived([
-		...data.categories.map((cat) => ({
+		...primaryCategories.map((cat) => ({
 			label: cat.name,
 			href: cat.name.toLowerCase() === 'top stories' ? '/' : `/category/${slugify(cat.name)}`
 		})),
-		...data.events.map((event) => ({ label: event.name, href: `/event/${event.id}` }))
+		...data.events.map((event) => ({ label: event.name, href: `/event/${event.id}` })),
+		...(spilloverCategories.length > 0 ? [{ label: 'More »', href: '/more' }] : [])
 	]);
 
 	function isActive(href: string): boolean {

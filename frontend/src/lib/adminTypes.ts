@@ -13,6 +13,7 @@ export interface CategoryPriority {
 	priorityRank: number;
 	isDefault: boolean;
 	isPrivate: boolean;
+	isSpillover: boolean;
 }
 
 export interface AdminSettings {
