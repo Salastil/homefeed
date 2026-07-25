@@ -25,6 +25,14 @@ export function migrate() {
 	db.exec('DROP TABLE IF EXISTS admin_users;');
 	db.exec('DROP TABLE IF EXISTS sessions;');
 
+	// PoE2 watchlist model changed from "value quoted in one primary currency" to arbitrary
+	// currency pairs (base/quote) — the old single-currency rows can't be mapped onto a pair,
+	// so the table is dropped and rebuilt fresh below rather than migrated column-by-column.
+	const poe2WatchlistCols = db.prepare(`PRAGMA table_info(poe2_watchlist)`).all() as { name: string }[];
+	if (poe2WatchlistCols.some((c) => c.name === 'currency_id')) {
+		db.exec('DROP TABLE IF EXISTS poe2_watchlist;');
+	}
+
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS sources (
 			id TEXT PRIMARY KEY,
@@ -189,16 +197,20 @@ export function migrate() {
 			weather_hourly TEXT NOT NULL DEFAULT '[]', -- JSON array
 			weather_daily TEXT NOT NULL DEFAULT '[]', -- JSON array
 			weather_alerts TEXT NOT NULL DEFAULT '[]', -- JSON array — active NWS alerts for the configured location, US-only (see weather/client.ts)
-			weather_updated_at TEXT -- ISO timestamp, NULL pre-first-poll
+			weather_updated_at TEXT, -- ISO timestamp, NULL pre-first-poll
+			poe2_league_id TEXT,
+			poe2_league_name TEXT,
+			poe2_primary_currency_name TEXT, -- unused since the watchlist moved to arbitrary currency pairs (no single "quoted in" currency anymore) — column kept rather than dropped, SQLite ALTER TABLE can't drop columns without a full table rebuild
+			poe2_updated_at TEXT
 		);
 
-		-- Sidebar "Stocks" widget — polled every 15 minutes from Stooq (see stocks/poller.ts).
-		-- Price/change/poll-state live directly on the row, same as sources.last_polled_at,
-		-- rather than a separate quote-cache table.
+		-- Sidebar "Stocks" widget — polled every 15 minutes from Yahoo Finance (see
+		-- stocks/poller.ts). Price/change/poll-state live directly on the row, same as
+		-- sources.last_polled_at, rather than a separate quote-cache table.
 		CREATE TABLE IF NOT EXISTS stock_tickers (
 			id TEXT PRIMARY KEY,
 			label TEXT NOT NULL,
-			symbol TEXT NOT NULL, -- Stooq symbol syntax, e.g. "^dji", "aapl.us", "btcusd"
+			symbol TEXT NOT NULL, -- Yahoo symbol syntax, e.g. "^DJI", "AAPL", "BTC-USD"
 			priority_rank INTEGER NOT NULL,
 			last_price REAL,
 			last_change_percent REAL,
@@ -206,6 +218,36 @@ export function migrate() {
 			last_error TEXT,
 			created_at TEXT NOT NULL
 		);
+
+		-- Sidebar "PoE2" widget — tracks exchange rates between arbitrary currency pairs
+		-- (see poe2/poller.ts), always against the current challenge league (auto-detected,
+		-- no admin config). Rate is "1 base = last_rate quote"; both currencies' names are
+		-- captured at add-time from the browse picker, not re-resolved. No icon columns —
+		-- the UI doesn't display them.
+		CREATE TABLE IF NOT EXISTS poe2_watchlist (
+			id TEXT PRIMARY KEY,
+			base_currency_id TEXT NOT NULL, -- opaque id from the exchange overview's lines[].id, e.g. "exalted"
+			base_name TEXT NOT NULL,
+			quote_currency_id TEXT NOT NULL,
+			quote_name TEXT NOT NULL,
+			priority_rank INTEGER NOT NULL,
+			last_rate REAL,
+			last_change_24h REAL,
+			last_polled_at TEXT,
+			last_error TEXT,
+			created_at TEXT NOT NULL
+		);
+
+		-- Per-poll rate snapshots for the pairs above — poe.ninja doesn't expose a matching
+		-- 24h change window, so it's computed ourselves from this history (see
+		-- poe2/poller.ts). Pruned to the last 2 days on every poll.
+		CREATE TABLE IF NOT EXISTS poe2_rate_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			watchlist_id TEXT NOT NULL,
+			rate REAL NOT NULL,
+			recorded_at TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_poe2_rate_history_watchlist ON poe2_rate_history(watchlist_id, recorded_at);
 
 		-- Sidebar "Bookmarks" widget — admin-curated links, each independently hidden/public
 		-- via is_private (same private-access lock feature as categories.is_private).
@@ -301,6 +343,12 @@ export function migrate() {
 		db.exec("ALTER TABLE global_settings ADD COLUMN weather_wind_unit TEXT NOT NULL DEFAULT 'mph'");
 		db.exec("ALTER TABLE global_settings ADD COLUMN weather_pressure_unit TEXT NOT NULL DEFAULT 'inHg'");
 		db.exec("ALTER TABLE global_settings ADD COLUMN weather_alerts TEXT NOT NULL DEFAULT '[]'");
+	}
+	if (!hasColumn('global_settings', 'poe2_league_id')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_league_id TEXT');
+		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_league_name TEXT');
+		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_primary_currency_name TEXT');
+		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_updated_at TEXT');
 	}
 
 	// Seed a handful of sensible default tickers so the Stocks widget isn't empty on a

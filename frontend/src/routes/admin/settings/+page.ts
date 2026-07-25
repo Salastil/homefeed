@@ -9,7 +9,8 @@ import {
 	getTelegramStatus,
 	getLogs,
 	getStockTickers,
-	getAdminBookmarks
+	getAdminBookmarks,
+	getPoe2Watchlist
 } from '$lib/adminApi';
 import type { ModelCatalog, AiStatus, TelegramStatus } from '$lib/adminTypes';
 
@@ -17,13 +18,14 @@ const EMPTY_MODELS: ModelCatalog = { embedding: [], image: [], synthesis: [] };
 
 export const load: PageLoad = async ({ fetch }) => {
 	try {
-		const [settings, sources, events, logs, stockTickers, bookmarks] = await Promise.all([
+		const [settings, sources, events, logs, stockTickers, bookmarks, poe2Watchlist] = await Promise.all([
 			getSettings(fetch),
 			getSources(fetch),
 			getEvents(fetch),
 			getLogs({}, fetch),
 			getStockTickers(fetch),
-			getAdminBookmarks(fetch)
+			getAdminBookmarks(fetch),
+			getPoe2Watchlist(fetch)
 		]);
 
 		// The AI service (Ollama) may not be running yet — that shouldn't take down the
@@ -40,7 +42,7 @@ export const load: PageLoad = async ({ fetch }) => {
 			() => ({ credentialsConfigured: false, connected: false, phone: null })
 		);
 
-		return { settings, sources, events, models, aiStatus, telegramStatus, logs, stockTickers, bookmarks };
+		return { settings, sources, events, models, aiStatus, telegramStatus, logs, stockTickers, bookmarks, poe2Watchlist };
 	} catch (err) {
 		if ((err as { status?: number }).status === 401) {
 			throw redirect(302, '/admin/login?redirectTo=/admin/settings');

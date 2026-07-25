@@ -155,3 +155,19 @@ export interface Bookmark {
 	url: string;
 	isPrivate: boolean;
 }
+
+export interface Poe2WatchlistEntry {
+	id: string;
+	baseName: string;
+	quoteName: string;
+	/** 1 base = lastRate quote. */
+	lastRate: number | null;
+	/** 24h % change, self-computed from our own poll history — null if not enough history yet. */
+	lastChange24h: number | null;
+}
+
+export interface Poe2Data {
+	leagueName: string | null;
+	updatedAt: string | null;
+	entries: Poe2WatchlistEntry[];
+}

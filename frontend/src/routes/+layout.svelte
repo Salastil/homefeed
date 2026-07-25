@@ -117,7 +117,7 @@
 		{@render children()}
 	</div>
 	{#if showSidebar}
-		<Sidebar weather={data.weather} stocks={data.stocks} bookmarks={data.bookmarks} />
+		<Sidebar weather={data.weather} stocks={data.stocks} bookmarks={data.bookmarks} poe2={data.poe2} />
 	{/if}
 </main>
 
