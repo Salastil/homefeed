@@ -4,6 +4,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import PrivateAccessModal from '$lib/components/PrivateAccessModal.svelte';
+	import Sidebar from '$lib/components/sidebar/Sidebar.svelte';
 	import { logoutPrivateAccess } from '$lib/privateAccess';
 	import { slugify } from '$lib/format';
 	import type { LayoutData } from './$types';
@@ -11,6 +12,11 @@
 	let { children, data }: { children: any; data: LayoutData } = $props();
 
 	let showLoginModal = $state(false);
+
+	// Admin pages already use full page width for their own tab UI — the sidebar's utility
+	// widgets don't belong there, unlike every reader-facing route (home, category,
+	// article, event, more, weather).
+	const showSidebar = $derived(!$page.url.pathname.startsWith('/admin'));
 
 	async function handleLockClick() {
 		if (data.privateAccess.authenticated) {
@@ -29,18 +35,24 @@
 	// "Top stories" is a real Category row (it drives synthesis queue priority) but
 	// isn't itself a filterable category — it always means "everything, chronological",
 	// i.e. the homepage. Every other admin-defined category gets its own /category/:slug
-	// page. See MergeTab's category priority list for where these are managed.
+	// page, unless it's flagged "spillover" (see MergeTab.svelte's category priority
+	// list) — those collapse into a single trailing "More »" tab instead, so the nav
+	// doesn't get too wide or wrap once there are more than a handful of categories.
 	//
 	// A tracked event is a displayed category too, just backed by a source+keyword
 	// filter instead of manual per-source category checkboxes, and periodically
 	// AI-recapped — see EventsTab.svelte. Active ones get their own /event/:id tab,
 	// appended after the regular categories.
+	const primaryCategories = $derived(data.categories.filter((c) => !c.isSpillover));
+	const spilloverCategories = $derived(data.categories.filter((c) => c.isSpillover));
+
 	const navItems = $derived([
-		...data.categories.map((cat) => ({
+		...primaryCategories.map((cat) => ({
 			label: cat.name,
 			href: cat.name.toLowerCase() === 'top stories' ? '/' : `/category/${slugify(cat.name)}`
 		})),
-		...data.events.map((event) => ({ label: event.name, href: `/event/${event.id}` }))
+		...data.events.map((event) => ({ label: event.name, href: `/event/${event.id}` })),
+		...(spilloverCategories.length > 0 ? [{ label: 'More »', href: '/more' }] : [])
 	]);
 
 	function isActive(href: string): boolean {
@@ -100,8 +112,13 @@
 	<PrivateAccessModal onClose={() => (showLoginModal = false)} onSuccess={handleLoginSuccess} />
 {/if}
 
-<main class="page">
-	{@render children()}
+<main class="page" class:with-sidebar={showSidebar}>
+	<div class="main-col">
+		{@render children()}
+	</div>
+	{#if showSidebar}
+		<Sidebar weather={data.weather} stocks={data.stocks} bookmarks={data.bookmarks} />
+	{/if}
 </main>
 
 <style>
@@ -183,5 +200,19 @@
 		text-decoration: none;
 		background: var(--surface-1);
 		color: var(--text-primary);
+	}
+	.page.with-sidebar {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 300px;
+		gap: 32px;
+		align-items: start;
+	}
+	.main-col {
+		min-width: 0; /* keeps wide content, e.g. tweet media grids, from forcing the track wider */
+	}
+	@media (max-width: 900px) {
+		.page.with-sidebar {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>

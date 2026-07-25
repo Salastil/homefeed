@@ -144,7 +144,8 @@ export function migrate() {
 			name TEXT NOT NULL,
 			priority_rank INTEGER NOT NULL,
 			is_default INTEGER NOT NULL DEFAULT 0,
-			is_private INTEGER NOT NULL DEFAULT 0
+			is_private INTEGER NOT NULL DEFAULT 0,
+			is_spillover INTEGER NOT NULL DEFAULT 0 -- collapsed into the nav's "More »" overflow page instead of its own tab
 		);
 
 		CREATE TABLE IF NOT EXISTS logs (
@@ -175,7 +176,46 @@ export function migrate() {
 			storage_cap_unit TEXT NOT NULL DEFAULT 'GB',
 			nitter_media_mode TEXT NOT NULL DEFAULT 'proxy', -- self-host | proxy | direct
 			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com',
-			telegram_media_mode TEXT NOT NULL DEFAULT 'self-host' -- self-host | proxy (no "direct" — Telegram has no public hotlinkable media URL)
+			telegram_media_mode TEXT NOT NULL DEFAULT 'self-host', -- self-host | proxy (no "direct" — Telegram has no public hotlinkable media URL)
+			weather_location_name TEXT,
+			weather_latitude REAL,
+			weather_longitude REAL,
+			weather_unit TEXT NOT NULL DEFAULT 'fahrenheit', -- celsius | fahrenheit
+			weather_wind_unit TEXT NOT NULL DEFAULT 'mph', -- mph | kph
+			weather_pressure_unit TEXT NOT NULL DEFAULT 'inHg', -- inHg | hPa
+			-- JSON {temp, feelsLike, conditionText, icon, humidity, precipitationChance,
+			-- windSpeed, windDirection, pressure, sunrise, sunset}, NULL pre-first-poll
+			weather_current TEXT,
+			weather_hourly TEXT NOT NULL DEFAULT '[]', -- JSON array
+			weather_daily TEXT NOT NULL DEFAULT '[]', -- JSON array
+			weather_alerts TEXT NOT NULL DEFAULT '[]', -- JSON array — active NWS alerts for the configured location, US-only (see weather/client.ts)
+			weather_updated_at TEXT -- ISO timestamp, NULL pre-first-poll
+		);
+
+		-- Sidebar "Stocks" widget — polled every 15 minutes from Stooq (see stocks/poller.ts).
+		-- Price/change/poll-state live directly on the row, same as sources.last_polled_at,
+		-- rather than a separate quote-cache table.
+		CREATE TABLE IF NOT EXISTS stock_tickers (
+			id TEXT PRIMARY KEY,
+			label TEXT NOT NULL,
+			symbol TEXT NOT NULL, -- Stooq symbol syntax, e.g. "^dji", "aapl.us", "btcusd"
+			priority_rank INTEGER NOT NULL,
+			last_price REAL,
+			last_change_percent REAL,
+			last_polled_at TEXT,
+			last_error TEXT,
+			created_at TEXT NOT NULL
+		);
+
+		-- Sidebar "Bookmarks" widget — admin-curated links, each independently hidden/public
+		-- via is_private (same private-access lock feature as categories.is_private).
+		CREATE TABLE IF NOT EXISTS bookmarks (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			url TEXT NOT NULL,
+			priority_rank INTEGER NOT NULL,
+			is_private INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL
 		);
 
 		-- Singleton row (see storage/crypto.ts) — encrypted Telegram API credentials and
@@ -229,6 +269,9 @@ export function migrate() {
 	if (!hasColumn('categories', 'is_private')) {
 		db.exec('ALTER TABLE categories ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');
 	}
+	if (!hasColumn('categories', 'is_spillover')) {
+		db.exec('ALTER TABLE categories ADD COLUMN is_spillover INTEGER NOT NULL DEFAULT 0');
+	}
 	if (!hasColumn('content_items', 'telegram_message')) {
 		db.exec('ALTER TABLE content_items ADD COLUMN telegram_message TEXT');
 	}
@@ -243,6 +286,51 @@ export function migrate() {
 	}
 	if (!hasColumn('merged_articles', 'is_recap')) {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN is_recap INTEGER NOT NULL DEFAULT 0');
+	}
+	if (!hasColumn('global_settings', 'weather_unit')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN weather_location_name TEXT');
+		db.exec('ALTER TABLE global_settings ADD COLUMN weather_latitude REAL');
+		db.exec('ALTER TABLE global_settings ADD COLUMN weather_longitude REAL');
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_unit TEXT NOT NULL DEFAULT 'fahrenheit'");
+		db.exec('ALTER TABLE global_settings ADD COLUMN weather_current TEXT');
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_hourly TEXT NOT NULL DEFAULT '[]'");
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_daily TEXT NOT NULL DEFAULT '[]'");
+		db.exec('ALTER TABLE global_settings ADD COLUMN weather_updated_at TEXT');
+	}
+	if (!hasColumn('global_settings', 'weather_wind_unit')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_wind_unit TEXT NOT NULL DEFAULT 'mph'");
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_pressure_unit TEXT NOT NULL DEFAULT 'inHg'");
+		db.exec("ALTER TABLE global_settings ADD COLUMN weather_alerts TEXT NOT NULL DEFAULT '[]'");
+	}
+
+	// Seed a handful of sensible default tickers so the Stocks widget isn't empty on a
+	// fresh install — the admin can remove/replace any of them via the Stocks tab.
+	const tickerCount = db.prepare('SELECT COUNT(*) as c FROM stock_tickers').get() as { c: number };
+	if (tickerCount.c === 0) {
+		const defaults: [string, string][] = [
+			['Dow Jones', '^DJI'],
+			['S&P 500', '^GSPC'],
+			['Bitcoin', 'BTC-USD']
+		];
+		const stmt = db.prepare(
+			'INSERT INTO stock_tickers (id, label, symbol, priority_rank, created_at) VALUES (?, ?, ?, ?, ?)'
+		);
+		defaults.forEach(([label, symbol], i) => {
+			stmt.run(`stk-${symbol.replace(/[^a-z0-9]+/gi, '-')}`, label, symbol, i + 1, new Date().toISOString());
+		});
+	}
+
+	// Stocks switched data providers from Stooq (walled off behind a proof-of-work
+	// challenge) to Yahoo Finance, which uses different symbol syntax — rewrites only
+	// rows still holding exactly one of the three old Stooq-format default symbols we
+	// ourselves seeded, never touching a symbol the admin typed in themselves.
+	const stooqToYahooSymbols: [string, string][] = [
+		['^dji', '^DJI'],
+		['^spx', '^GSPC'],
+		['btcusd', 'BTC-USD']
+	];
+	for (const [oldSymbol, newSymbol] of stooqToYahooSymbols) {
+		db.prepare('UPDATE stock_tickers SET symbol = ? WHERE symbol = ?').run(newSymbol, oldSymbol);
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

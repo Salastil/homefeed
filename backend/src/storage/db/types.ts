@@ -202,6 +202,44 @@ export interface Category {
 	isDefault: boolean;
 	/** Hidden from /api/categories, /api/feed, and article detail for anyone without a valid private-access cookie. */
 	isPrivate: boolean;
+	/** Grouped into the nav's "More »" overflow page instead of getting its own top-level tab — see +layout.svelte and /more. */
+	isSpillover: boolean;
+}
+
+export interface WeatherHourEntry {
+	time: string;
+	temp: number;
+	conditionText: string;
+	icon: string;
+}
+
+export interface WeatherDayEntry {
+	date: string;
+	tempMax: number;
+	tempMin: number;
+	conditionText: string;
+	icon: string;
+}
+
+export interface StockTicker {
+	id: string;
+	label: string;
+	symbol: string;
+	priorityRank: number;
+	lastPrice: number | null;
+	lastChangePercent: number | null;
+	lastPolledAt: string | null;
+	lastError: string | null;
+	createdAt: string;
+}
+
+export interface Bookmark {
+	id: string;
+	name: string;
+	url: string;
+	priorityRank: number;
+	isPrivate: boolean;
+	createdAt: string;
 }
 
 export interface GlobalSettings {
@@ -228,4 +266,45 @@ export interface GlobalSettings {
 		storageCapValue: number;
 		storageCapUnit: 'MB' | 'GB';
 	};
+	/** Sidebar "Weather" widget config + cache — see weather/poller.ts. Singleton, since there's only ever one configured location. */
+	weather: {
+		locationName: string | null;
+		latitude: number | null;
+		longitude: number | null;
+		unit: 'celsius' | 'fahrenheit';
+		windUnit: 'mph' | 'kph';
+		pressureUnit: 'inHg' | 'hPa';
+		current: {
+			temp: number;
+			/** Apparent temperature (Open-Meteo's own heat-index/wind-chill blend) — "Feels like". */
+			feelsLike: number;
+			conditionText: string;
+			icon: string;
+			/** Percent, 0-100. */
+			humidity: number;
+			/** Percent, 0-100 — the current hour's forecast precipitation probability (there's no true instantaneous "chance of rain" measurement). */
+			precipitationChance: number;
+			/** Already in the admin's configured windUnit. */
+			windSpeed: number;
+			/** 8-point compass abbreviation, e.g. "NW". */
+			windDirection: string;
+			/** Already in the admin's configured pressureUnit. */
+			pressure: number;
+			sunrise: string;
+			sunset: string;
+		} | null;
+		hourly: WeatherHourEntry[];
+		daily: WeatherDayEntry[];
+		/** Active NWS alerts (flash flood, hurricane, blizzard, etc.) for the configured location — US-only, empty elsewhere. See weather/client.ts's fetchActiveAlerts. */
+		alerts: WeatherAlert[];
+		updatedAt: string | null;
+	};
+}
+
+export interface WeatherAlert {
+	id: string;
+	event: string;
+	headline: string;
+	severity: string;
+	expires: string;
 }

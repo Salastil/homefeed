@@ -10,7 +10,14 @@
 	let saveTimer: ReturnType<typeof setTimeout>;
 	let newCategoryName = $state('');
 	let newCategoryPrivate = $state(false);
+	let newCategorySpillover = $state(false);
 	let addingCategory = $state(false);
+
+	// Advisory only — the nav starts getting too wide / wrapping past ~10 tabs, so this
+	// nudges the admin toward marking some categories as spillover once they cross that
+	// rough guideline. Never enforced — actual wrapping depends on name lengths and
+	// viewport width, which this simple count can't know.
+	const primaryCategoryCount = $derived(local.categoryPriority.filter((c) => !c.isSpillover).length);
 
 	function scheduleSave() {
 		status = 'saving';
@@ -40,10 +47,11 @@
 		if (!name) return;
 		addingCategory = true;
 		try {
-			const created = await createCategory(name, newCategoryPrivate);
+			const created = await createCategory(name, newCategoryPrivate, newCategorySpillover);
 			local.categoryPriority = [...local.categoryPriority, created];
 			newCategoryName = '';
 			newCategoryPrivate = false;
+			newCategorySpillover = false;
 		} finally {
 			addingCategory = false;
 		}
@@ -51,6 +59,11 @@
 
 	function togglePrivate(id: string) {
 		local.categoryPriority = local.categoryPriority.map((c) => (c.id === id ? { ...c, isPrivate: !c.isPrivate } : c));
+		scheduleSave();
+	}
+
+	function toggleSpillover(id: string) {
+		local.categoryPriority = local.categoryPriority.map((c) => (c.id === id ? { ...c, isSpillover: !c.isSpillover } : c));
 		scheduleSave();
 	}
 
@@ -153,8 +166,16 @@
 		categories just wait longer when the queue is busy. This list also drives the site's nav —
 		remove anything you're not interested in (Business, Culture, etc.) or add your own. A
 		private category (and everything in it) is hidden from the public site until a visitor
-		logs in with the lock icon in the masthead.
+		logs in with the lock icon in the masthead. A "More" category is collapsed into a single
+		"More »" nav tab instead of getting its own, and shows up on that overflow page with its
+		latest few articles.
 	</p>
+	{#if primaryCategoryCount > 10}
+		<p class="hint warn">
+			{primaryCategoryCount} categories showing directly in the nav — consider marking some as
+			"More" below before it gets too wide (a rough guideline, not a hard limit).
+		</p>
+	{/if}
 	<div class="priority-list">
 		{#each local.categoryPriority as cat, i (cat.id)}
 			<div class="priority-row">
@@ -164,6 +185,10 @@
 					<label class="private-toggle">
 						<input type="checkbox" checked={cat.isPrivate} onchange={() => togglePrivate(cat.id)} />
 						Private
+					</label>
+					<label class="private-toggle">
+						<input type="checkbox" checked={cat.isSpillover} onchange={() => toggleSpillover(cat.id)} />
+						More
 					</label>
 				{/if}
 				<button class="icon-btn" onclick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">▲</button>
@@ -191,6 +216,10 @@
 		<label class="private-toggle">
 			<input type="checkbox" bind:checked={newCategoryPrivate} />
 			Private
+		</label>
+		<label class="private-toggle">
+			<input type="checkbox" bind:checked={newCategorySpillover} />
+			More
 		</label>
 		<button onclick={addCategory} disabled={addingCategory || !newCategoryName.trim()}>
 			{addingCategory ? 'Adding…' : '+ Add'}
@@ -248,6 +277,9 @@
 		font-size: 12px;
 		color: var(--text-secondary);
 		margin: 4px 0 12px;
+	}
+	.hint.warn {
+		color: var(--text-accent);
 	}
 	.slider-row {
 		display: flex;

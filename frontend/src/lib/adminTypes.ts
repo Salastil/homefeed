@@ -13,6 +13,85 @@ export interface CategoryPriority {
 	priorityRank: number;
 	isDefault: boolean;
 	isPrivate: boolean;
+	isSpillover: boolean;
+}
+
+export interface WeatherHourEntry {
+	time: string;
+	temp: number;
+	conditionText: string;
+	icon: string;
+}
+
+export interface WeatherDayEntry {
+	date: string;
+	tempMax: number;
+	tempMin: number;
+	conditionText: string;
+	icon: string;
+}
+
+export interface WeatherCurrentConditions {
+	temp: number;
+	feelsLike: number;
+	conditionText: string;
+	icon: string;
+	humidity: number;
+	precipitationChance: number;
+	windSpeed: number;
+	windDirection: string;
+	pressure: number;
+	sunrise: string;
+	sunset: string;
+}
+
+export interface WeatherAlert {
+	id: string;
+	event: string;
+	headline: string;
+	severity: string;
+	expires: string;
+}
+
+export interface AdminWeatherSettings {
+	locationName: string | null;
+	latitude: number | null;
+	longitude: number | null;
+	unit: 'celsius' | 'fahrenheit';
+	windUnit: 'mph' | 'kph';
+	pressureUnit: 'inHg' | 'hPa';
+	current: WeatherCurrentConditions | null;
+	hourly: WeatherHourEntry[];
+	daily: WeatherDayEntry[];
+	alerts: WeatherAlert[];
+	updatedAt: string | null;
+}
+
+export interface GeocodeResult {
+	name: string;
+	admin1: string | null;
+	country: string | null;
+	latitude: number;
+	longitude: number;
+}
+
+export interface AdminStockTicker {
+	id: string;
+	label: string;
+	symbol: string;
+	priorityRank: number;
+	lastPrice: number | null;
+	lastChangePercent: number | null;
+	lastPolledAt: string | null;
+	lastError: string | null;
+}
+
+export interface AdminBookmark {
+	id: string;
+	name: string;
+	url: string;
+	priorityRank: number;
+	isPrivate: boolean;
 }
 
 export interface AdminSettings {
@@ -31,6 +110,7 @@ export interface AdminSettings {
 	telegramMediaMode: 'self-host' | 'proxy';
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
+	weather: AdminWeatherSettings;
 }
 
 export interface AdminSource {

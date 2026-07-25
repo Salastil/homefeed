@@ -3,6 +3,9 @@ import * as articlesDb from '../storage/db/articles.js';
 import * as tagsDb from '../storage/db/tags.js';
 import * as eventsDb from '../storage/db/events.js';
 import * as categoriesDb from '../storage/db/categories.js';
+import * as settingsDb from '../storage/db/settings.js';
+import * as stocksDb from '../storage/db/stocks.js';
+import * as bookmarksDb from '../storage/db/bookmarks.js';
 import { hasPrivateAccess } from './privateAccess.js';
 
 export async function registerPublicRoutes(app: FastifyInstance) {
@@ -54,5 +57,16 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 		const categories = categoriesDb.listCategories();
 		if (hasPrivateAccess(req)) return categories;
 		return categories.filter((c) => !c.isPrivate);
+	});
+
+	// Sidebar widgets — see WeatherTab/StocksTab/BookmarksTab in the admin panel.
+	app.get('/api/weather', async () => settingsDb.getSettings().weather);
+
+	app.get('/api/stocks', async () => stocksDb.listStockTickers());
+
+	app.get('/api/bookmarks', async (req) => {
+		const bookmarks = bookmarksDb.listBookmarks();
+		if (hasPrivateAccess(req)) return bookmarks;
+		return bookmarks.filter((b) => !b.isPrivate);
 	});
 }

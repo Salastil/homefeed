@@ -89,4 +89,69 @@ export interface Category {
 	priorityRank: number;
 	isDefault: boolean;
 	isPrivate: boolean;
+	isSpillover: boolean;
+}
+
+export interface WeatherHourEntry {
+	time: string;
+	temp: number;
+	conditionText: string;
+	icon: string;
+}
+
+export interface WeatherDayEntry {
+	date: string;
+	tempMax: number;
+	tempMin: number;
+	conditionText: string;
+	icon: string;
+}
+
+export interface WeatherCurrentConditions {
+	temp: number;
+	feelsLike: number;
+	conditionText: string;
+	icon: string;
+	humidity: number;
+	precipitationChance: number;
+	windSpeed: number;
+	windDirection: string;
+	pressure: number;
+	sunrise: string;
+	sunset: string;
+}
+
+export interface WeatherAlert {
+	id: string;
+	event: string;
+	headline: string;
+	severity: string;
+	expires: string;
+}
+
+export interface Weather {
+	locationName: string | null;
+	unit: 'celsius' | 'fahrenheit';
+	windUnit: 'mph' | 'kph';
+	pressureUnit: 'inHg' | 'hPa';
+	current: WeatherCurrentConditions | null;
+	hourly: WeatherHourEntry[];
+	daily: WeatherDayEntry[];
+	alerts: WeatherAlert[];
+	updatedAt: string | null;
+}
+
+export interface StockTicker {
+	id: string;
+	label: string;
+	symbol: string;
+	lastPrice: number | null;
+	lastChangePercent: number | null;
+}
+
+export interface Bookmark {
+	id: string;
+	name: string;
+	url: string;
+	isPrivate: boolean;
 }
