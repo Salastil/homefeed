@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { timeAgo } from '$lib/format';
+	import { timeAgo, formatDayHeading } from '$lib/format';
 
 	let { data }: { data: PageData } = $props();
 	const weather = $derived(data.weather);
@@ -91,7 +91,7 @@
 		<div class="daily-list">
 			{#each weather.daily as day (day.date)}
 				<div class="day-row">
-					<span class="day-name">{new Date(day.date).toLocaleDateString([], { weekday: 'short' })}</span>
+					<span class="day-name">{formatDayHeading(day.date)}</span>
 					<span class="day-icon">{day.icon}</span>
 					<span class="day-condition">{day.conditionText}</span>
 					<span class="day-range">{Math.round(day.tempMax)}° / {Math.round(day.tempMin)}°</span>
@@ -257,12 +257,13 @@
 	.daily-list {
 		display: flex;
 		flex-direction: column;
-		max-width: 480px;
+		max-width: 640px;
 	}
 	.day-row {
 		display: flex;
 		align-items: center;
-		gap: 14px;
+		flex-wrap: wrap;
+		gap: 6px 14px;
 		padding: 10px 0;
 		border-top: 0.5px solid var(--border);
 	}
@@ -272,7 +273,8 @@
 	.day-name {
 		font-size: 13px;
 		font-weight: 500;
-		width: 40px;
+		white-space: nowrap;
+		flex: 1 0 auto;
 	}
 	.day-icon {
 		font-size: 20px;

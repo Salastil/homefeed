@@ -21,6 +21,36 @@ export function exactTime(iso: string): string {
 	return `${mm}/${dd}/${yyyy} - ${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
 }
 
+/**
+ * Open-Meteo's daily forecast returns bare "YYYY-MM-DD" dates (no time component) meaning
+ * that calendar day in the forecast location's own timezone. `new Date("YYYY-MM-DD")` parses
+ * that as UTC midnight per the ECMAScript spec — displaying it in the browser's local
+ * timezone (anything behind UTC, i.e. all of the Americas) then rolls it back to the
+ * *previous* day, making "today" look like it already passed. Parsing via the (year, month,
+ * day) constructor instead builds the date in local time, avoiding the UTC round-trip.
+ */
+export function parseDateOnly(dateOnly: string): Date {
+	const [year, month, day] = dateOnly.split('-').map(Number);
+	return new Date(year, month - 1, day);
+}
+
+function ordinal(n: number): string {
+	const lastDigit = n % 10;
+	const lastTwoDigits = n % 100;
+	if (lastDigit === 1 && lastTwoDigits !== 11) return `${n}st`;
+	if (lastDigit === 2 && lastTwoDigits !== 12) return `${n}nd`;
+	if (lastDigit === 3 && lastTwoDigits !== 13) return `${n}rd`;
+	return `${n}th`;
+}
+
+/** "Friday July, 24th, 2026" — full weekday/month name with an ordinal day, for the 7-day forecast headings. */
+export function formatDayHeading(dateOnly: string): string {
+	const d = parseDateOnly(dateOnly);
+	const weekday = d.toLocaleDateString([], { weekday: 'long' });
+	const month = d.toLocaleDateString([], { month: 'long' });
+	return `${weekday} ${month}, ${ordinal(d.getDate())}, ${d.getFullYear()}`;
+}
+
 export function slugify(name: string): string {
 	return name
 		.toLowerCase()
