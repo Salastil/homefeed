@@ -27,11 +27,9 @@
 				<div class="row">
 					<span class="label">{entry.baseName} <span class="arrow">→</span> {entry.quoteName}</span>
 					{#if entry.lastRate !== null}
-						<span class="price" class:up={(entry.lastChange24h ?? 0) >= 0} class:down={(entry.lastChange24h ?? 0) < 0}>
+						<span class="price" class:up={entry.lastChange24h !== null && entry.lastChange24h >= 0} class:down={entry.lastChange24h !== null && entry.lastChange24h < 0}>
 							{formatPoeValue(entry.lastRate)}
-							{#if entry.lastChange24h !== null}
-								<span class="change">{entry.lastChange24h >= 0 ? '+' : ''}{entry.lastChange24h.toFixed(2)}%</span>
-							{/if}
+							<span class="change">{entry.lastChange24h !== null ? `${entry.lastChange24h >= 0 ? '+' : ''}${entry.lastChange24h.toFixed(2)}%` : '—'}</span>
 						</span>
 					{:else}
 						<span class="price">—</span>
