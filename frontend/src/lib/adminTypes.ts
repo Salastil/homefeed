@@ -102,12 +102,17 @@ export interface Poe2BrowseEntry {
 
 export interface AdminPoe2Entry {
 	id: string;
-	currencyId: string;
-	name: string;
-	icon: string | null;
+	baseCurrencyId: string;
+	baseName: string;
+	baseIcon: string | null;
+	quoteCurrencyId: string;
+	quoteName: string;
+	quoteIcon: string | null;
 	priorityRank: number;
-	lastValue: number | null;
-	lastChangePercent: number | null;
+	lastRate: number | null;
+	lastChange1h: number | null;
+	lastChange24h: number | null;
+	lastChange7d: number | null;
 	lastPolledAt: string | null;
 	lastError: string | null;
 }
@@ -115,7 +120,6 @@ export interface AdminPoe2Entry {
 export interface AdminPoe2Settings {
 	leagueId: string | null;
 	leagueName: string | null;
-	primaryCurrencyName: string | null;
 	updatedAt: string | null;
 }
 

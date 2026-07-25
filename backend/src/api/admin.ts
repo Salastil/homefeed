@@ -292,11 +292,22 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 	app.get('/api/admin/poe2/watchlist', async () => poe2WatchlistDb.listWatchlist());
 
 	app.post('/api/admin/poe2/watchlist', async (req, reply) => {
-		const { currencyId, name, icon } = req.body as { currencyId?: string; name?: string; icon?: string | null };
-		if (!currencyId || !name) return reply.code(400).send({ error: 'currencyId and name are required' });
-		const created = poe2WatchlistDb.addWatchlistEntry(currencyId, name, icon ?? null);
+		const { base, quote } = req.body as {
+			base?: { currencyId?: string; name?: string; icon?: string | null };
+			quote?: { currencyId?: string; name?: string; icon?: string | null };
+		};
+		if (!base?.currencyId || !base?.name || !quote?.currencyId || !quote?.name) {
+			return reply.code(400).send({ error: 'base and quote currencies (currencyId, name) are required' });
+		}
+		if (base.currencyId === quote.currencyId) {
+			return reply.code(400).send({ error: 'Base and quote currencies must be different' });
+		}
+		const created = poe2WatchlistDb.addWatchlistEntry(
+			{ currencyId: base.currencyId, name: base.name, icon: base.icon ?? null },
+			{ currencyId: quote.currencyId, name: quote.name, icon: quote.icon ?? null }
+		);
 		// Poll immediately rather than waiting for the next tick (up to 15 minutes) — cheap,
-		// and refreshes every existing entry's value too.
+		// and refreshes every existing entry's rate too.
 		pollPoe2Now().catch((err) => logger.error('poe2', `Immediate poll failed: ${err.message}`));
 		return reply.code(201).send(created);
 	});

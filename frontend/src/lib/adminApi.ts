@@ -212,10 +212,14 @@ export const browsePoe2Currencies = (fetchFn?: typeof fetch) =>
 export const getPoe2Watchlist = (fetchFn?: typeof fetch) =>
 	request<AdminPoe2Entry[]>('/api/admin/poe2/watchlist', {}, fetchFn);
 
-export const addPoe2WatchlistEntry = (currencyId: string, name: string, icon: string | null, fetchFn?: typeof fetch) =>
+export const addPoe2WatchlistEntry = (
+	base: { currencyId: string; name: string; icon: string | null },
+	quote: { currencyId: string; name: string; icon: string | null },
+	fetchFn?: typeof fetch
+) =>
 	request<AdminPoe2Entry>(
 		'/api/admin/poe2/watchlist',
-		{ method: 'POST', body: JSON.stringify({ currencyId, name, icon }) },
+		{ method: 'POST', body: JSON.stringify({ base, quote }) },
 		fetchFn
 	);
 

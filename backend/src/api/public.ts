@@ -72,7 +72,7 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 	});
 
 	app.get('/api/poe2', async () => {
-		const { leagueName, primaryCurrencyName, updatedAt } = settingsDb.getSettings().poe2;
-		return { leagueName, primaryCurrencyName, updatedAt, entries: poe2WatchlistDb.listWatchlist() };
+		const { leagueName, updatedAt } = settingsDb.getSettings().poe2;
+		return { leagueName, updatedAt, entries: poe2WatchlistDb.listWatchlist() };
 	});
 }

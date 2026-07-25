@@ -25,6 +25,14 @@ export function migrate() {
 	db.exec('DROP TABLE IF EXISTS admin_users;');
 	db.exec('DROP TABLE IF EXISTS sessions;');
 
+	// PoE2 watchlist model changed from "value quoted in one primary currency" to arbitrary
+	// currency pairs (base/quote) — the old single-currency rows can't be mapped onto a pair,
+	// so the table is dropped and rebuilt fresh below rather than migrated column-by-column.
+	const poe2WatchlistCols = db.prepare(`PRAGMA table_info(poe2_watchlist)`).all() as { name: string }[];
+	if (poe2WatchlistCols.some((c) => c.name === 'currency_id')) {
+		db.exec('DROP TABLE IF EXISTS poe2_watchlist;');
+	}
+
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS sources (
 			id TEXT PRIMARY KEY,
@@ -192,7 +200,7 @@ export function migrate() {
 			weather_updated_at TEXT, -- ISO timestamp, NULL pre-first-poll
 			poe2_league_id TEXT,
 			poe2_league_name TEXT,
-			poe2_primary_currency_name TEXT, -- e.g. "Divine Orb" — the unit every poe2_watchlist value is quoted in
+			poe2_primary_currency_name TEXT, -- unused since the watchlist moved to arbitrary currency pairs (no single "quoted in" currency anymore) — column kept rather than dropped, SQLite ALTER TABLE can't drop columns without a full table rebuild
 			poe2_updated_at TEXT
 		);
 
@@ -211,21 +219,39 @@ export function migrate() {
 			created_at TEXT NOT NULL
 		);
 
-		-- Sidebar "PoE2" widget — currency watchlist priced off poe.ninja's PoE2 economy API
+		-- Sidebar "PoE2" widget — tracks exchange rates between arbitrary currency pairs
 		-- (see poe2/poller.ts), always against the current challenge league (auto-detected,
-		-- no admin config). Same shape as stock_tickers — poll state lives on the row.
+		-- no admin config). Rate is "1 base = last_rate quote"; both currencies' names/icons
+		-- are captured at add-time from the browse picker, not re-resolved.
 		CREATE TABLE IF NOT EXISTS poe2_watchlist (
 			id TEXT PRIMARY KEY,
-			currency_id TEXT NOT NULL, -- opaque id from the exchange overview's lines[].id, e.g. "divine"
-			name TEXT NOT NULL, -- captured at add-time from the browse picker, not re-resolved
-			icon TEXT,
+			base_currency_id TEXT NOT NULL, -- opaque id from the exchange overview's lines[].id, e.g. "exalted"
+			base_name TEXT NOT NULL,
+			base_icon TEXT,
+			quote_currency_id TEXT NOT NULL,
+			quote_name TEXT NOT NULL,
+			quote_icon TEXT,
 			priority_rank INTEGER NOT NULL,
-			last_value REAL,
-			last_change_percent REAL,
+			last_rate REAL,
+			last_change_1h REAL,
+			last_change_24h REAL,
+			last_change_7d REAL,
 			last_polled_at TEXT,
 			last_error TEXT,
 			created_at TEXT NOT NULL
 		);
+
+		-- Per-poll rate snapshots for the pairs above — poe.ninja only exposes one 7-day
+		-- change window, so 1h/24h/7d change is computed ourselves from this history
+		-- (see poe2/poller.ts), rather than trusting a field poe.ninja doesn't provide.
+		-- Pruned to the last 8 days on every poll.
+		CREATE TABLE IF NOT EXISTS poe2_rate_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			watchlist_id TEXT NOT NULL,
+			rate REAL NOT NULL,
+			recorded_at TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_poe2_rate_history_watchlist ON poe2_rate_history(watchlist_id, recorded_at);
 
 		-- Sidebar "Bookmarks" widget — admin-curated links, each independently hidden/public
 		-- via is_private (same private-access lock feature as categories.is_private).

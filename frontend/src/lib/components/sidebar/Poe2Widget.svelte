@@ -8,27 +8,27 @@
 <div class="widget">
 	<div class="head">
 		<span class="title">PoE2</span>
-		{#if poe2.entries.length > 0}<span class="interval">7d</span>{/if}
 	</div>
 	{#if poe2.leagueName}
-		<p class="caption">
-			{poe2.leagueName}{poe2.primaryCurrencyName ? ` · in ${poe2.primaryCurrencyName}` : ''}
-		</p>
+		<p class="caption">{poe2.leagueName}</p>
 	{/if}
 	{#if poe2.entries.length > 0}
 		<div class="list">
 			{#each poe2.entries as entry (entry.id)}
 				<div class="row">
 					<span class="label">
-						{#if entry.icon}<img class="icon" src={entry.icon} alt="" />{/if}
-						{entry.name}
+						{#if entry.baseIcon}<img class="icon" src={entry.baseIcon} alt="" />{/if}
+						{entry.baseName}
+						<span class="arrow">→</span>
+						{entry.quoteName}
 					</span>
-					{#if entry.lastValue !== null}
-						<span class="price" class:up={(entry.lastChangePercent ?? 0) >= 0} class:down={(entry.lastChangePercent ?? 0) < 0}>
-							{formatPoeValue(entry.lastValue)}
-							{#if entry.lastChangePercent !== null}
-								<span class="change">{entry.lastChangePercent >= 0 ? '+' : ''}{entry.lastChangePercent.toFixed(2)}%</span>
+					{#if entry.lastRate !== null}
+						<span class="price" class:up={(entry.lastChange24h ?? 0) >= 0} class:down={(entry.lastChange24h ?? 0) < 0}>
+							{formatPoeValue(entry.lastRate)}
+							{#if entry.lastChange24h !== null}
+								<span class="change">{entry.lastChange24h >= 0 ? '+' : ''}{entry.lastChange24h.toFixed(2)}%</span>
 							{/if}
+							<span class="interval">24h</span>
 						</span>
 					{:else}
 						<span class="price">—</span>
@@ -37,7 +37,7 @@
 			{/each}
 		</div>
 	{:else}
-		<p class="empty">No currencies tracked</p>
+		<p class="empty">No currency pairs tracked</p>
 	{/if}
 </div>
 
@@ -55,10 +55,6 @@
 	.title {
 		font-size: 12px;
 		font-weight: 500;
-		color: var(--text-muted);
-	}
-	.interval {
-		font-size: 10px;
 		color: var(--text-muted);
 	}
 	.caption {
@@ -85,8 +81,12 @@
 	.label {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: 4px;
 		font-size: 13px;
+		white-space: nowrap;
+	}
+	.arrow {
+		color: var(--text-muted);
 	}
 	.icon {
 		width: 16px;
@@ -108,6 +108,11 @@
 	}
 	.change {
 		margin-left: 4px;
+	}
+	.interval {
+		margin-left: 4px;
+		font-size: 10px;
+		color: var(--text-muted);
 	}
 	.empty {
 		font-size: 12px;

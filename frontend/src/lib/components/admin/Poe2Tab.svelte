@@ -1,29 +1,36 @@
 <script lang="ts">
 	import type { AdminSettings, AdminPoe2Entry, Poe2BrowseEntry } from '$lib/adminTypes';
 	import { browsePoe2Currencies, addPoe2WatchlistEntry, removePoe2WatchlistEntry } from '$lib/adminApi';
-	import { formatPoeValue } from '$lib/format';
+	import { formatPoeValue, invertChangePercent } from '$lib/format';
 
 	let { settings, watchlist: initial }: { settings: AdminSettings; watchlist: AdminPoe2Entry[] } = $props();
 	let watchlist = $state([...initial]);
 
 	let showAdd = $state(false);
+	// Two-step wizard: pick the base currency first, then the quote currency (excluding the
+	// base) — a pair needs both, and currency ids are opaque so they have to be picked from a
+	// live list rather than typed (same idiom as the old single-currency picker).
+	let step = $state<'base' | 'quote'>('base');
+	let selectedBase = $state<Poe2BrowseEntry | null>(null);
 	let query = $state('');
-	// null = not fetched yet — fetched once on first "+ Add currency" click, then filtered
+	// null = not fetched yet — fetched once on first "+ Add pair" click, then filtered
 	// client-side on every keystroke (the whole category is a bounded, small list).
 	let browseList = $state<Poe2BrowseEntry[] | null>(null);
 	let browsing = $state(false);
 	let browseError = $state<string | null>(null);
 
-	const watchedIds = $derived(new Set(watchlist.map((w) => w.currencyId)));
 	const filtered = $derived(
 		(browseList ?? [])
-			.filter((c) => !watchedIds.has(c.id))
+			.filter((c) => c.id !== selectedBase?.id)
 			.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()))
 			.slice(0, 30)
 	);
 
 	async function openAdd() {
 		showAdd = true;
+		step = 'base';
+		selectedBase = null;
+		query = '';
 		if (browseList) return;
 		browsing = true;
 		browseError = null;
@@ -36,28 +43,44 @@
 		}
 	}
 
-	async function pick(entry: Poe2BrowseEntry) {
-		const created = await addPoe2WatchlistEntry(entry.id, entry.name, entry.icon);
+	function pickBase(entry: Poe2BrowseEntry) {
+		selectedBase = entry;
+		step = 'quote';
+		query = '';
+	}
+
+	async function pickQuote(entry: Poe2BrowseEntry) {
+		if (!selectedBase) return;
+		const created = await addPoe2WatchlistEntry(
+			{ currencyId: selectedBase.id, name: selectedBase.name, icon: selectedBase.icon },
+			{ currencyId: entry.id, name: entry.name, icon: entry.icon }
+		);
 		watchlist = [...watchlist, created];
 		showAdd = false;
-		query = '';
+	}
+
+	function closeAdd() {
+		showAdd = false;
 	}
 
 	async function handleDelete(id: string) {
 		await removePoe2WatchlistEntry(id);
 		watchlist = watchlist.filter((w) => w.id !== id);
 	}
+
+	function fmtChange(value: number | null): string {
+		if (value === null) return '—';
+		return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+	}
 </script>
 
 <div class="toolbar">
-	<span class="count">{watchlist.length} currencies tracked</span>
-	<button class="add-btn" onclick={openAdd}>+ Add currency</button>
+	<span class="count">{watchlist.length} pairs tracked</span>
+	<button class="add-btn" onclick={openAdd}>+ Add pair</button>
 </div>
 <p class="hint" style="margin: -6px 0 12px;">
 	{#if settings.poe2.leagueName}
-		Tracking {settings.poe2.leagueName}{settings.poe2.primaryCurrencyName
-			? ` · values in ${settings.poe2.primaryCurrencyName}`
-			: ''} · change is over the last 7 days.
+		Tracking {settings.poe2.leagueName} · change is over the last 1h / 24h / 7d.
 	{:else}
 		League not detected yet — check back after the next poll (every 15 minutes).
 	{/if}
@@ -65,6 +88,13 @@
 
 {#if showAdd}
 	<div class="add-panel">
+		<div class="step-label">
+			{#if step === 'base'}
+				Step 1 — pick the base currency
+			{:else}
+				Step 2 — pick what to quote <strong>{selectedBase?.name}</strong> against
+			{/if}
+		</div>
 		<input type="text" bind:value={query} placeholder="Search currencies…" />
 		{#if browsing}
 			<p class="hint">Loading currency list…</p>
@@ -75,7 +105,10 @@
 		{:else}
 			<div class="results">
 				{#each filtered as entry (entry.id)}
-					<button class="result-row" onclick={() => pick(entry)}>
+					<button
+						class="result-row"
+						onclick={() => (step === 'base' ? pickBase(entry) : pickQuote(entry))}
+					>
 						{#if entry.icon}<img class="result-icon" src={entry.icon} alt="" />{/if}
 						{entry.name}
 					</button>
@@ -83,7 +116,7 @@
 			</div>
 		{/if}
 		<div class="add-actions">
-			<button onclick={() => (showAdd = false)}>Close</button>
+			<button onclick={closeAdd}>Close</button>
 		</div>
 	</div>
 {/if}
@@ -91,24 +124,36 @@
 <div class="list">
 	{#each watchlist as entry (entry.id)}
 		<div class="row">
-			<div class="row-main">
-				{#if entry.icon}<img class="icon" src={entry.icon} alt="" />{/if}
-				<div>
-					<div class="name">{entry.name}</div>
-					{#if entry.lastError}
-						<div class="sub"><span class="error">{entry.lastError}</span></div>
-					{/if}
+			<div class="row-head">
+				<div class="pair-name">
+					{#if entry.baseIcon}<img class="icon" src={entry.baseIcon} alt="" />{/if}
+					{entry.baseName}
+					<span class="arrow">⇄</span>
+					{#if entry.quoteIcon}<img class="icon" src={entry.quoteIcon} alt="" />{/if}
+					{entry.quoteName}
 				</div>
+				<button class="icon-btn danger" onclick={() => handleDelete(entry.id)} title="Remove">✕</button>
 			</div>
-			{#if entry.lastValue !== null}
-				<span class="price" class:up={(entry.lastChangePercent ?? 0) >= 0} class:down={(entry.lastChangePercent ?? 0) < 0}>
-					{formatPoeValue(entry.lastValue)}
-					{#if entry.lastChangePercent !== null}
-						({entry.lastChangePercent >= 0 ? '+' : ''}{entry.lastChangePercent.toFixed(2)}%)
-					{/if}
-				</span>
+			{#if entry.lastError}
+				<div class="sub"><span class="error">{entry.lastError}</span></div>
+			{:else if entry.lastRate !== null}
+				<div class="direction">
+					<span class="rate">1 {entry.baseName} = {formatPoeValue(entry.lastRate)} {entry.quoteName}</span>
+					<span class="changes">
+						1h {fmtChange(entry.lastChange1h)} · 24h {fmtChange(entry.lastChange24h)} · 7d {fmtChange(entry.lastChange7d)}
+					</span>
+				</div>
+				<div class="direction">
+					<span class="rate">1 {entry.quoteName} = {formatPoeValue(1 / entry.lastRate)} {entry.baseName}</span>
+					<span class="changes">
+						1h {fmtChange(invertChangePercent(entry.lastChange1h))} ·
+						24h {fmtChange(invertChangePercent(entry.lastChange24h))} ·
+						7d {fmtChange(invertChangePercent(entry.lastChange7d))}
+					</span>
+				</div>
+			{:else}
+				<div class="sub">Waiting for first poll…</div>
 			{/if}
-			<button class="icon-btn danger" onclick={() => handleDelete(entry.id)} title="Remove">✕</button>
 		</div>
 	{/each}
 </div>
@@ -138,6 +183,11 @@
 		border-radius: 12px;
 		padding: 14px;
 		margin-bottom: 14px;
+	}
+	.step-label {
+		font-size: 12px;
+		color: var(--text-secondary);
+		margin-bottom: 8px;
 	}
 	.add-panel input {
 		width: 100%;
@@ -182,47 +232,57 @@
 		gap: 8px;
 	}
 	.row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
 		background: var(--surface-1);
 		border-radius: var(--radius);
 		padding: 10px 14px;
 	}
-	.row-main {
+	.row-head {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		min-width: 0;
+		justify-content: space-between;
+		gap: 12px;
 	}
-	.icon {
-		width: 24px;
-		height: 24px;
-		object-fit: contain;
-		flex-shrink: 0;
-	}
-	.name {
+	.pair-name {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		font-size: 13px;
 		font-weight: 500;
+		min-width: 0;
+	}
+	.arrow {
+		color: var(--text-muted);
+		font-weight: 400;
+	}
+	.icon {
+		width: 18px;
+		height: 18px;
+		object-fit: contain;
+		flex-shrink: 0;
 	}
 	.sub {
 		font-size: 11px;
 		color: var(--text-muted);
+		margin-top: 4px;
 	}
 	.error {
 		color: var(--text-danger);
 	}
-	.price {
+	.direction {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 10px;
+		margin-top: 4px;
 		font-size: 12px;
+	}
+	.rate {
 		font-variant-numeric: tabular-nums;
+	}
+	.changes {
+		font-size: 11px;
+		color: var(--text-muted);
 		white-space: nowrap;
-	}
-	.price.up {
-		color: var(--text-success);
-	}
-	.price.down {
-		color: var(--text-danger);
 	}
 	.icon-btn {
 		font-size: 12px;

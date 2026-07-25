@@ -44,3 +44,14 @@ export function formatPoeValue(value: number): string {
 	if (value >= 0.01) return value.toFixed(3);
 	return value.toPrecision(2);
 }
+
+/**
+ * A pair's inverse-direction % change isn't the negation of the forward change (that's only
+ * an approximation) — it's the reciprocal-return identity: if rate went from `old` to `new`,
+ * forward change = (new-old)/old, and inverse change = (1/new - 1/old)/(1/old) = (old-new)/new
+ * = -change/(1+change/100). Derivable from the forward change alone, no extra data needed.
+ */
+export function invertChangePercent(change: number | null): number | null {
+	if (change === null) return null;
+	return -change / (1 + change / 100);
+}

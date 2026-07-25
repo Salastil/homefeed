@@ -235,14 +235,24 @@ export interface StockTicker {
 
 export interface Poe2WatchlistEntry {
 	id: string;
-	/** Opaque id from poe.ninja's exchange overview, e.g. "divine" — not a display name. */
-	currencyId: string;
-	name: string;
-	icon: string | null;
+	/** Opaque id from poe.ninja's exchange overview, e.g. "exalted" — not a display name. */
+	baseCurrencyId: string;
+	baseName: string;
+	baseIcon: string | null;
+	quoteCurrencyId: string;
+	quoteName: string;
+	quoteIcon: string | null;
 	priorityRank: number;
-	lastValue: number | null;
-	/** Cumulative % change over poe.ninja's own sparkline window — confirmed to be 7 days (see poe2/client.ts). */
-	lastChangePercent: number | null;
+	/** 1 base = lastRate quote. */
+	lastRate: number | null;
+	/**
+	 * % change over the last 1h/24h/7d, self-computed from poe2_rate_history since
+	 * poe.ninja only exposes one 7-day window (see poe2/poller.ts) — null when there
+	 * isn't yet enough history for that window (e.g. a pair just added).
+	 */
+	lastChange1h: number | null;
+	lastChange24h: number | null;
+	lastChange7d: number | null;
 	lastPolledAt: string | null;
 	lastError: string | null;
 	createdAt: string;
@@ -323,8 +333,6 @@ export interface GlobalSettings {
 	poe2: {
 		leagueId: string | null;
 		leagueName: string | null;
-		/** e.g. "Divine Orb" — the unit every poe2_watchlist value is quoted in. */
-		primaryCurrencyName: string | null;
 		updatedAt: string | null;
 	};
 }

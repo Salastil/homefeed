@@ -40,7 +40,6 @@ function rowToSettings(row: any): GlobalSettings {
 		poe2: {
 			leagueId: row.poe2_league_id,
 			leagueName: row.poe2_league_name,
-			primaryCurrencyName: row.poe2_primary_currency_name,
 			updatedAt: row.poe2_updated_at
 		}
 	};
@@ -72,7 +71,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			weather_location_name=?, weather_latitude=?, weather_longitude=?, weather_unit=?,
 			weather_wind_unit=?, weather_pressure_unit=?,
 			weather_current=?, weather_hourly=?, weather_daily=?, weather_alerts=?, weather_updated_at=?,
-			poe2_league_id=?, poe2_league_name=?, poe2_primary_currency_name=?, poe2_updated_at=?
+			poe2_league_id=?, poe2_league_name=?, poe2_updated_at=?
 		 WHERE id = 1`
 	).run(
 		merged.mergeStrictness,
@@ -106,7 +105,6 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		merged.weather.updatedAt,
 		merged.poe2.leagueId,
 		merged.poe2.leagueName,
-		merged.poe2.primaryCurrencyName,
 		merged.poe2.updatedAt
 	);
 	return getSettings();

@@ -7,9 +7,15 @@
 // imprecise on two points): currency name/icon metadata lives in a top-level `items[]` array
 // on the overview response, NOT `core.items` (that only holds the handful of currencies used
 // for `core.rates`/`primary`/`secondary`). The icon field is `image` (a path relative to this
-// same host), not `icon`. Confirmed `sparkline.totalChange` always equals the last entry of
-// `sparkline.data`, and every observed `data` array has exactly 7 entries — so this is a
-// 7-day cumulative % change, not some other window.
+// same host), not `icon`.
+//
+// Deliberately not using poe.ninja's own `core` (reference currency) or `sparkline` (a fixed
+// 7-day window) fields at all — the watchlist tracks arbitrary currency pairs with 1h/24h/7d
+// change, neither of which poe.ninja's overview exposes directly. Every line's `primaryValue`
+// is expressed in the same (unspecified, and irrelevant) reference currency, so any pair's
+// rate is just baseValue / quoteValue with the reference cancelling out — see
+// fetchCurrencyValues below and poe2/poller.ts, which self-computes change from its own
+// polling history instead.
 const BASE_URL = 'https://poe.ninja';
 
 export interface LeagueInfo {
@@ -23,12 +29,6 @@ export interface CurrencyBrowseEntry {
 	icon: string | null;
 }
 
-export interface CurrencyQuote {
-	value: number;
-	/** 7-day cumulative % change (see file header) — null if this line had no sparkline data. */
-	changePercent: number | null;
-}
-
 interface RawCurrencyItem {
 	id: string;
 	name: string;
@@ -38,11 +38,9 @@ interface RawCurrencyItem {
 interface RawCurrencyLine {
 	id: string;
 	primaryValue: number;
-	sparkline?: { totalChange: number; data: number[] } | null;
 }
 
 interface RawCurrencyOverview {
-	core: { primary: string };
 	lines: RawCurrencyLine[];
 	items: RawCurrencyItem[]; // top-level, not core.items — see file header
 }
@@ -80,27 +78,13 @@ export async function browseCurrencies(leagueId: string): Promise<CurrencyBrowse
 		.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// One overview fetch covers every watchlisted currency regardless of list size — unlike
+// One overview fetch covers every watchlisted pair regardless of list size — unlike
 // Stocks, which needs one request per ticker (Yahoo has no equivalent single "give me all of
-// these" endpoint without a cookie/crumb handshake).
-export async function fetchWatchlistQuotes(
-	leagueId: string,
-	currencyIds: string[]
-): Promise<{ quotes: Map<string, CurrencyQuote | Error>; primaryCurrencyName: string | null }> {
-	const { lines, items, core } = await fetchCurrencyOverview(leagueId);
-	const lineById = new Map(lines.map((line) => [line.id, line]));
-	const nameById = new Map(items.map((item) => [item.id, item.name]));
-
-	const quotes = new Map<string, CurrencyQuote | Error>();
-	for (const id of currencyIds) {
-		const line = lineById.get(id);
-		if (!line) {
-			quotes.set(id, new Error('No longer traded in this league'));
-			continue;
-		}
-		quotes.set(id, { value: line.primaryValue, changePercent: line.sparkline?.totalChange ?? null });
-	}
-
-	const primaryCurrencyName = nameById.get(core.primary) ?? core.primary;
-	return { quotes, primaryCurrencyName };
+// these" endpoint without a cookie/crumb handshake). Every line's primaryValue is expressed
+// in the same reference currency, so any pair's rate is just baseValue / quoteValue — the
+// reference currency itself cancels out, meaning this same one fetch works for arbitrary
+// pairs without needing to know or care what poe.ninja's own reference currency is.
+export async function fetchCurrencyValues(leagueId: string): Promise<Map<string, number>> {
+	const { lines } = await fetchCurrencyOverview(leagueId);
+	return new Map(lines.map((line) => [line.id, line.primaryValue]));
 }
