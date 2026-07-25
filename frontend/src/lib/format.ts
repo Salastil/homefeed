@@ -35,3 +35,12 @@ export function excerpt(body: string, sentenceCount = 2): string {
 	const sentences = singleLine.match(/[^.!?]+[.!?]+/g) ?? [singleLine];
 	return sentences.slice(0, sentenceCount).join(' ').trim();
 }
+
+/** PoE currency values span many orders of magnitude (e.g. 0.00002749 to 4856) — a fixed decimal count alone reads badly across that range. */
+export function formatPoeValue(value: number): string {
+	if (value === 0) return '0';
+	if (value >= 100) return value.toFixed(0);
+	if (value >= 1) return value.toFixed(2);
+	if (value >= 0.01) return value.toFixed(3);
+	return value.toPrecision(2);
+}

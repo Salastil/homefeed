@@ -233,6 +233,21 @@ export interface StockTicker {
 	createdAt: string;
 }
 
+export interface Poe2WatchlistEntry {
+	id: string;
+	/** Opaque id from poe.ninja's exchange overview, e.g. "divine" — not a display name. */
+	currencyId: string;
+	name: string;
+	icon: string | null;
+	priorityRank: number;
+	lastValue: number | null;
+	/** Cumulative % change over poe.ninja's own sparkline window — confirmed to be 7 days (see poe2/client.ts). */
+	lastChangePercent: number | null;
+	lastPolledAt: string | null;
+	lastError: string | null;
+	createdAt: string;
+}
+
 export interface Bookmark {
 	id: string;
 	name: string;
@@ -297,6 +312,19 @@ export interface GlobalSettings {
 		daily: WeatherDayEntry[];
 		/** Active NWS alerts (flash flood, hurricane, blizzard, etc.) for the configured location — US-only, empty elsewhere. See weather/client.ts's fetchActiveAlerts. */
 		alerts: WeatherAlert[];
+		updatedAt: string | null;
+	};
+	/**
+	 * Sidebar "PoE2" widget cache — see poe2/poller.ts. No admin-set config (unlike weather):
+	 * the league is always auto-detected as the current challenge league, so this is purely
+	 * a cache of what the last poll learned. Watchlist entries themselves live in the
+	 * poe2_watchlist table, not here — same split as stock_tickers vs. this settings row.
+	 */
+	poe2: {
+		leagueId: string | null;
+		leagueName: string | null;
+		/** e.g. "Divine Orb" — the unit every poe2_watchlist value is quoted in. */
+		primaryCurrencyName: string | null;
 		updatedAt: string | null;
 	};
 }

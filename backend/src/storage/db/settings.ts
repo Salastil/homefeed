@@ -36,6 +36,12 @@ function rowToSettings(row: any): GlobalSettings {
 			daily: JSON.parse(row.weather_daily),
 			alerts: JSON.parse(row.weather_alerts),
 			updatedAt: row.weather_updated_at
+		},
+		poe2: {
+			leagueId: row.poe2_league_id,
+			leagueName: row.poe2_league_name,
+			primaryCurrencyName: row.poe2_primary_currency_name,
+			updatedAt: row.poe2_updated_at
 		}
 	};
 }
@@ -52,7 +58,8 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		...patch,
 		retention: { ...current.retention, ...(patch.retention ?? {}) },
 		selectedModels: { ...current.selectedModels, ...(patch.selectedModels ?? {}) },
-		weather: { ...current.weather, ...(patch.weather ?? {}) }
+		weather: { ...current.weather, ...(patch.weather ?? {}) },
+		poe2: { ...current.poe2, ...(patch.poe2 ?? {}) }
 	};
 	db.prepare(
 		`UPDATE global_settings SET
@@ -64,7 +71,8 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			storage_cap_enabled=?, storage_cap_value=?, storage_cap_unit=?,
 			weather_location_name=?, weather_latitude=?, weather_longitude=?, weather_unit=?,
 			weather_wind_unit=?, weather_pressure_unit=?,
-			weather_current=?, weather_hourly=?, weather_daily=?, weather_alerts=?, weather_updated_at=?
+			weather_current=?, weather_hourly=?, weather_daily=?, weather_alerts=?, weather_updated_at=?,
+			poe2_league_id=?, poe2_league_name=?, poe2_primary_currency_name=?, poe2_updated_at=?
 		 WHERE id = 1`
 	).run(
 		merged.mergeStrictness,
@@ -95,7 +103,11 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		JSON.stringify(merged.weather.hourly),
 		JSON.stringify(merged.weather.daily),
 		JSON.stringify(merged.weather.alerts),
-		merged.weather.updatedAt
+		merged.weather.updatedAt,
+		merged.poe2.leagueId,
+		merged.poe2.leagueName,
+		merged.poe2.primaryCurrencyName,
+		merged.poe2.updatedAt
 	);
 	return getSettings();
 }

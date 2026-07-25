@@ -11,7 +11,9 @@ import type {
 	LogEntry,
 	GeocodeResult,
 	AdminStockTicker,
-	AdminBookmark
+	AdminBookmark,
+	Poe2BrowseEntry,
+	AdminPoe2Entry
 } from './adminTypes';
 
 async function request<T>(path: string, options: RequestInit = {}, fetchFn: typeof fetch = fetch): Promise<T> {
@@ -202,3 +204,20 @@ export const updateBookmark = (id: string, patch: { name?: string; url?: string;
 
 export const deleteBookmark = (id: string, fetchFn?: typeof fetch) =>
 	request<void>(`/api/admin/bookmarks/${id}`, { method: 'DELETE' }, fetchFn);
+
+// PoE2 — league is always auto-detected, never admin-set (see poe2/poller.ts).
+export const browsePoe2Currencies = (fetchFn?: typeof fetch) =>
+	request<Poe2BrowseEntry[]>('/api/admin/poe2/browse', {}, fetchFn);
+
+export const getPoe2Watchlist = (fetchFn?: typeof fetch) =>
+	request<AdminPoe2Entry[]>('/api/admin/poe2/watchlist', {}, fetchFn);
+
+export const addPoe2WatchlistEntry = (currencyId: string, name: string, icon: string | null, fetchFn?: typeof fetch) =>
+	request<AdminPoe2Entry>(
+		'/api/admin/poe2/watchlist',
+		{ method: 'POST', body: JSON.stringify({ currencyId, name, icon }) },
+		fetchFn
+	);
+
+export const removePoe2WatchlistEntry = (id: string, fetchFn?: typeof fetch) =>
+	request<void>(`/api/admin/poe2/watchlist/${id}`, { method: 'DELETE' }, fetchFn);

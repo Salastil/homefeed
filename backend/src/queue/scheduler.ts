@@ -7,12 +7,14 @@ import * as settingsDb from '../storage/db/settings.js';
 import { logger } from '../storage/db/logs.js';
 import { pollWeatherNow } from '../weather/poller.js';
 import { pollStocksNow } from '../stocks/poller.js';
+import { pollPoe2Now } from '../poe2/poller.js';
 
 const POLL_TICK_MS = 60_000; // checks which sources are due every minute; each source's own interval governs actual fetch frequency
 const SYNTHESIS_TICK_MS = 60_000;
 const RETENTION_TICK_MS = 60 * 60_000; // hourly
 const WEATHER_TICK_MS = 45 * 60_000;
 const STOCKS_TICK_MS = 15 * 60_000; // per admin spec — stock prices move faster than weather
+const POE2_TICK_MS = 15 * 60_000; // matches Stocks' cadence
 
 export function startScheduler() {
 	const provider = () => {
@@ -79,5 +81,10 @@ export function startScheduler() {
 		pollStocksNow().catch((err) => logger.error('stocks', `Poll tick failed: ${err.message}`));
 	}, STOCKS_TICK_MS);
 
-	logger.info('scheduler', 'Started: poll every 1m, synthesis every 1m, retention every 1h, weather every 45m, stocks every 15m');
+	pollPoe2Now().catch((err) => logger.error('poe2', `Initial poll failed: ${err.message}`));
+	setInterval(() => {
+		pollPoe2Now().catch((err) => logger.error('poe2', `Poll tick failed: ${err.message}`));
+	}, POE2_TICK_MS);
+
+	logger.info('scheduler', 'Started: poll every 1m, synthesis every 1m, retention every 1h, weather every 45m, stocks every 15m, poe2 every 15m');
 }

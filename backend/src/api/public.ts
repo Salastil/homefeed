@@ -6,6 +6,7 @@ import * as categoriesDb from '../storage/db/categories.js';
 import * as settingsDb from '../storage/db/settings.js';
 import * as stocksDb from '../storage/db/stocks.js';
 import * as bookmarksDb from '../storage/db/bookmarks.js';
+import * as poe2WatchlistDb from '../storage/db/poe2Watchlist.js';
 import { hasPrivateAccess } from './privateAccess.js';
 
 export async function registerPublicRoutes(app: FastifyInstance) {
@@ -68,5 +69,10 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 		const bookmarks = bookmarksDb.listBookmarks();
 		if (hasPrivateAccess(req)) return bookmarks;
 		return bookmarks.filter((b) => !b.isPrivate);
+	});
+
+	app.get('/api/poe2', async () => {
+		const { leagueName, primaryCurrencyName, updatedAt } = settingsDb.getSettings().poe2;
+		return { leagueName, primaryCurrencyName, updatedAt, entries: poe2WatchlistDb.listWatchlist() };
 	});
 }

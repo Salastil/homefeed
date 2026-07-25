@@ -8,6 +8,7 @@
 	import WeatherTab from '$lib/components/admin/WeatherTab.svelte';
 	import StocksTab from '$lib/components/admin/StocksTab.svelte';
 	import BookmarksTab from '$lib/components/admin/BookmarksTab.svelte';
+	import Poe2Tab from '$lib/components/admin/Poe2Tab.svelte';
 	import ConnectionsTab from '$lib/components/admin/ConnectionsTab.svelte';
 	import LogsTab from '$lib/components/admin/LogsTab.svelte';
 
@@ -22,6 +23,7 @@
 		{ id: 'weather', label: 'Weather' },
 		{ id: 'stocks', label: 'Stocks' },
 		{ id: 'bookmarks', label: 'Bookmarks' },
+		{ id: 'poe2', label: 'PoE2' },
 		{ id: 'connections', label: 'Connections' },
 		{ id: 'logs', label: 'Logs' }
 	];
@@ -57,6 +59,8 @@
 		<StocksTab tickers={data.stockTickers} />
 	{:else if active === 'bookmarks'}
 		<BookmarksTab bookmarks={data.bookmarks} />
+	{:else if active === 'poe2'}
+		<Poe2Tab settings={data.settings} watchlist={data.poe2Watchlist} />
 	{:else if active === 'connections'}
 		<ConnectionsTab settings={data.settings} aiStatus={data.aiStatus} telegramStatus={data.telegramStatus} />
 	{:else if active === 'logs'}

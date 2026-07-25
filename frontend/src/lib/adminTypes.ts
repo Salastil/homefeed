@@ -94,6 +94,31 @@ export interface AdminBookmark {
 	isPrivate: boolean;
 }
 
+export interface Poe2BrowseEntry {
+	id: string;
+	name: string;
+	icon: string | null;
+}
+
+export interface AdminPoe2Entry {
+	id: string;
+	currencyId: string;
+	name: string;
+	icon: string | null;
+	priorityRank: number;
+	lastValue: number | null;
+	lastChangePercent: number | null;
+	lastPolledAt: string | null;
+	lastError: string | null;
+}
+
+export interface AdminPoe2Settings {
+	leagueId: string | null;
+	leagueName: string | null;
+	primaryCurrencyName: string | null;
+	updatedAt: string | null;
+}
+
 export interface AdminSettings {
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	defaultPollIntervalMinutes: number;
@@ -111,6 +136,7 @@ export interface AdminSettings {
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
 	weather: AdminWeatherSettings;
+	poe2: AdminPoe2Settings;
 }
 
 export interface AdminSource {

@@ -155,3 +155,20 @@ export interface Bookmark {
 	url: string;
 	isPrivate: boolean;
 }
+
+export interface Poe2WatchlistEntry {
+	id: string;
+	name: string;
+	icon: string | null;
+	lastValue: number | null;
+	/** 7-day cumulative % change — see backend/src/poe2/client.ts. */
+	lastChangePercent: number | null;
+}
+
+export interface Poe2Data {
+	leagueName: string | null;
+	/** e.g. "Divine Orb" — the unit every entry's lastValue is quoted in. */
+	primaryCurrencyName: string | null;
+	updatedAt: string | null;
+	entries: Poe2WatchlistEntry[];
+}

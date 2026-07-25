@@ -5,6 +5,7 @@ import * as eventsDb from '../storage/db/events.js';
 import * as categoriesDb from '../storage/db/categories.js';
 import * as stocksDb from '../storage/db/stocks.js';
 import * as bookmarksDb from '../storage/db/bookmarks.js';
+import * as poe2WatchlistDb from '../storage/db/poe2Watchlist.js';
 import { clearSourceContent, reissueSourceContent, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
 import { totalStorageBytes } from '../storage/media/index.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
@@ -14,6 +15,8 @@ import * as telegramClient from '../telegram/client.js';
 import { geocodeLocation } from '../weather/client.js';
 import { pollWeatherNow } from '../weather/poller.js';
 import { pollStocksNow } from '../stocks/poller.js';
+import { browseCurrencies, fetchCurrentLeague } from '../poe2/client.js';
+import { pollPoe2Now } from '../poe2/poller.js';
 
 // Not part of GlobalSettings itself (nothing to persist) — computed fresh on every
 // settings read/write so the Retention tab's "currently using" line and usage bar
@@ -273,6 +276,34 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 	app.delete('/api/admin/bookmarks/:id', async (req, reply) => {
 		const { id } = req.params as { id: string };
 		bookmarksDb.deleteBookmark(id);
+		return reply.code(204).send();
+	});
+
+	// --- PoE2 (league is always auto-detected, never admin-set — see poe2/poller.ts) ---
+	app.get('/api/admin/poe2/browse', async (_req, reply) => {
+		try {
+			const league = await fetchCurrentLeague();
+			return await browseCurrencies(league.id);
+		} catch (err) {
+			return reply.code(502).send({ error: `poe.ninja unreachable: ${(err as Error).message}` });
+		}
+	});
+
+	app.get('/api/admin/poe2/watchlist', async () => poe2WatchlistDb.listWatchlist());
+
+	app.post('/api/admin/poe2/watchlist', async (req, reply) => {
+		const { currencyId, name, icon } = req.body as { currencyId?: string; name?: string; icon?: string | null };
+		if (!currencyId || !name) return reply.code(400).send({ error: 'currencyId and name are required' });
+		const created = poe2WatchlistDb.addWatchlistEntry(currencyId, name, icon ?? null);
+		// Poll immediately rather than waiting for the next tick (up to 15 minutes) — cheap,
+		// and refreshes every existing entry's value too.
+		pollPoe2Now().catch((err) => logger.error('poe2', `Immediate poll failed: ${err.message}`));
+		return reply.code(201).send(created);
+	});
+
+	app.delete('/api/admin/poe2/watchlist/:id', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		poe2WatchlistDb.removeWatchlistEntry(id);
 		return reply.code(204).send();
 	});
 
