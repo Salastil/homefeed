@@ -22,5 +22,12 @@
 		gap: 16px;
 		position: sticky;
 		top: 20px;
+		/* Weather + Stocks + PoE2 + Bookmarks stacked can easily be taller than the
+		   viewport, especially on categories with a short article list. Without a height
+		   cap, a sticky element taller than the viewport gets its overflow glued off-screen
+		   below the fold for the entire scroll — capping the height and scrolling the
+		   sidebar internally keeps every widget reachable instead. */
+		max-height: calc(100vh - 40px);
+		overflow-y: auto;
 	}
 </style>
