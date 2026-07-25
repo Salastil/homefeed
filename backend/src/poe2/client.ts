@@ -4,18 +4,16 @@
 // and their callers.
 //
 // Response shape confirmed against real requests (not just the published docs, which were
-// imprecise on two points): currency name/icon metadata lives in a top-level `items[]` array
-// on the overview response, NOT `core.items` (that only holds the handful of currencies used
-// for `core.rates`/`primary`/`secondary`). The icon field is `image` (a path relative to this
-// same host), not `icon`.
+// imprecise on this point): currency name metadata lives in a top-level `items[]` array on
+// the overview response, NOT `core.items` (that only holds the handful of currencies used
+// for `core.rates`/`primary`/`secondary`).
 //
 // Deliberately not using poe.ninja's own `core` (reference currency) or `sparkline` (a fixed
-// 7-day window) fields at all — the watchlist tracks arbitrary currency pairs with 1h/24h/7d
-// change, neither of which poe.ninja's overview exposes directly. Every line's `primaryValue`
-// is expressed in the same (unspecified, and irrelevant) reference currency, so any pair's
-// rate is just baseValue / quoteValue with the reference cancelling out — see
-// fetchCurrencyValues below and poe2/poller.ts, which self-computes change from its own
-// polling history instead.
+// 7-day window) fields at all — the watchlist tracks arbitrary currency pairs with 24h
+// change, which poe.ninja's overview doesn't expose directly. Every line's `primaryValue` is
+// expressed in the same (unspecified, and irrelevant) reference currency, so any pair's rate
+// is just baseValue / quoteValue with the reference cancelling out — see fetchCurrencyValues
+// below and poe2/poller.ts, which self-computes change from its own polling history instead.
 const BASE_URL = 'https://poe.ninja';
 
 export interface LeagueInfo {
@@ -26,13 +24,11 @@ export interface LeagueInfo {
 export interface CurrencyBrowseEntry {
 	id: string;
 	name: string;
-	icon: string | null;
 }
 
 interface RawCurrencyItem {
 	id: string;
 	name: string;
-	image?: string;
 }
 
 interface RawCurrencyLine {
@@ -43,10 +39,6 @@ interface RawCurrencyLine {
 interface RawCurrencyOverview {
 	lines: RawCurrencyLine[];
 	items: RawCurrencyItem[]; // top-level, not core.items — see file header
-}
-
-function resolveIcon(image: string | undefined): string | null {
-	return image ? `${BASE_URL}${image}` : null;
 }
 
 export async function fetchCurrentLeague(): Promise<LeagueInfo> {
@@ -69,12 +61,9 @@ async function fetchCurrencyOverview(leagueId: string): Promise<RawCurrencyOverv
 // entry (i.e. are currently traded), not every currency poe.ninja has ever known about.
 export async function browseCurrencies(leagueId: string): Promise<CurrencyBrowseEntry[]> {
 	const { lines, items } = await fetchCurrencyOverview(leagueId);
-	const metaById = new Map(items.map((item) => [item.id, item]));
+	const nameById = new Map(items.map((item) => [item.id, item.name]));
 	return lines
-		.map((line) => {
-			const meta = metaById.get(line.id);
-			return { id: line.id, name: meta?.name ?? line.id, icon: resolveIcon(meta?.image) };
-		})
+		.map((line) => ({ id: line.id, name: nameById.get(line.id) ?? line.id }))
 		.sort((a, b) => a.name.localeCompare(b.name));
 }
 

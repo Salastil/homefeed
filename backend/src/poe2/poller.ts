@@ -3,8 +3,7 @@ import * as settingsDb from '../storage/db/settings.js';
 import { logger } from '../storage/db/logs.js';
 import { fetchCurrentLeague, fetchCurrencyValues } from './client.js';
 
-const HOUR_MS = 60 * 60_000;
-const DAY_MS = 24 * HOUR_MS;
+const DAY_MS = 24 * 60 * 60_000;
 
 function pctChange(current: number, past: number | null): number | null {
 	if (past === null || past === 0) return null;
@@ -38,24 +37,20 @@ export async function pollPoe2Now(): Promise<void> {
 		const valuesById = await fetchCurrencyValues(league.id);
 		const now = new Date();
 		const nowIso = now.toISOString();
-		const cutoff1h = new Date(now.getTime() - HOUR_MS).toISOString();
 		const cutoff24h = new Date(now.getTime() - DAY_MS).toISOString();
-		const cutoff7d = new Date(now.getTime() - 7 * DAY_MS).toISOString();
 
 		for (const entry of entries) {
 			const baseValue = valuesById.get(entry.baseCurrencyId);
 			const quoteValue = valuesById.get(entry.quoteCurrencyId);
 			if (baseValue === undefined || quoteValue === undefined) {
-				poe2WatchlistDb.markPolled(entry.id, null, null, null, null, 'One or both currencies no longer traded in this league');
+				poe2WatchlistDb.markPolled(entry.id, null, null, 'One or both currencies no longer traded in this league');
 				continue;
 			}
 
 			const rate = baseValue / quoteValue;
-			const change1h = pctChange(rate, poe2WatchlistDb.rateAtOrBefore(entry.id, cutoff1h));
 			const change24h = pctChange(rate, poe2WatchlistDb.rateAtOrBefore(entry.id, cutoff24h));
-			const change7d = pctChange(rate, poe2WatchlistDb.rateAtOrBefore(entry.id, cutoff7d));
 			poe2WatchlistDb.recordRate(entry.id, rate, nowIso);
-			poe2WatchlistDb.markPolled(entry.id, rate, change1h, change24h, change7d, null);
+			poe2WatchlistDb.markPolled(entry.id, rate, change24h, null);
 		}
 
 		poe2WatchlistDb.pruneOldHistory();

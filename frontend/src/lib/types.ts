@@ -159,15 +159,11 @@ export interface Bookmark {
 export interface Poe2WatchlistEntry {
 	id: string;
 	baseName: string;
-	baseIcon: string | null;
 	quoteName: string;
-	quoteIcon: string | null;
 	/** 1 base = lastRate quote. */
 	lastRate: number | null;
-	/** % change self-computed from our own poll history — null if not enough history yet. */
-	lastChange1h: number | null;
+	/** 24h % change, self-computed from our own poll history — null if not enough history yet. */
 	lastChange24h: number | null;
-	lastChange7d: number | null;
 }
 
 export interface Poe2Data {

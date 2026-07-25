@@ -221,30 +221,26 @@ export function migrate() {
 
 		-- Sidebar "PoE2" widget — tracks exchange rates between arbitrary currency pairs
 		-- (see poe2/poller.ts), always against the current challenge league (auto-detected,
-		-- no admin config). Rate is "1 base = last_rate quote"; both currencies' names/icons
-		-- are captured at add-time from the browse picker, not re-resolved.
+		-- no admin config). Rate is "1 base = last_rate quote"; both currencies' names are
+		-- captured at add-time from the browse picker, not re-resolved. No icon columns —
+		-- the UI doesn't display them.
 		CREATE TABLE IF NOT EXISTS poe2_watchlist (
 			id TEXT PRIMARY KEY,
 			base_currency_id TEXT NOT NULL, -- opaque id from the exchange overview's lines[].id, e.g. "exalted"
 			base_name TEXT NOT NULL,
-			base_icon TEXT,
 			quote_currency_id TEXT NOT NULL,
 			quote_name TEXT NOT NULL,
-			quote_icon TEXT,
 			priority_rank INTEGER NOT NULL,
 			last_rate REAL,
-			last_change_1h REAL,
 			last_change_24h REAL,
-			last_change_7d REAL,
 			last_polled_at TEXT,
 			last_error TEXT,
 			created_at TEXT NOT NULL
 		);
 
-		-- Per-poll rate snapshots for the pairs above — poe.ninja only exposes one 7-day
-		-- change window, so 1h/24h/7d change is computed ourselves from this history
-		-- (see poe2/poller.ts), rather than trusting a field poe.ninja doesn't provide.
-		-- Pruned to the last 8 days on every poll.
+		-- Per-poll rate snapshots for the pairs above — poe.ninja doesn't expose a matching
+		-- 24h change window, so it's computed ourselves from this history (see
+		-- poe2/poller.ts). Pruned to the last 2 days on every poll.
 		CREATE TABLE IF NOT EXISTS poe2_rate_history (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			watchlist_id TEXT NOT NULL,

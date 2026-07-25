@@ -97,22 +97,17 @@ export interface AdminBookmark {
 export interface Poe2BrowseEntry {
 	id: string;
 	name: string;
-	icon: string | null;
 }
 
 export interface AdminPoe2Entry {
 	id: string;
 	baseCurrencyId: string;
 	baseName: string;
-	baseIcon: string | null;
 	quoteCurrencyId: string;
 	quoteName: string;
-	quoteIcon: string | null;
 	priorityRank: number;
 	lastRate: number | null;
-	lastChange1h: number | null;
 	lastChange24h: number | null;
-	lastChange7d: number | null;
 	lastPolledAt: string | null;
 	lastError: string | null;
 }

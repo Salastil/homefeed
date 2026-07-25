@@ -52,8 +52,8 @@
 	async function pickQuote(entry: Poe2BrowseEntry) {
 		if (!selectedBase) return;
 		const created = await addPoe2WatchlistEntry(
-			{ currencyId: selectedBase.id, name: selectedBase.name, icon: selectedBase.icon },
-			{ currencyId: entry.id, name: entry.name, icon: entry.icon }
+			{ currencyId: selectedBase.id, name: selectedBase.name },
+			{ currencyId: entry.id, name: entry.name }
 		);
 		watchlist = [...watchlist, created];
 		showAdd = false;
@@ -80,7 +80,7 @@
 </div>
 <p class="hint" style="margin: -6px 0 12px;">
 	{#if settings.poe2.leagueName}
-		Tracking {settings.poe2.leagueName} · change is over the last 1h / 24h / 7d.
+		Tracking {settings.poe2.leagueName} · change is over the last 24h.
 	{:else}
 		League not detected yet — check back after the next poll (every hour).
 	{/if}
@@ -109,7 +109,6 @@
 						class="result-row"
 						onclick={() => (step === 'base' ? pickBase(entry) : pickQuote(entry))}
 					>
-						{#if entry.icon}<img class="result-icon" src={entry.icon} alt="" />{/if}
 						{entry.name}
 					</button>
 				{/each}
@@ -125,13 +124,7 @@
 	{#each watchlist as entry (entry.id)}
 		<div class="row">
 			<div class="row-head">
-				<div class="pair-name">
-					{#if entry.baseIcon}<img class="icon" src={entry.baseIcon} alt="" />{/if}
-					{entry.baseName}
-					<span class="arrow">⇄</span>
-					{#if entry.quoteIcon}<img class="icon" src={entry.quoteIcon} alt="" />{/if}
-					{entry.quoteName}
-				</div>
+				<div class="pair-name">{entry.baseName} <span class="arrow">⇄</span> {entry.quoteName}</div>
 				<button class="icon-btn danger" onclick={() => handleDelete(entry.id)} title="Remove">✕</button>
 			</div>
 			{#if entry.lastError}
@@ -139,17 +132,11 @@
 			{:else if entry.lastRate !== null}
 				<div class="direction">
 					<span class="rate">1 {entry.baseName} = {formatPoeValue(entry.lastRate)} {entry.quoteName}</span>
-					<span class="changes">
-						1h {fmtChange(entry.lastChange1h)} · 24h {fmtChange(entry.lastChange24h)} · 7d {fmtChange(entry.lastChange7d)}
-					</span>
+					<span class="changes">24h {fmtChange(entry.lastChange24h)}</span>
 				</div>
 				<div class="direction">
 					<span class="rate">1 {entry.quoteName} = {formatPoeValue(1 / entry.lastRate)} {entry.baseName}</span>
-					<span class="changes">
-						1h {fmtChange(invertChangePercent(entry.lastChange1h))} ·
-						24h {fmtChange(invertChangePercent(entry.lastChange24h))} ·
-						7d {fmtChange(invertChangePercent(entry.lastChange7d))}
-					</span>
+					<span class="changes">24h {fmtChange(invertChangePercent(entry.lastChange24h))}</span>
 				</div>
 			{:else}
 				<div class="sub">Waiting for first poll…</div>
@@ -203,9 +190,6 @@
 		border: 0.5px solid var(--border);
 	}
 	.result-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
 		text-align: left;
 		font-size: 12px;
 		padding: 8px 10px;
@@ -215,11 +199,6 @@
 	}
 	.result-row:hover {
 		background: var(--bg-accent);
-	}
-	.result-icon {
-		width: 20px;
-		height: 20px;
-		object-fit: contain;
 	}
 	.add-actions {
 		display: flex;
@@ -243,9 +222,6 @@
 		gap: 12px;
 	}
 	.pair-name {
-		display: flex;
-		align-items: center;
-		gap: 6px;
 		font-size: 13px;
 		font-weight: 500;
 		min-width: 0;
@@ -253,12 +229,6 @@
 	.arrow {
 		color: var(--text-muted);
 		font-weight: 400;
-	}
-	.icon {
-		width: 18px;
-		height: 18px;
-		object-fit: contain;
-		flex-shrink: 0;
 	}
 	.sub {
 		font-size: 11px;

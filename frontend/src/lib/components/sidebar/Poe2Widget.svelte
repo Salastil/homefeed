@@ -1,13 +1,22 @@
 <script lang="ts">
 	import type { Poe2Data } from '$lib/types';
-	import { formatPoeValue } from '$lib/format';
+	import { formatPoeValue, poeLeagueSlug } from '$lib/format';
 
 	let { poe2 }: { poe2: Poe2Data } = $props();
+
+	const link = $derived(poe2.leagueName ? `https://poe.ninja/poe2/economy/${poeLeagueSlug(poe2.leagueName)}/currency` : null);
 </script>
 
-<div class="widget">
+<svelte:element
+	this={link ? 'a' : 'div'}
+	class="widget"
+	href={link ?? undefined}
+	target={link ? '_blank' : undefined}
+	rel={link ? 'noopener noreferrer' : undefined}
+>
 	<div class="head">
 		<span class="title">PoE2</span>
+		{#if poe2.entries.length > 0}<span class="interval">24h</span>{/if}
 	</div>
 	{#if poe2.leagueName}
 		<p class="caption">{poe2.leagueName}</p>
@@ -16,19 +25,13 @@
 		<div class="list">
 			{#each poe2.entries as entry (entry.id)}
 				<div class="row">
-					<span class="label">
-						{#if entry.baseIcon}<img class="icon" src={entry.baseIcon} alt="" />{/if}
-						{entry.baseName}
-						<span class="arrow">→</span>
-						{entry.quoteName}
-					</span>
+					<span class="label">{entry.baseName} <span class="arrow">→</span> {entry.quoteName}</span>
 					{#if entry.lastRate !== null}
 						<span class="price" class:up={(entry.lastChange24h ?? 0) >= 0} class:down={(entry.lastChange24h ?? 0) < 0}>
 							{formatPoeValue(entry.lastRate)}
 							{#if entry.lastChange24h !== null}
 								<span class="change">{entry.lastChange24h >= 0 ? '+' : ''}{entry.lastChange24h.toFixed(2)}%</span>
 							{/if}
-							<span class="interval">24h</span>
 						</span>
 					{:else}
 						<span class="price">—</span>
@@ -39,13 +42,16 @@
 	{:else}
 		<p class="empty">No currency pairs tracked</p>
 	{/if}
-</div>
+</svelte:element>
 
 <style>
 	.widget {
+		display: block;
 		background: var(--surface-1);
 		border-radius: 12px;
 		padding: 14px;
+		color: inherit;
+		text-decoration: none;
 	}
 	.head {
 		display: flex;
@@ -55,6 +61,10 @@
 	.title {
 		font-size: 12px;
 		font-weight: 500;
+		color: var(--text-muted);
+	}
+	.interval {
+		font-size: 10px;
 		color: var(--text-muted);
 	}
 	.caption {
@@ -79,20 +89,11 @@
 		border-top: none;
 	}
 	.label {
-		display: flex;
-		align-items: center;
-		gap: 4px;
 		font-size: 13px;
 		white-space: nowrap;
 	}
 	.arrow {
 		color: var(--text-muted);
-	}
-	.icon {
-		width: 16px;
-		height: 16px;
-		object-fit: contain;
-		flex-shrink: 0;
 	}
 	.price {
 		font-size: 12px;
@@ -108,11 +109,6 @@
 	}
 	.change {
 		margin-left: 4px;
-	}
-	.interval {
-		margin-left: 4px;
-		font-size: 10px;
-		color: var(--text-muted);
 	}
 	.empty {
 		font-size: 12px;

@@ -55,3 +55,12 @@ export function invertChangePercent(change: number | null): number | null {
 	if (change === null) return null;
 	return -change / (1 + change / 100);
 }
+
+/**
+ * poe.ninja's own league-page slugs have no separators at all (e.g. "Runes of Aldur" ->
+ * "runesofaldur"), unlike this app's own dash-separated slugify() above — used to link the
+ * PoE2 panel out to https://poe.ninja/poe2/economy/{slug}/currency for the current league.
+ */
+export function poeLeagueSlug(leagueName: string): string {
+	return leagueName.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
