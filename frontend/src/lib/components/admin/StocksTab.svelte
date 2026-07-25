@@ -44,6 +44,7 @@
 	<span class="count">{tickers.length} tickers</span>
 	<button class="add-btn" onclick={() => (showAdd = !showAdd)}>+ New ticker</button>
 </div>
+<p class="hint" style="margin: -6px 0 12px;">Price and % change are today's — since the previous trading day's close.</p>
 
 {#if showAdd}
 	<div class="add-panel">

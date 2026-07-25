@@ -5,7 +5,10 @@
 </script>
 
 <div class="widget">
-	<span class="title">Stocks</span>
+	<div class="head">
+		<span class="title">Stocks</span>
+		{#if stocks.length > 0}<span class="interval">today</span>{/if}
+	</div>
 	{#if stocks.length > 0}
 		<div class="list">
 			{#each stocks as stock (stock.id)}
@@ -35,9 +38,18 @@
 		border-radius: 12px;
 		padding: 14px;
 	}
+	.head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+	}
 	.title {
 		font-size: 12px;
 		font-weight: 500;
+		color: var(--text-muted);
+	}
+	.interval {
+		font-size: 10px;
 		color: var(--text-muted);
 	}
 	.list {
