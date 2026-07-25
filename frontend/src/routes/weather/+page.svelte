@@ -5,6 +5,30 @@
 	let { data }: { data: PageData } = $props();
 	const weather = $derived(data.weather);
 	const unitLabel = $derived(weather.unit === 'celsius' ? 'C' : 'F');
+
+	// The hourly strip covers the next 24h starting from "now" (see weather/client.ts), which
+	// almost always crosses a day boundary partway through — grouping by calendar day and
+	// labeling each group is what actually answers "which day is this hour in", rather than
+	// leaving it to be inferred from the hour-of-day alone (ambiguous for anything after
+	// midnight, and easy to misread near the boundary either way).
+	function dayLabel(d: Date): string {
+		const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+		const diffDays = Math.round((startOfDay(d) - startOfDay(new Date())) / 86_400_000);
+		if (diffDays === 0) return 'Today';
+		if (diffDays === 1) return 'Tomorrow';
+		return d.toLocaleDateString([], { weekday: 'long' });
+	}
+
+	const hourlyGroups = $derived.by(() => {
+		const groups: { label: string; hours: typeof weather.hourly }[] = [];
+		for (const hour of weather.hourly) {
+			const label = dayLabel(new Date(hour.time));
+			const last = groups[groups.length - 1];
+			if (last && last.label === label) last.hours.push(hour);
+			else groups.push({ label, hours: [hour] });
+		}
+		return groups;
+	});
 </script>
 
 <div class="head">
@@ -75,15 +99,20 @@
 
 	<div class="section">
 		<span class="section-title">Hourly</span>
-		<div class="hourly-strip">
-			{#each weather.hourly as hour (hour.time)}
-				<div class="hour-col">
-					<span class="hour-time">{new Date(hour.time).toLocaleTimeString([], { hour: 'numeric' })}</span>
-					<span class="hour-icon">{hour.icon}</span>
-					<span class="hour-temp">{Math.round(hour.temp)}°</span>
+		{#each hourlyGroups as group (group.label + group.hours[0]?.time)}
+			<div class="hourly-day">
+				<span class="hourly-day-label">{group.label}</span>
+				<div class="hourly-strip">
+					{#each group.hours as hour (hour.time)}
+						<div class="hour-col">
+							<span class="hour-time">{new Date(hour.time).toLocaleTimeString([], { hour: 'numeric' })}</span>
+							<span class="hour-icon">{hour.icon}</span>
+							<span class="hour-temp">{Math.round(hour.temp)}°</span>
+						</div>
+					{/each}
 				</div>
-			{/each}
-		</div>
+			</div>
+		{/each}
 	</div>
 
 	<div class="section">
@@ -227,6 +256,19 @@
 		font-size: 12px;
 		color: var(--text-secondary);
 		margin: 4px 0 0;
+	}
+	.hourly-day {
+		margin-bottom: 18px;
+	}
+	.hourly-day:last-child {
+		margin-bottom: 0;
+	}
+	.hourly-day-label {
+		display: block;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--text-muted);
+		margin-bottom: 10px;
 	}
 	.hourly-strip {
 		display: grid;
