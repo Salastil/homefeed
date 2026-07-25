@@ -82,7 +82,7 @@
 	{#if settings.poe2.leagueName}
 		Tracking {settings.poe2.leagueName} · change is over the last 1h / 24h / 7d.
 	{:else}
-		League not detected yet — check back after the next poll (every 15 minutes).
+		League not detected yet — check back after the next poll (every hour).
 	{/if}
 </p>
 

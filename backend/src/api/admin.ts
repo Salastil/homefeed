@@ -306,7 +306,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 			{ currencyId: base.currencyId, name: base.name, icon: base.icon ?? null },
 			{ currencyId: quote.currencyId, name: quote.name, icon: quote.icon ?? null }
 		);
-		// Poll immediately rather than waiting for the next tick (up to 15 minutes) — cheap,
+		// Poll immediately rather than waiting for the next tick (up to 1 hour) — cheap,
 		// and refreshes every existing entry's rate too.
 		pollPoe2Now().catch((err) => logger.error('poe2', `Immediate poll failed: ${err.message}`));
 		return reply.code(201).send(created);
