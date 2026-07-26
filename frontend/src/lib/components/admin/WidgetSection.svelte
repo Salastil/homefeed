@@ -26,12 +26,12 @@
 
 <div class="section">
 	<div class="section-head">
-		<button class="icon-btn" onclick={onMoveUp} disabled={!canMoveUp} aria-label="Move up">▲</button>
-		<button class="icon-btn" onclick={onMoveDown} disabled={!canMoveDown} aria-label="Move down">▼</button>
 		<button class="head-btn" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
 			<span class="chevron" class:open={expanded}>▸</span>
 			<span class="title">{title}</span>
 		</button>
+		<button class="icon-btn" onclick={onMoveUp} disabled={!canMoveUp} aria-label="Move up">▲</button>
+		<button class="icon-btn" onclick={onMoveDown} disabled={!canMoveDown} aria-label="Move down">▼</button>
 		<span class="badge" class:active={enabled} onclick={onToggle} role="button" tabindex="0">
 			{enabled ? 'Active' : 'Disabled'}
 		</span>
