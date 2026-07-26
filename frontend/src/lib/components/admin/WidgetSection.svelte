@@ -3,18 +3,24 @@
 
 	// Minimized by default — Weather/Stocks/Bookmarks/PoE2 stacked at full height would
 	// make the consolidated "Widgets" tab unwieldy as more get added over time. Enabled
-	// state is independent of expanded state: disabling a widget only hides it from the
-	// sidebar (see Sidebar.svelte's widgetsEnabled gate), it doesn't stop the admin from
-	// expanding this section to keep configuring it.
+	// state is independent of expanded state: disabling a widget hides it from the
+	// sidebar AND stops its backend poller from making outbound requests (see
+	// scheduler.ts's widgets.* gate) — it just doesn't stop the admin from expanding
+	// this section to keep configuring it while it's off.
 	let {
 		title,
 		enabled,
 		onToggle,
+		// Weather/Stocks/PoE2 have a backend poller that scheduler.ts gates on this same
+		// flag (see scheduler.ts); Bookmarks doesn't poll anything, so disabling it only
+		// ever affects sidebar visibility — the tooltip shouldn't claim otherwise.
+		hasBackendPoller = true,
 		children
 	}: {
 		title: string;
 		enabled: boolean;
 		onToggle: () => void;
+		hasBackendPoller?: boolean;
 		children: Snippet;
 	} = $props();
 
@@ -26,9 +32,18 @@
 		<button class="head-btn" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
 			<span class="chevron" class:open={expanded}>▸</span>
 			<span class="title">{title}</span>
-			{#if !enabled}<span class="disabled-tag">Hidden</span>{/if}
+			{#if !enabled}<span class="disabled-tag">Off</span>{/if}
 		</button>
-		<label class="enable-toggle" title={enabled ? 'Hide from sidebar' : 'Show in sidebar'}>
+		<label
+			class="enable-toggle"
+			title={hasBackendPoller
+				? enabled
+					? 'Disable — stops polling and hides from the sidebar'
+					: 'Enable — resumes polling and shows in the sidebar'
+				: enabled
+					? 'Disable — hides from the sidebar'
+					: 'Enable — shows in the sidebar'}
+		>
 			<input type="checkbox" checked={enabled} onchange={onToggle} />
 		</label>
 	</div>

@@ -30,8 +30,12 @@
 </script>
 
 <p class="hint">
-	Each widget can be shown or hidden from the sidebar independently. Hiding one only affects
-	whether it's visible on the site — its own settings and data below keep working either way.
+	Each widget can be enabled or disabled independently. Disabling Weather, Stocks, or PoE2
+	hides it from the sidebar <strong>and</strong> stops its backend poller — no more outbound
+	requests until it's turned back on, at which point it polls again immediately rather than
+	waiting out its normal schedule. You can still edit a disabled widget's settings below; they
+	just won't fetch anything new until it's re-enabled. Bookmarks has no poller, so its toggle
+	only affects sidebar visibility.
 </p>
 
 <WidgetSection title="Weather" enabled={widgets.weather} onToggle={() => toggle('weather')}>
@@ -42,7 +46,7 @@
 	<StocksTab tickers={stockTickers} />
 </WidgetSection>
 
-<WidgetSection title="Bookmarks" enabled={widgets.bookmarks} onToggle={() => toggle('bookmarks')}>
+<WidgetSection title="Bookmarks" enabled={widgets.bookmarks} onToggle={() => toggle('bookmarks')} hasBackendPoller={false}>
 	<BookmarksTab {bookmarks} />
 </WidgetSection>
 
