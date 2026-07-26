@@ -23,10 +23,6 @@
 	}
 	let editForm = $state(emptyEditForm());
 
-	function sourceNames(ids: string[]) {
-		return ids.map((id) => sources.find((s) => s.id === id)?.name).filter(Boolean).join(', ') || 'No sources assigned';
-	}
-
 	async function handleAdd() {
 		if (!newEvent.name) return;
 		const created = await addEvent({
@@ -45,13 +41,6 @@
 
 	async function toggleActive(event: AdminTrackedEvent) {
 		const updated = await updateEvent(event.id, { active: !event.active });
-		events = events.map((e) => (e.id === event.id ? updated : e));
-	}
-
-	// Same "More »" collapse as Category.isSpillover (see MergeTab.svelte) — an item
-	// marked here loses its own top-nav tab and shows up on /more instead.
-	async function toggleSpillover(event: AdminTrackedEvent) {
-		const updated = await updateEvent(event.id, { isSpillover: !event.isSpillover });
 		events = events.map((e) => (e.id === event.id ? updated : e));
 	}
 
@@ -203,7 +192,7 @@
 				<div>
 					<div class="name">{event.name}</div>
 					<div class="sub">
-						{sourceNames(event.sourceIds)}
+						{event.sourceIds.length} source{event.sourceIds.length === 1 ? '' : 's'} active
 						{#if event.keywords.length > 0}
 							· matching {event.keywords.map((k) => `"${k}"`).join(', ')}
 						{/if}
@@ -211,10 +200,6 @@
 						{event.recapIntervalHours === null ? 'no recaps' : `recap every ${event.recapIntervalHours}h`}
 					</div>
 				</div>
-				<label class="spillover-toggle">
-					<input type="checkbox" checked={event.isSpillover} onchange={() => toggleSpillover(event)} />
-					More
-				</label>
 				<span class="badge" class:active={event.active} onclick={() => toggleActive(event)} role="button" tabindex="0">
 					{event.active ? 'Active' : 'Paused'}
 				</span>
