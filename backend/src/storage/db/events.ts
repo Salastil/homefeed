@@ -9,9 +9,9 @@ function rowToEvent(row: any): TrackedEvent {
 		description: row.description,
 		sourceIds: JSON.parse(row.source_ids),
 		keywords: JSON.parse(row.keywords),
-		cadence: row.cadence,
-		cadenceTime: row.cadence_time,
+		recapIntervalHours: row.recap_interval_hours,
 		active: !!row.active,
+		isSpillover: !!row.is_spillover,
 		retentionOverrideDays: row.retention_override_days,
 		lastRecapAt: row.last_recap_at,
 		createdAt: row.created_at
@@ -52,7 +52,7 @@ export function createEvent(input: Partial<TrackedEvent>): TrackedEvent {
 	const id = `evt-${randomUUID()}`;
 	const now = new Date().toISOString();
 	db.prepare(
-		`INSERT INTO tracked_events (id, name, description, source_ids, keywords, cadence, cadence_time, active, retention_override_days, last_recap_at, created_at)
+		`INSERT INTO tracked_events (id, name, description, source_ids, keywords, recap_interval_hours, active, is_spillover, retention_override_days, last_recap_at, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
 	).run(
 		id,
@@ -60,9 +60,9 @@ export function createEvent(input: Partial<TrackedEvent>): TrackedEvent {
 		input.description ?? '',
 		JSON.stringify(input.sourceIds ?? []),
 		JSON.stringify(input.keywords ?? []),
-		input.cadence ?? 'continuous',
-		input.cadenceTime ?? null,
+		input.recapIntervalHours ?? null,
 		input.active === false ? 0 : 1,
+		input.isSpillover ? 1 : 0,
 		input.retentionOverrideDays ?? null,
 		now
 	);
@@ -74,15 +74,15 @@ export function updateEvent(id: string, patch: Partial<TrackedEvent>): TrackedEv
 	if (!existing) return null;
 	const merged = { ...existing, ...patch };
 	db.prepare(
-		`UPDATE tracked_events SET name=?, description=?, source_ids=?, keywords=?, cadence=?, cadence_time=?, active=?, retention_override_days=?, last_recap_at=? WHERE id=?`
+		`UPDATE tracked_events SET name=?, description=?, source_ids=?, keywords=?, recap_interval_hours=?, active=?, is_spillover=?, retention_override_days=?, last_recap_at=? WHERE id=?`
 	).run(
 		merged.name,
 		merged.description,
 		JSON.stringify(merged.sourceIds),
 		JSON.stringify(merged.keywords),
-		merged.cadence,
-		merged.cadenceTime,
+		merged.recapIntervalHours,
 		merged.active ? 1 : 0,
+		merged.isSpillover ? 1 : 0,
 		merged.retentionOverrideDays,
 		merged.lastRecapAt,
 		id

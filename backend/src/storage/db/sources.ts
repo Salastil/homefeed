@@ -89,12 +89,11 @@ export function markPolled(id: string, error: string | null) {
 	);
 }
 
-/** Sources due for polling right now, based on their own interval (or the global default). */
-export function sourcesDueForPoll(defaultIntervalMinutes: number): Source[] {
+/** Sources due for polling right now, based on their own interval. */
+export function sourcesDueForPoll(): Source[] {
 	const now = Date.now();
 	return listEnabledSources().filter((s) => {
 		if (!s.lastPolledAt) return true;
-		const interval = (s.pollIntervalMinutes || defaultIntervalMinutes) * 60_000;
-		return now - new Date(s.lastPolledAt).getTime() >= interval;
+		return now - new Date(s.lastPolledAt).getTime() >= s.pollIntervalMinutes * 60_000;
 	});
 }

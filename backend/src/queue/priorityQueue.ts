@@ -7,7 +7,7 @@ import { embedPendingItems } from '../pipeline/embedding.js';
 import { clusterItems } from '../pipeline/clustering.js';
 import { publishCluster, publishDirect } from '../pipeline/publish.js';
 import { logger } from '../storage/db/logs.js';
-import type { GlobalSettings, ContentItem, TrackedEvent } from '../storage/db/types.js';
+import type { GlobalSettings, ContentItem, TrackedEvent, Source } from '../storage/db/types.js';
 
 function partition<T>(items: T[], predicate: (item: T) => boolean): [T[], T[]] {
 	const matches: T[] = [];
@@ -31,8 +31,8 @@ function claimedEventId(item: ContentItem, events: TrackedEvent[]): string | nul
 	return match?.id ?? null;
 }
 
-function primaryCategoryRank(item: ContentItem, rankByName: Map<string, number>): number {
-	const source = sourcesDb.getSource(item.sourceId);
+function primaryCategoryRank(item: ContentItem, rankByName: Map<string, number>, sourcesById: Map<string, Source>): number {
+	const source = sourcesById.get(item.sourceId);
 	const cats = source?.category ?? [];
 	let best = Infinity;
 	for (const cat of cats) {
@@ -43,6 +43,33 @@ function primaryCategoryRank(item: ContentItem, rankByName: Map<string, number>)
 		if (rank !== undefined && rank < best) best = rank;
 	}
 	return best;
+}
+
+/**
+ * Shared by both the passthrough (no-AI) and synthesis direct-publish paths — same
+ * publish-then-tag-then-log/error shape, differing only in how the success/failure
+ * message describes why the item skipped merging.
+ */
+async function publishItemsDirect(
+	items: ContentItem[],
+	settings: GlobalSettings,
+	activeEvents: TrackedEvent[],
+	describeSuccess: (item: ContentItem) => string,
+	failureLabel: string
+): Promise<number> {
+	let published = 0;
+	for (const item of items) {
+		try {
+			const eventId = claimedEventId(item, activeEvents) ?? undefined;
+			const article = await publishDirect(item, settings, { eventId });
+			contentItemsDb.assignCluster([item.id], article.id);
+			published++;
+			logger.info('synthesis', `Published "${article.title}" directly (${describeSuccess(item)})`);
+		} catch (err) {
+			logger.error('synthesis', `${failureLabel} for "${item.title}": ${(err as Error).message}`);
+		}
+	}
+	return published;
 }
 
 /**
@@ -58,28 +85,15 @@ export async function runPassthroughCycle(settings: GlobalSettings): Promise<num
 	const items = contentItemsDb.unclusteredItemsExcludingSources([]);
 	if (items.length === 0) return 0;
 
+	const sourcesById = new Map(sourcesDb.listSources().map((s) => [s.id, s]));
 	const categories = categoriesDb.listCategories();
 	const rankByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.priorityRank]));
 	const ranked = items
-		.map((item) => ({ item, rank: primaryCategoryRank(item, rankByName) }))
+		.map((item) => ({ item, rank: primaryCategoryRank(item, rankByName, sourcesById) }))
 		.sort((a, b) => a.rank - b.rank)
 		.map((r) => r.item);
 
-	let published = 0;
-
-	for (const item of ranked) {
-		try {
-			const eventId = claimedEventId(item, activeEvents) ?? undefined;
-			const article = await publishDirect(item, settings, { eventId });
-			contentItemsDb.assignCluster([item.id], article.id);
-			published++;
-			logger.info('synthesis', `Published "${article.title}" directly (no AI available)`);
-		} catch (err) {
-			logger.error('synthesis', `Passthrough publish failed for "${item.title}": ${(err as Error).message}`);
-		}
-	}
-
-	return published;
+	return publishItemsDirect(ranked, settings, activeEvents, () => 'no AI available', 'Passthrough publish failed');
 }
 
 /**
@@ -96,36 +110,32 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 	const items = contentItemsDb.unclusteredItemsExcludingSources([]);
 	if (items.length === 0) return 0;
 
+	// One fetch of the full source list per cycle, reused below for both the
+	// direct-publish partition and each item's category/type lookups — avoids a
+	// separate sourcesDb.getSource() round-trip per item.
+	const sourcesById = new Map(sourcesDb.listSources().map((s) => [s.id, s]));
+
 	// YouTube videos, Nitter tweets, and Telegram messages never get LLM-merged with
 	// anything else — each is always its own article, same shape whether the AI service
 	// is up or not. Route them straight to publishDirect, same as the no-AI passthrough path.
 	const directPublishSourceIds = new Set(
-		sourcesDb
-			.listSources()
-			.filter((s) => s.type === 'youtube' || s.type === 'nitter' || s.type === 'telegram')
-			.map((s) => s.id)
+		[...sourcesById.values()].filter((s) => s.type === 'youtube' || s.type === 'nitter' || s.type === 'telegram').map((s) => s.id)
 	);
 	const [directItems, mergeableItems] = partition(items, (item) => directPublishSourceIds.has(item.sourceId));
 
-	let publishedDirect = 0;
-	for (const item of directItems) {
-		try {
-			const eventId = claimedEventId(item, activeEvents) ?? undefined;
-			const article = await publishDirect(item, settings, { eventId });
-			contentItemsDb.assignCluster([item.id], article.id);
-			publishedDirect++;
-			const source = sourcesDb.getSource(item.sourceId);
-			logger.info('synthesis', `Published "${article.title}" directly (${source?.type ?? 'unknown'})`);
-		} catch (err) {
-			logger.error('synthesis', `Direct publish failed for "${item.title}": ${(err as Error).message}`);
-		}
-	}
+	const publishedDirect = await publishItemsDirect(
+		directItems,
+		settings,
+		activeEvents,
+		(item) => sourcesById.get(item.sourceId)?.type ?? 'unknown',
+		'Direct publish failed'
+	);
 
 	const categories = categoriesDb.listCategories();
 	const rankByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.priorityRank]));
 
 	const ranked = mergeableItems
-		.map((item) => ({ item, rank: primaryCategoryRank(item, rankByName) }))
+		.map((item) => ({ item, rank: primaryCategoryRank(item, rankByName, sourcesById) }))
 		.sort((a, b) => a.rank - b.rank)
 		.map((r) => r.item);
 

@@ -5,29 +5,14 @@ import { publishEventRecap } from '../pipeline/publish.js';
 import type { GlobalSettings } from '../storage/db/types.js';
 import { logger } from '../storage/db/logs.js';
 
+// null means recaps are off for this item — e.g. one just organizing a commit or
+// torrent RSS feed under its own nav entry, with nothing that needs periodically
+// summarizing. Individual items still publish immediately regardless (see
+// priorityQueue.ts); this only gates the periodic AI wrap-up below.
 function isDue(event: ReturnType<typeof eventsDb.listActiveEvents>[number]): boolean {
-	const now = new Date();
+	if (event.recapIntervalHours === null) return false;
 	const last = event.lastRecapAt ? new Date(event.lastRecapAt) : null;
-
-	// "Continuous" no longer means "recap every tick" — individual items matching this
-	// event now publish immediately regardless of cadence (see priorityQueue.ts), so the
-	// recap job's only remaining purpose is the periodic AI wrap-up. Treated the same as
-	// hourly so an ongoing event still gets occasional recaps without spamming a
-	// near-duplicate one on every synthesis tick.
-	if (event.cadence === 'continuous' || event.cadence === 'hourly') {
-		return !last || now.getTime() - last.getTime() >= 3600_000;
-	}
-
-	if (event.cadence === 'daily') {
-		if (!event.cadenceTime) return false;
-		const [h, m] = event.cadenceTime.split(':').map(Number);
-		const scheduledToday = new Date(now);
-		scheduledToday.setHours(h, m, 0, 0);
-		const alreadyRecappedToday = last && last.toDateString() === now.toDateString();
-		return now >= scheduledToday && !alreadyRecappedToday;
-	}
-
-	return false;
+	return !last || Date.now() - last.getTime() >= event.recapIntervalHours * 3600_000;
 }
 
 /**

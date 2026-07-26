@@ -80,7 +80,8 @@ export interface TrackedEventPublic {
 	id: string;
 	name: string;
 	active: boolean;
-	cadence: string;
+	recapIntervalHours: number | null;
+	isSpillover: boolean;
 }
 
 export interface Category {
@@ -170,4 +171,13 @@ export interface Poe2Data {
 	leagueName: string | null;
 	updatedAt: string | null;
 	entries: Poe2WatchlistEntry[];
+}
+
+/** Per-widget sidebar visibility + display order, admin-set from the consolidated "Widgets" tab. */
+export interface WidgetsEnabled {
+	weather: boolean;
+	stocks: boolean;
+	bookmarks: boolean;
+	poe2: boolean;
+	order: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
 }

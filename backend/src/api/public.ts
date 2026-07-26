@@ -46,8 +46,10 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 	});
 
 	app.get('/api/events', async () => {
-		// Public fields only — sourceIds, cadenceTime etc. stay admin-only.
-		return eventsDb.listEvents().map((e) => ({ id: e.id, name: e.name, active: e.active, cadence: e.cadence }));
+		// Public fields only — sourceIds, keywords etc. stay admin-only.
+		return eventsDb
+			.listEvents()
+			.map((e) => ({ id: e.id, name: e.name, active: e.active, recapIntervalHours: e.recapIntervalHours, isSpillover: e.isSpillover }));
 	});
 
 	// Drives the site nav — admin-editable (add/remove/reorder) via /api/admin/categories,
@@ -58,6 +60,14 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 		const categories = categoriesDb.listCategories();
 		if (hasPrivateAccess(req)) return categories;
 		return categories.filter((c) => !c.isPrivate);
+	});
+
+	// Per-widget enable flags + display order — see the admin panel's consolidated
+	// "Widgets" tab. Weather/Stocks/PoE2's backend pollers are also gated on these
+	// flags (see scheduler.ts); Sidebar.svelte renders in exactly this order.
+	app.get('/api/widgets', async () => {
+		const { widgets, widgetOrder } = settingsDb.getSettings();
+		return { ...widgets, order: widgetOrder };
 	});
 
 	// Sidebar widgets — see WeatherTab/StocksTab/BookmarksTab in the admin panel.

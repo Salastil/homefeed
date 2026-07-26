@@ -217,8 +217,8 @@ const tags = [
 ];
 
 const events = [
-  { id: "evt-iran", name: "Iran war", active: true, cadence: "daily" },
-  { id: "evt-fed", name: "Fed rate decisions", active: true, cadence: "continuous" }
+  { id: "evt-iran", name: "Iran war", active: true, recapIntervalHours: 24, isSpillover: false },
+  { id: "evt-fed", name: "Fed rate decisions", active: true, recapIntervalHours: 1, isSpillover: false }
 ];
 
 module.exports = { articles, tags, events };

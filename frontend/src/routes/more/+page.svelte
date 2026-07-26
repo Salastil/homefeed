@@ -11,10 +11,22 @@
 </div>
 
 <div class="sections">
-	{#each data.sections as section (section.category.id)}
+	{#each data.categorySections as section (section.category.id)}
 		{#if section.articles.length > 0}
 			<section class="cat-section">
 				<a class="cat-name" href={`/category/${slugify(section.category.name)}`}>{section.category.name}</a>
+				<div class="list">
+					{#each section.articles as article (article.id)}
+						<ArticleListRow {article} />
+					{/each}
+				</div>
+			</section>
+		{/if}
+	{/each}
+	{#each data.eventSections as section (section.event.id)}
+		{#if section.articles.length > 0}
+			<section class="cat-section">
+				<a class="cat-name" href={`/event/${section.event.id}`}>{section.event.name}</a>
 				<div class="list">
 					{#each section.articles as article (article.id)}
 						<ArticleListRow {article} />

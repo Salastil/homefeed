@@ -196,7 +196,6 @@
 				<option value="telegram">Telegram</option>
 				<option value="youtube">YouTube</option>
 				<option value="nitter">Nitter</option>
-				<option value="custom">Custom</option>
 			</select>
 			{#if form.type === 'youtube'}
 				<input placeholder="Channel URL (@handle or /channel/UC…), or channel ID" bind:value={form.channelId} />
@@ -396,7 +395,7 @@
 	}
 	.row {
 		display: grid;
-		grid-template-columns: 20px 1.4fr 0.7fr 0.9fr 0.7fr 120px;
+		grid-template-columns: 20px 1.4fr 0.7fr 0.9fr 0.7fr 170px;
 		gap: 10px;
 		padding: 10px;
 		align-items: center;

@@ -24,8 +24,7 @@ export function startScheduler() {
 
 	setInterval(async () => {
 		try {
-			const settings = settingsDb.getSettings();
-			const ingested = await pollDueSources(settings.defaultPollIntervalMinutes);
+			const ingested = await pollDueSources();
 			if (ingested > 0) logger.info('scheduler', `Poll tick: ingested ${ingested} new item(s)`);
 		} catch (err) {
 			logger.error('scheduler', `Poll tick failed: ${(err as Error).message}`);
@@ -70,19 +69,32 @@ export function startScheduler() {
 	// Immediate first call for all three — unlike RSS sources (whose "due" check makes a
 	// brand-new source eligible on the very next 1-minute tick), weather/stocks/poe2 have
 	// no such shortcut; without this the sidebar is empty for up to 45/15/60 minutes after
-	// every restart.
-	pollWeatherNow().catch((err) => logger.error('weather', `Initial poll failed: ${err.message}`));
+	// every restart. Each is also gated on its Widgets-tab enabled flag (see
+	// admin/settings' consolidated Widgets tab) — disabling a widget stops these external
+	// calls entirely rather than just hiding the sidebar box, so there's no pointless
+	// polling for something nobody's looking at. Re-enabling it triggers an immediate
+	// poll instead (see admin.ts's PATCH /api/admin/settings), same as this initial call.
+	if (settingsDb.getSettings().widgets.weather) {
+		pollWeatherNow().catch((err) => logger.error('weather', `Initial poll failed: ${err.message}`));
+	}
 	setInterval(() => {
+		if (!settingsDb.getSettings().widgets.weather) return;
 		pollWeatherNow().catch((err) => logger.error('weather', `Poll tick failed: ${err.message}`));
 	}, WEATHER_TICK_MS);
 
-	pollStocksNow().catch((err) => logger.error('stocks', `Initial poll failed: ${err.message}`));
+	if (settingsDb.getSettings().widgets.stocks) {
+		pollStocksNow().catch((err) => logger.error('stocks', `Initial poll failed: ${err.message}`));
+	}
 	setInterval(() => {
+		if (!settingsDb.getSettings().widgets.stocks) return;
 		pollStocksNow().catch((err) => logger.error('stocks', `Poll tick failed: ${err.message}`));
 	}, STOCKS_TICK_MS);
 
-	pollPoe2Now().catch((err) => logger.error('poe2', `Initial poll failed: ${err.message}`));
+	if (settingsDb.getSettings().widgets.poe2) {
+		pollPoe2Now().catch((err) => logger.error('poe2', `Initial poll failed: ${err.message}`));
+	}
 	setInterval(() => {
+		if (!settingsDb.getSettings().widgets.poe2) return;
 		pollPoe2Now().catch((err) => logger.error('poe2', `Poll tick failed: ${err.message}`));
 	}, POE2_TICK_MS);
 

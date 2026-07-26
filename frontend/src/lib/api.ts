@@ -1,5 +1,5 @@
 import { getBackendUrl } from './config';
-import type { MergedArticle, Tag, TrackedEventPublic, Category, Weather, StockTicker, Bookmark, Poe2Data } from './types';
+import type { MergedArticle, Tag, TrackedEventPublic, Category, Weather, StockTicker, Bookmark, Poe2Data, WidgetsEnabled } from './types';
 
 async function get<T>(path: string, fetchFn: typeof fetch = fetch): Promise<T> {
 	// credentials: 'include' so the private-access cookie (see lib/privateAccess.ts)
@@ -56,4 +56,8 @@ export function getBookmarks(fetchFn?: typeof fetch): Promise<Bookmark[]> {
 
 export function getPoe2(fetchFn?: typeof fetch): Promise<Poe2Data> {
 	return get<Poe2Data>('/api/poe2', fetchFn);
+}
+
+export function getWidgetsEnabled(fetchFn?: typeof fetch): Promise<WidgetsEnabled> {
+	return get<WidgetsEnabled>('/api/widgets', fetchFn);
 }

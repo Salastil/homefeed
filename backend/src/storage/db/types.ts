@@ -1,7 +1,7 @@
 export interface Source {
 	id: string;
 	name: string;
-	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'nitter' | 'custom';
+	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'nitter';
 	category: string[];
 	url: string | null;
 	config: Record<string, unknown>;
@@ -178,9 +178,11 @@ export interface TrackedEvent {
 	sourceIds: string[];
 	/** Only items whose title/summary/body contain at least one of these (case-insensitive) qualify for this event — empty means "match everything from sourceIds", the original behavior. */
 	keywords: string[];
-	cadence: 'continuous' | 'daily' | 'hourly' | 'custom';
-	cadenceTime: string | null;
+	/** Hours between AI recaps, or null to turn recaps off entirely — e.g. an item that's just organizing a commit or torrent RSS feed under one nav entry, with nothing that needs periodically summarizing. Individual articles still publish immediately either way (see priorityQueue.ts); this only gates eventsRecap.ts's periodic wrap-up. */
+	recapIntervalHours: 1 | 3 | 6 | 12 | 24 | null;
 	active: boolean;
+	/** Collapses into the "More »" nav tab instead of getting its own top-level tab — same idea as Category.isSpillover. */
+	isSpillover: boolean;
 	retentionOverrideDays: number | null;
 	lastRecapAt: string | null;
 	createdAt: string;
@@ -265,7 +267,6 @@ export interface Bookmark {
 
 export interface GlobalSettings {
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
-	defaultPollIntervalMinutes: number;
 	holdBeforePublishMinutes: number;
 	tagDedupThreshold: number;
 	tagExpiryDays: number;
@@ -280,6 +281,15 @@ export interface GlobalSettings {
 	fxtwitterBaseUrl: string;
 	/** How Telegram message media (attached photos/videos, channel avatars) is served — see pipeline/publish.ts's resolveTelegramMedia. No "direct" option: Telegram has no public hotlinkable media URL, bytes only come from the authenticated MTProto session. */
 	telegramMediaMode: 'self-host' | 'proxy';
+	/** Per-widget enable flags — see admin/settings' consolidated "Widgets" tab. Weather/Stocks/PoE2's backend pollers (scheduler.ts) are gated on these too, not just sidebar visibility; Bookmarks has no poller so its flag only affects the sidebar. */
+	widgets: {
+		weather: boolean;
+		stocks: boolean;
+		bookmarks: boolean;
+		poe2: boolean;
+	};
+	/** Sidebar widget display order, admin-sortable via the Widgets tab's up/down arrows — mirrored exactly by Sidebar.svelte. */
+	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
 	retention: {
 		publishedArticleMaxAgeDays: number | null;
 		rawItemMaxAgeDays: number | null;

@@ -69,15 +69,6 @@ export function unclusteredItemsExcludingSources(excludeSourceIds: string[]): Co
 	return items.filter((i) => !excludeSourceIds.includes(i.sourceId));
 }
 
-export function unclusteredItemsForSources(sourceIds: string[], sinceISO: string): ContentItem[] {
-	if (sourceIds.length === 0) return [];
-	const placeholders = sourceIds.map(() => '?').join(',');
-	const rows = db
-		.prepare(`SELECT * FROM content_items WHERE cluster_id IS NULL AND source_id IN (${placeholders}) AND fetched_at > ?`)
-		.all(...sourceIds, sinceISO);
-	return rows.map(rowToItem);
-}
-
 export function setEmbedding(id: string, embedding: number[]) {
 	db.prepare('UPDATE content_items SET embedding = ? WHERE id = ?').run(JSON.stringify(embedding), id);
 }
@@ -91,11 +82,6 @@ export function assignCluster(ids: string[], clusterId: string) {
 export function resetClusterForItems(ids: string[]) {
 	const stmt = db.prepare('UPDATE content_items SET cluster_id = NULL WHERE id = ?');
 	for (const id of ids) stmt.run(id);
-}
-
-export function itemsByCluster(clusterId: string): ContentItem[] {
-	const rows = db.prepare('SELECT * FROM content_items WHERE cluster_id = ?').all(clusterId);
-	return rows.map(rowToItem);
 }
 
 export function itemsOlderThan(days: number): ContentItem[] {
@@ -116,8 +102,4 @@ export function itemsForSource(sourceId: string): ContentItem[] {
 
 export function deleteContentItemsForSource(sourceId: string) {
 	db.prepare('DELETE FROM content_items WHERE source_id = ?').run(sourceId);
-}
-
-export function deleteAllContentItems() {
-	db.prepare('DELETE FROM content_items').run();
 }

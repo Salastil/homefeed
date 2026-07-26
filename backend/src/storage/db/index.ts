@@ -37,7 +37,7 @@ export function migrate() {
 		CREATE TABLE IF NOT EXISTS sources (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
-			type TEXT NOT NULL, -- rss | api | telegram | custom
+			type TEXT NOT NULL, -- rss | api | telegram | youtube | nitter
 			category TEXT NOT NULL DEFAULT '[]', -- JSON array
 			url TEXT,
 			config TEXT NOT NULL DEFAULT '{}', -- JSON: apiKey, telegramChannelId, authHeaders
@@ -130,9 +130,9 @@ export function migrate() {
 			description TEXT NOT NULL DEFAULT '',
 			source_ids TEXT NOT NULL DEFAULT '[]', -- JSON
 			keywords TEXT NOT NULL DEFAULT '[]', -- JSON string array — empty means "match everything from source_ids"
-			cadence TEXT NOT NULL DEFAULT 'continuous',
-			cadence_time TEXT,
+			recap_interval_hours INTEGER, -- hours between AI recaps; NULL = recaps off for this item
 			active INTEGER NOT NULL DEFAULT 1,
+			is_spillover INTEGER NOT NULL DEFAULT 0,
 			retention_override_days INTEGER,
 			last_recap_at TEXT,
 			created_at TEXT NOT NULL
@@ -168,7 +168,6 @@ export function migrate() {
 		CREATE TABLE IF NOT EXISTS global_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1), -- singleton row
 			merge_strictness INTEGER NOT NULL DEFAULT 3,
-			default_poll_interval_minutes INTEGER NOT NULL DEFAULT 15,
 			hold_before_publish_minutes INTEGER NOT NULL DEFAULT 30,
 			tag_dedup_threshold REAL NOT NULL DEFAULT 0.82,
 			tag_expiry_days INTEGER NOT NULL DEFAULT 21,
@@ -185,6 +184,11 @@ export function migrate() {
 			nitter_media_mode TEXT NOT NULL DEFAULT 'proxy', -- self-host | proxy | direct
 			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com',
 			telegram_media_mode TEXT NOT NULL DEFAULT 'self-host', -- self-host | proxy (no "direct" — Telegram has no public hotlinkable media URL)
+			widget_weather_enabled INTEGER NOT NULL DEFAULT 1,
+			widget_stocks_enabled INTEGER NOT NULL DEFAULT 1,
+			widget_bookmarks_enabled INTEGER NOT NULL DEFAULT 1,
+			widget_poe2_enabled INTEGER NOT NULL DEFAULT 1,
+			widget_order TEXT NOT NULL DEFAULT '["weather","stocks","poe2","bookmarks"]', -- JSON array, admin-sortable via the Widgets tab
 			weather_location_name TEXT,
 			weather_latitude REAL,
 			weather_longitude REAL,
@@ -200,7 +204,6 @@ export function migrate() {
 			weather_updated_at TEXT, -- ISO timestamp, NULL pre-first-poll
 			poe2_league_id TEXT,
 			poe2_league_name TEXT,
-			poe2_primary_currency_name TEXT, -- unused since the watchlist moved to arbitrary currency pairs (no single "quoted in" currency anymore) — column kept rather than dropped, SQLite ALTER TABLE can't drop columns without a full table rebuild
 			poe2_updated_at TEXT
 		);
 
@@ -326,6 +329,12 @@ export function migrate() {
 	if (!hasColumn('tracked_events', 'keywords')) {
 		db.exec("ALTER TABLE tracked_events ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'");
 	}
+	if (!hasColumn('tracked_events', 'is_spillover')) {
+		db.exec('ALTER TABLE tracked_events ADD COLUMN is_spillover INTEGER NOT NULL DEFAULT 0');
+	}
+	if (!hasColumn('tracked_events', 'recap_interval_hours')) {
+		db.exec('ALTER TABLE tracked_events ADD COLUMN recap_interval_hours INTEGER');
+	}
 	if (!hasColumn('merged_articles', 'is_recap')) {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN is_recap INTEGER NOT NULL DEFAULT 0');
 	}
@@ -347,8 +356,18 @@ export function migrate() {
 	if (!hasColumn('global_settings', 'poe2_league_id')) {
 		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_league_id TEXT');
 		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_league_name TEXT');
-		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_primary_currency_name TEXT');
 		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_updated_at TEXT');
+	}
+	if (!hasColumn('global_settings', 'widget_weather_enabled')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN widget_weather_enabled INTEGER NOT NULL DEFAULT 1');
+		db.exec('ALTER TABLE global_settings ADD COLUMN widget_stocks_enabled INTEGER NOT NULL DEFAULT 1');
+		db.exec('ALTER TABLE global_settings ADD COLUMN widget_bookmarks_enabled INTEGER NOT NULL DEFAULT 1');
+		db.exec('ALTER TABLE global_settings ADD COLUMN widget_poe2_enabled INTEGER NOT NULL DEFAULT 1');
+	}
+	if (!hasColumn('global_settings', 'widget_order')) {
+		db.exec(
+			`ALTER TABLE global_settings ADD COLUMN widget_order TEXT NOT NULL DEFAULT '["weather","stocks","poe2","bookmarks"]'`
+		);
 	}
 
 	// Seed a handful of sensible default tickers so the Stocks widget isn't empty on a
@@ -366,19 +385,6 @@ export function migrate() {
 		defaults.forEach(([label, symbol], i) => {
 			stmt.run(`stk-${symbol.replace(/[^a-z0-9]+/gi, '-')}`, label, symbol, i + 1, new Date().toISOString());
 		});
-	}
-
-	// Stocks switched data providers from Stooq (walled off behind a proof-of-work
-	// challenge) to Yahoo Finance, which uses different symbol syntax — rewrites only
-	// rows still holding exactly one of the three old Stooq-format default symbols we
-	// ourselves seeded, never touching a symbol the admin typed in themselves.
-	const stooqToYahooSymbols: [string, string][] = [
-		['^dji', '^DJI'],
-		['^spx', '^GSPC'],
-		['btcusd', 'BTC-USD']
-	];
-	for (const [oldSymbol, newSymbol] of stooqToYahooSymbols) {
-		db.prepare('UPDATE stock_tickers SET symbol = ? WHERE symbol = ?').run(newSymbol, oldSymbol);
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

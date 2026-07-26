@@ -143,13 +143,6 @@ export function articlesForEventSince(eventId: string, since: string): MergedArt
 	return rows.map(rowToArticle);
 }
 
-export function latestArticleInThread(threadId: string): MergedArticle | null {
-	const row = db
-		.prepare('SELECT * FROM merged_articles WHERE thread_id = ? ORDER BY published_at DESC LIMIT 1')
-		.get(threadId);
-	return row ? rowToArticle(row) : null;
-}
-
 export function articlesOlderThan(days: number): MergedArticle[] {
 	const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
 	const rows = db.prepare('SELECT * FROM merged_articles WHERE published_at < ?').all(cutoff);

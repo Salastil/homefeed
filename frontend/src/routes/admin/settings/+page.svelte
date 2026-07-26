@@ -1,29 +1,21 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import MergeTab from '$lib/components/admin/MergeTab.svelte';
-	import SourcesTab from '$lib/components/admin/SourcesTab.svelte';
 	import ModelsTab from '$lib/components/admin/ModelsTab.svelte';
 	import RetentionTab from '$lib/components/admin/RetentionTab.svelte';
 	import EventsTab from '$lib/components/admin/EventsTab.svelte';
-	import WeatherTab from '$lib/components/admin/WeatherTab.svelte';
-	import StocksTab from '$lib/components/admin/StocksTab.svelte';
-	import BookmarksTab from '$lib/components/admin/BookmarksTab.svelte';
-	import Poe2Tab from '$lib/components/admin/Poe2Tab.svelte';
+	import WidgetsTab from '$lib/components/admin/WidgetsTab.svelte';
 	import ConnectionsTab from '$lib/components/admin/ConnectionsTab.svelte';
 	import LogsTab from '$lib/components/admin/LogsTab.svelte';
 
 	let { data }: { data: PageData } = $props();
 
 	const tabs = [
-		{ id: 'merge', label: 'Merge' },
-		{ id: 'sources', label: 'Sources' },
+		{ id: 'merge', label: 'Sources & Merge' },
 		{ id: 'models', label: 'Models' },
 		{ id: 'retention', label: 'Retention' },
-		{ id: 'events', label: 'Tracked events' },
-		{ id: 'weather', label: 'Weather' },
-		{ id: 'stocks', label: 'Stocks' },
-		{ id: 'bookmarks', label: 'Bookmarks' },
-		{ id: 'poe2', label: 'PoE2' },
+		{ id: 'events', label: 'Tracked items' },
+		{ id: 'widgets', label: 'Widgets' },
 		{ id: 'connections', label: 'Connections' },
 		{ id: 'logs', label: 'Logs' }
 	];
@@ -44,23 +36,15 @@
 
 <div class="content">
 	{#if active === 'merge'}
-		<MergeTab settings={data.settings} />
-	{:else if active === 'sources'}
-		<SourcesTab sources={data.sources} categories={data.settings.categoryPriority} />
+		<MergeTab settings={data.settings} sources={data.sources} />
 	{:else if active === 'models'}
 		<ModelsTab settings={data.settings} models={data.models} aiStatus={data.aiStatus} />
 	{:else if active === 'retention'}
 		<RetentionTab settings={data.settings} />
 	{:else if active === 'events'}
 		<EventsTab events={data.events} sources={data.sources} />
-	{:else if active === 'weather'}
-		<WeatherTab settings={data.settings} />
-	{:else if active === 'stocks'}
-		<StocksTab tickers={data.stockTickers} />
-	{:else if active === 'bookmarks'}
-		<BookmarksTab bookmarks={data.bookmarks} />
-	{:else if active === 'poe2'}
-		<Poe2Tab settings={data.settings} watchlist={data.poe2Watchlist} />
+	{:else if active === 'widgets'}
+		<WidgetsTab settings={data.settings} stockTickers={data.stockTickers} bookmarks={data.bookmarks} poe2Watchlist={data.poe2Watchlist} />
 	{:else if active === 'connections'}
 		<ConnectionsTab settings={data.settings} aiStatus={data.aiStatus} telegramStatus={data.telegramStatus} />
 	{:else if active === 'logs'}

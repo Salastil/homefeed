@@ -5,7 +5,9 @@
 	let { events: initial, sources }: { events: AdminTrackedEvent[]; sources: AdminSource[] } = $props();
 	let events = $state([...initial]);
 	let showAdd = $state(false);
-	let newEvent = $state({ name: '', cadence: 'daily' as AdminTrackedEvent['cadence'], cadenceTime: '18:00' });
+	// Off by default — plenty of items (a commit feed, a torrent feed) exist just to
+	// organize sources under one nav entry and never need an AI recap.
+	let newEvent = $state({ name: '', recapIntervalHours: null as AdminTrackedEvent['recapIntervalHours'] });
 
 	let editingId = $state<string | null>(null);
 	function emptyEditForm() {
@@ -14,16 +16,12 @@
 			description: '',
 			sourceIdSet: new Set<string>(),
 			keywordsText: '',
-			cadence: 'daily' as AdminTrackedEvent['cadence'],
-			cadenceTime: '18:00',
+			recapIntervalHours: null as AdminTrackedEvent['recapIntervalHours'],
+			isSpillover: false,
 			retentionOverrideDays: null as number | null
 		};
 	}
 	let editForm = $state(emptyEditForm());
-
-	function sourceNames(ids: string[]) {
-		return ids.map((id) => sources.find((s) => s.id === id)?.name).filter(Boolean).join(', ') || 'No sources assigned';
-	}
 
 	async function handleAdd() {
 		if (!newEvent.name) return;
@@ -32,12 +30,12 @@
 			description: '',
 			sourceIds: [],
 			keywords: [],
-			cadence: newEvent.cadence,
-			cadenceTime: newEvent.cadence === 'daily' ? newEvent.cadenceTime : null,
+			recapIntervalHours: newEvent.recapIntervalHours,
+			isSpillover: false,
 			retentionOverrideDays: null
 		});
 		events = [...events, created];
-		newEvent = { name: '', cadence: 'daily', cadenceTime: '18:00' };
+		newEvent = { name: '', recapIntervalHours: null };
 		showAdd = false;
 	}
 
@@ -58,8 +56,8 @@
 			description: event.description,
 			sourceIdSet: new Set(event.sourceIds),
 			keywordsText: event.keywords.join(', '),
-			cadence: event.cadence,
-			cadenceTime: event.cadenceTime ?? '18:00',
+			recapIntervalHours: event.recapIntervalHours,
+			isSpillover: event.isSpillover,
 			retentionOverrideDays: event.retentionOverrideDays
 		};
 	}
@@ -86,8 +84,8 @@
 			description: editForm.description,
 			sourceIds: [...editForm.sourceIdSet],
 			keywords,
-			cadence: editForm.cadence,
-			cadenceTime: editForm.cadence === 'daily' ? editForm.cadenceTime : null,
+			recapIntervalHours: editForm.recapIntervalHours,
+			isSpillover: editForm.isSpillover,
 			retentionOverrideDays: editForm.retentionOverrideDays
 		});
 		events = events.map((e) => (e.id === editingId ? updated : e));
@@ -96,22 +94,31 @@
 </script>
 
 <div class="toolbar">
-	<span class="count">{events.length} tracked events</span>
-	<button class="add-btn" onclick={() => (showAdd = !showAdd)}>+ New event</button>
+	<span class="count">{events.length} tracked items</span>
+	<button class="add-btn" onclick={() => (showAdd = !showAdd)}>+ New item</button>
 </div>
 
 {#if showAdd}
 	<div class="add-panel">
 		<div class="add-grid">
-			<input placeholder="Event name (e.g. Iran war)" bind:value={newEvent.name} />
-			<select bind:value={newEvent.cadence}>
-				<option value="continuous">Continuous</option>
-				<option value="daily">Daily</option>
-				<option value="hourly">Hourly</option>
+			<input placeholder="Item name (e.g. Iran war)" bind:value={newEvent.name} />
+		</div>
+		<div class="cadence-block">
+			<div class="field-label">Recap cadence</div>
+			<select bind:value={newEvent.recapIntervalHours}>
+				<option value={null}>Off — no recap</option>
+				<option value={1}>Every hour</option>
+				<option value={3}>Every 3 hours</option>
+				<option value={6}>Every 6 hours</option>
+				<option value={12}>Every 12 hours</option>
+				<option value={24}>Every 24 hours</option>
 			</select>
-			{#if newEvent.cadence === 'daily'}
-				<input type="text" placeholder="18:00" bind:value={newEvent.cadenceTime} />
-			{/if}
+			<p class="hint">
+				How often an AI recap is written summarizing this item's coverage, on top of its
+				individual articles (which publish immediately either way). Off by default — leave it
+				off for something you're just organizing under its own nav entry (a commit feed, a
+				torrent feed) with nothing that needs summarizing.
+			</p>
 		</div>
 		<div class="add-actions">
 			<button onclick={() => (showAdd = false)}>Cancel</button>
@@ -126,15 +133,7 @@
 		{#if editingId === event.id}
 			<div class="edit-panel">
 				<div class="add-grid">
-					<input placeholder="Event name" bind:value={editForm.name} />
-					<select bind:value={editForm.cadence}>
-						<option value="continuous">Continuous</option>
-						<option value="daily">Daily</option>
-						<option value="hourly">Hourly</option>
-					</select>
-					{#if editForm.cadence === 'daily'}
-						<input type="text" placeholder="18:00" bind:value={editForm.cadenceTime} />
-					{/if}
+					<input placeholder="Item name" bind:value={editForm.name} />
 				</div>
 				<textarea placeholder="Description (optional)" bind:value={editForm.description} rows="2"></textarea>
 
@@ -156,9 +155,32 @@
 				<input placeholder="e.g. 🇮🇷, Tehran, IRGC" bind:value={editForm.keywordsText} />
 				<p class="hint">
 					Comma-separated words, phrases, or emoji — only items from the sources above whose
-					title/summary/body contain at least one qualify for this event's recap. Leave blank to
+					title/summary/body contain at least one qualify for this item's recap. Leave blank to
 					include everything from the assigned sources.
 				</p>
+
+				<div class="cadence-block">
+					<div class="field-label">Recap cadence</div>
+					<select bind:value={editForm.recapIntervalHours}>
+						<option value={null}>Off — no recap</option>
+						<option value={1}>Every hour</option>
+						<option value={3}>Every 3 hours</option>
+						<option value={6}>Every 6 hours</option>
+						<option value={12}>Every 12 hours</option>
+						<option value={24}>Every 24 hours</option>
+					</select>
+					<p class="hint">
+						How often an AI recap is written summarizing this item's coverage, on top of its
+						individual articles (which publish immediately either way). Off by default — leave
+						it off for something you're just organizing under its own nav entry (a commit feed,
+						a torrent feed) with nothing that needs summarizing.
+					</p>
+				</div>
+
+				<label class="spillover-toggle edit-spillover">
+					<input type="checkbox" bind:checked={editForm.isSpillover} />
+					Show in "More »" instead of its own nav tab
+				</label>
 
 				<div class="add-actions">
 					<button onclick={cancelEdit}>Cancel</button>
@@ -170,12 +192,7 @@
 				<div>
 					<div class="name">{event.name}</div>
 					<div class="sub">
-						{sourceNames(event.sourceIds)}
-						{#if event.keywords.length > 0}
-							· matching {event.keywords.map((k) => `"${k}"`).join(', ')}
-						{/if}
-						·
-						{event.cadence === 'daily' ? `daily recap at ${event.cadenceTime}` : event.cadence}
+						{event.sourceIds.length} source{event.sourceIds.length === 1 ? '' : 's'} active
 					</div>
 				</div>
 				<span class="badge" class:active={event.active} onclick={() => toggleActive(event)} role="button" tabindex="0">
@@ -313,5 +330,28 @@
 	}
 	.edit-panel .hint {
 		margin: 6px 0 10px;
+	}
+	.cadence-block {
+		margin-top: 12px;
+		padding-top: 12px;
+		border-top: 0.5px solid var(--border);
+	}
+	.cadence-block .hint {
+		margin-top: 6px;
+	}
+	.edit-spillover {
+		display: flex;
+		margin-top: 12px;
+	}
+	.spillover-toggle {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 11px;
+		color: var(--text-secondary);
+		white-space: nowrap;
+	}
+	.spillover-toggle input {
+		width: auto;
 	}
 </style>

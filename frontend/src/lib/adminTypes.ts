@@ -118,9 +118,15 @@ export interface AdminPoe2Settings {
 	updatedAt: string | null;
 }
 
+export interface AdminWidgetsEnabled {
+	weather: boolean;
+	stocks: boolean;
+	bookmarks: boolean;
+	poe2: boolean;
+}
+
 export interface AdminSettings {
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
-	defaultPollIntervalMinutes: number;
 	holdBeforePublishMinutes: number;
 	tagDedupThreshold: number;
 	tagExpiryDays: number;
@@ -132,6 +138,8 @@ export interface AdminSettings {
 	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
 	fxtwitterBaseUrl: string;
 	telegramMediaMode: 'self-host' | 'proxy';
+	widgets: AdminWidgetsEnabled;
+	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
 	weather: AdminWeatherSettings;
@@ -141,7 +149,7 @@ export interface AdminSettings {
 export interface AdminSource {
 	id: string;
 	name: string;
-	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'nitter' | 'custom';
+	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'nitter';
 	category: string[];
 	url: string;
 	config?: Record<string, unknown>;
@@ -159,9 +167,10 @@ export interface AdminTrackedEvent {
 	sourceIds: string[];
 	/** Only items whose title/summary/body contain at least one of these (case-insensitive) qualify for this event — empty means "match everything from sourceIds". */
 	keywords: string[];
-	cadence: 'continuous' | 'daily' | 'hourly' | 'custom';
-	cadenceTime: string | null;
+	/** Hours between AI recaps, or null to turn recaps off entirely for this item. */
+	recapIntervalHours: 1 | 3 | 6 | 12 | 24 | null;
 	active: boolean;
+	isSpillover: boolean;
 	retentionOverrideDays: number | null;
 }
 

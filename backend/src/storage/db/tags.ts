@@ -28,13 +28,6 @@ export function listActiveTags(): Tag[] {
 	return rows.map(rowToTag);
 }
 
-export function getTagsByIds(ids: string[]): Tag[] {
-	if (ids.length === 0) return [];
-	const placeholders = ids.map(() => '?').join(',');
-	const rows = db.prepare(`SELECT * FROM tags WHERE id IN (${placeholders})`).all(...ids);
-	return rows.map(rowToTag);
-}
-
 function cosineSimilarity(a: number[], b: number[]): number {
 	if (a.length === 0 || b.length === 0 || a.length !== b.length) return 0;
 	let dot = 0,
