@@ -80,7 +80,7 @@ export interface TrackedEventPublic {
 	id: string;
 	name: string;
 	active: boolean;
-	cadence: string;
+	recapIntervalHours: number | null;
 	isSpillover: boolean;
 }
 

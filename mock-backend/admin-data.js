@@ -86,8 +86,7 @@ let events = [
 		name: "Iran war",
 		description: "Ongoing conflict coverage, sourced primarily from Telegram channels for speed.",
 		sourceIds: ["src-2"],
-		cadence: "daily",
-		cadenceTime: "18:00",
+		recapIntervalHours: 24,
 		active: true,
 		isSpillover: false,
 		retentionOverrideDays: null
@@ -97,8 +96,7 @@ let events = [
 		name: "Fed rate decisions",
 		description: "",
 		sourceIds: ["src-1"],
-		cadence: "continuous",
-		cadenceTime: null,
+		recapIntervalHours: 1,
 		active: true,
 		isSpillover: false,
 		retentionOverrideDays: 7

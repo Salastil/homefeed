@@ -178,8 +178,8 @@ export interface TrackedEvent {
 	sourceIds: string[];
 	/** Only items whose title/summary/body contain at least one of these (case-insensitive) qualify for this event — empty means "match everything from sourceIds", the original behavior. */
 	keywords: string[];
-	cadence: 'continuous' | 'daily' | 'hourly' | 'custom';
-	cadenceTime: string | null;
+	/** Hours between AI recaps, or null to turn recaps off entirely — e.g. an item that's just organizing a commit or torrent RSS feed under one nav entry, with nothing that needs periodically summarizing. Individual articles still publish immediately either way (see priorityQueue.ts); this only gates eventsRecap.ts's periodic wrap-up. */
+	recapIntervalHours: 1 | 3 | 6 | 12 | 24 | null;
 	active: boolean;
 	/** Collapses into the "More »" nav tab instead of getting its own top-level tab — same idea as Category.isSpillover. */
 	isSpillover: boolean;

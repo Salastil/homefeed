@@ -5,7 +5,9 @@
 	let { events: initial, sources }: { events: AdminTrackedEvent[]; sources: AdminSource[] } = $props();
 	let events = $state([...initial]);
 	let showAdd = $state(false);
-	let newEvent = $state({ name: '' });
+	// Off by default — plenty of items (a commit feed, a torrent feed) exist just to
+	// organize sources under one nav entry and never need an AI recap.
+	let newEvent = $state({ name: '', recapIntervalHours: null as AdminTrackedEvent['recapIntervalHours'] });
 
 	let editingId = $state<string | null>(null);
 	function emptyEditForm() {
@@ -14,8 +16,8 @@
 			description: '',
 			sourceIdSet: new Set<string>(),
 			keywordsText: '',
-			cadence: 'continuous' as AdminTrackedEvent['cadence'],
-			cadenceTime: null as string | null,
+			recapIntervalHours: null as AdminTrackedEvent['recapIntervalHours'],
+			isSpillover: false,
 			retentionOverrideDays: null as number | null
 		};
 	}
@@ -25,8 +27,6 @@
 		return ids.map((id) => sources.find((s) => s.id === id)?.name).filter(Boolean).join(', ') || 'No sources assigned';
 	}
 
-	// Cadence is fixed at Continuous for every new item — see the "Recap cadence" hint
-	// below for why the dropdown is locked rather than a live choice right now.
 	async function handleAdd() {
 		if (!newEvent.name) return;
 		const created = await addEvent({
@@ -34,13 +34,12 @@
 			description: '',
 			sourceIds: [],
 			keywords: [],
-			cadence: 'continuous',
-			cadenceTime: null,
+			recapIntervalHours: newEvent.recapIntervalHours,
 			isSpillover: false,
 			retentionOverrideDays: null
 		});
 		events = [...events, created];
-		newEvent = { name: '' };
+		newEvent = { name: '', recapIntervalHours: null };
 		showAdd = false;
 	}
 
@@ -68,8 +67,8 @@
 			description: event.description,
 			sourceIdSet: new Set(event.sourceIds),
 			keywordsText: event.keywords.join(', '),
-			cadence: event.cadence,
-			cadenceTime: event.cadenceTime,
+			recapIntervalHours: event.recapIntervalHours,
+			isSpillover: event.isSpillover,
 			retentionOverrideDays: event.retentionOverrideDays
 		};
 	}
@@ -85,9 +84,6 @@
 		editForm.sourceIdSet = next;
 	}
 
-	// Cadence/cadenceTime are read-only in this form (disabled select below) and are
-	// passed straight through unchanged, so editing name/sources/keywords never
-	// accidentally shifts an item's recap timing.
 	async function saveEdit() {
 		if (!editingId || !editForm.name) return;
 		const keywords = editForm.keywordsText
@@ -99,8 +95,8 @@
 			description: editForm.description,
 			sourceIds: [...editForm.sourceIdSet],
 			keywords,
-			cadence: editForm.cadence,
-			cadenceTime: editForm.cadenceTime,
+			recapIntervalHours: editForm.recapIntervalHours,
+			isSpillover: editForm.isSpillover,
 			retentionOverrideDays: editForm.retentionOverrideDays
 		});
 		events = events.map((e) => (e.id === editingId ? updated : e));
@@ -120,14 +116,19 @@
 		</div>
 		<div class="cadence-block">
 			<div class="field-label">Recap cadence</div>
-			<select disabled value="continuous">
-				<option value="continuous">Continuous</option>
+			<select bind:value={newEvent.recapIntervalHours}>
+				<option value={null}>Off — no recap</option>
+				<option value={1}>Every hour</option>
+				<option value={3}>Every 3 hours</option>
+				<option value={6}>Every 6 hours</option>
+				<option value={12}>Every 12 hours</option>
+				<option value={24}>Every 24 hours</option>
 			</select>
 			<p class="hint">
-				Controls how often this item's AI recap is written, on top of its individual articles
-				(which publish immediately either way). Locked for now — Continuous and Hourly
-				currently behave identically (roughly once an hour, as long as new coverage keeps
-				arriving), so every new item uses Continuous.
+				How often an AI recap is written summarizing this item's coverage, on top of its
+				individual articles (which publish immediately either way). Off by default — leave it
+				off for something you're just organizing under its own nav entry (a commit feed, a
+				torrent feed) with nothing that needs summarizing.
 			</p>
 		</div>
 		<div class="add-actions">
@@ -171,21 +172,26 @@
 
 				<div class="cadence-block">
 					<div class="field-label">Recap cadence</div>
-					<select disabled value={editForm.cadence}>
-						<option value="continuous">Continuous</option>
-						<option value="daily">Daily</option>
-						<option value="hourly">Hourly</option>
+					<select bind:value={editForm.recapIntervalHours}>
+						<option value={null}>Off — no recap</option>
+						<option value={1}>Every hour</option>
+						<option value={3}>Every 3 hours</option>
+						<option value={6}>Every 6 hours</option>
+						<option value={12}>Every 12 hours</option>
+						<option value={24}>Every 24 hours</option>
 					</select>
-					{#if editForm.cadence === 'daily' && editForm.cadenceTime}
-						<span class="cadence-time">at {editForm.cadenceTime}</span>
-					{/if}
 					<p class="hint">
-						Controls how often this item's AI recap is written, on top of its individual
-						articles (which publish immediately either way). Locked for now — Continuous and
-						Hourly currently behave identically (roughly once an hour, as long as new coverage
-						keeps arriving); Daily instead waits for the one fixed time shown above.
+						How often an AI recap is written summarizing this item's coverage, on top of its
+						individual articles (which publish immediately either way). Off by default — leave
+						it off for something you're just organizing under its own nav entry (a commit feed,
+						a torrent feed) with nothing that needs summarizing.
 					</p>
 				</div>
+
+				<label class="spillover-toggle edit-spillover">
+					<input type="checkbox" bind:checked={editForm.isSpillover} />
+					Show in "More »" instead of its own nav tab
+				</label>
 
 				<div class="add-actions">
 					<button onclick={cancelEdit}>Cancel</button>
@@ -202,7 +208,7 @@
 							· matching {event.keywords.map((k) => `"${k}"`).join(', ')}
 						{/if}
 						·
-						{event.cadence === 'daily' ? `daily recap at ${event.cadenceTime}` : event.cadence}
+						{event.recapIntervalHours === null ? 'no recaps' : `recap every ${event.recapIntervalHours}h`}
 					</div>
 				</div>
 				<label class="spillover-toggle">
@@ -350,17 +356,12 @@
 		padding-top: 12px;
 		border-top: 0.5px solid var(--border);
 	}
-	.cadence-block select:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-	.cadence-time {
-		font-size: 12px;
-		color: var(--text-secondary);
-		margin-left: 8px;
-	}
 	.cadence-block .hint {
 		margin-top: 6px;
+	}
+	.edit-spillover {
+		display: flex;
+		margin-top: 12px;
 	}
 	.spillover-toggle {
 		display: flex;

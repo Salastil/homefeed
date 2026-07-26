@@ -166,8 +166,8 @@ export interface AdminTrackedEvent {
 	sourceIds: string[];
 	/** Only items whose title/summary/body contain at least one of these (case-insensitive) qualify for this event — empty means "match everything from sourceIds". */
 	keywords: string[];
-	cadence: 'continuous' | 'daily' | 'hourly' | 'custom';
-	cadenceTime: string | null;
+	/** Hours between AI recaps, or null to turn recaps off entirely for this item. */
+	recapIntervalHours: 1 | 3 | 6 | 12 | 24 | null;
 	active: boolean;
 	isSpillover: boolean;
 	retentionOverrideDays: number | null;

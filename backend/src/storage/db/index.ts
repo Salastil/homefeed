@@ -130,8 +130,7 @@ export function migrate() {
 			description TEXT NOT NULL DEFAULT '',
 			source_ids TEXT NOT NULL DEFAULT '[]', -- JSON
 			keywords TEXT NOT NULL DEFAULT '[]', -- JSON string array — empty means "match everything from source_ids"
-			cadence TEXT NOT NULL DEFAULT 'continuous',
-			cadence_time TEXT,
+			recap_interval_hours INTEGER, -- hours between AI recaps; NULL = recaps off for this item
 			active INTEGER NOT NULL DEFAULT 1,
 			is_spillover INTEGER NOT NULL DEFAULT 0,
 			retention_override_days INTEGER,
@@ -331,6 +330,9 @@ export function migrate() {
 	}
 	if (!hasColumn('tracked_events', 'is_spillover')) {
 		db.exec('ALTER TABLE tracked_events ADD COLUMN is_spillover INTEGER NOT NULL DEFAULT 0');
+	}
+	if (!hasColumn('tracked_events', 'recap_interval_hours')) {
+		db.exec('ALTER TABLE tracked_events ADD COLUMN recap_interval_hours INTEGER');
 	}
 	if (!hasColumn('merged_articles', 'is_recap')) {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN is_recap INTEGER NOT NULL DEFAULT 0');
