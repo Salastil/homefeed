@@ -168,7 +168,6 @@ export function migrate() {
 		CREATE TABLE IF NOT EXISTS global_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1), -- singleton row
 			merge_strictness INTEGER NOT NULL DEFAULT 3,
-			default_poll_interval_minutes INTEGER NOT NULL DEFAULT 15,
 			hold_before_publish_minutes INTEGER NOT NULL DEFAULT 30,
 			tag_dedup_threshold REAL NOT NULL DEFAULT 0.82,
 			tag_expiry_days INTEGER NOT NULL DEFAULT 21,

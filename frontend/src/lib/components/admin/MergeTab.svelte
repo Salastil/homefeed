@@ -28,7 +28,6 @@
 			try {
 				await updateSettings({
 					mergeStrictness: local.mergeStrictness,
-					defaultPollIntervalMinutes: local.defaultPollIntervalMinutes,
 					holdBeforePublishMinutes: local.holdBeforePublishMinutes,
 					followUpMinHoursSinceLast: local.followUpMinHoursSinceLast,
 					followUpMinNewSources: local.followUpMinNewSources,
@@ -183,29 +182,14 @@
 	</div>
 </div>
 
-<div class="grid-2">
-	<div class="panel">
-		<span class="panel-title">Poll interval</span>
-		<p class="hint">
-			Fallback only — every source above sets its own poll interval, so this value has no
-			effect unless a source somehow has none set (not currently possible through this admin
-			panel or the API).
-		</p>
-		<select bind:value={local.defaultPollIntervalMinutes} onchange={scheduleSave}>
-			<option value={5}>Every 5 minutes</option>
-			<option value={15}>Every 15 minutes</option>
-			<option value={60}>Every hour</option>
-		</select>
-	</div>
-	<div class="panel">
-		<span class="panel-title">Hold before publish</span>
-		<p class="hint">Wait window to gather more sources before finalizing a story.</p>
-		<select bind:value={local.holdBeforePublishMinutes} onchange={scheduleSave}>
-			<option value={0}>Publish immediately</option>
-			<option value={30}>Wait 30 minutes</option>
-			<option value={120}>Wait 2 hours</option>
-		</select>
-	</div>
+<div class="panel">
+	<span class="panel-title">Hold before publish</span>
+	<p class="hint">Wait window to gather more sources before finalizing a story.</p>
+	<select bind:value={local.holdBeforePublishMinutes} onchange={scheduleSave}>
+		<option value={0}>Publish immediately</option>
+		<option value={30}>Wait 30 minutes</option>
+		<option value={120}>Wait 2 hours</option>
+	</select>
 </div>
 
 <div class="panel">

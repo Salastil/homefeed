@@ -3,7 +3,6 @@
 
 let settings = {
 	mergeStrictness: 3,
-	defaultPollIntervalMinutes: 15,
 	holdBeforePublishMinutes: 30,
 	tagDedupThreshold: 0.82,
 	tagExpiryDays: 21,

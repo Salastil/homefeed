@@ -22,8 +22,8 @@ const adapters: Record<Source['type'], SourceAdapter> = {
 // as opposed to Telegram where the message itself *is* the content.
 const FOLLOWS_LINK_FOR_FULL_ARTICLE: Source['type'][] = ['rss', 'api'];
 
-export async function pollDueSources(defaultIntervalMinutes: number): Promise<number> {
-	const due = sourcesDb.sourcesDueForPoll(defaultIntervalMinutes);
+export async function pollDueSources(): Promise<number> {
+	const due = sourcesDb.sourcesDueForPoll();
 	let ingested = 0;
 	for (const source of due) {
 		ingested += await pollOne(source);

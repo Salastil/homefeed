@@ -24,8 +24,7 @@ export function startScheduler() {
 
 	setInterval(async () => {
 		try {
-			const settings = settingsDb.getSettings();
-			const ingested = await pollDueSources(settings.defaultPollIntervalMinutes);
+			const ingested = await pollDueSources();
 			if (ingested > 0) logger.info('scheduler', `Poll tick: ingested ${ingested} new item(s)`);
 		} catch (err) {
 			logger.error('scheduler', `Poll tick failed: ${(err as Error).message}`);

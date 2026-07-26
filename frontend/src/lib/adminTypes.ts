@@ -127,7 +127,6 @@ export interface AdminWidgetsEnabled {
 
 export interface AdminSettings {
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
-	defaultPollIntervalMinutes: number;
 	holdBeforePublishMinutes: number;
 	tagDedupThreshold: number;
 	tagExpiryDays: number;

@@ -4,7 +4,6 @@ import type { GlobalSettings } from './types.js';
 function rowToSettings(row: any): GlobalSettings {
 	return {
 		mergeStrictness: row.merge_strictness,
-		defaultPollIntervalMinutes: row.default_poll_interval_minutes,
 		holdBeforePublishMinutes: row.hold_before_publish_minutes,
 		tagDedupThreshold: row.tag_dedup_threshold,
 		tagExpiryDays: row.tag_expiry_days,
@@ -72,7 +71,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 	// out of sync — node:sqlite binds each by its `$name` key, not position.
 	db.prepare(
 		`UPDATE global_settings SET
-			merge_strictness=$merge_strictness, default_poll_interval_minutes=$default_poll_interval_minutes,
+			merge_strictness=$merge_strictness,
 			hold_before_publish_minutes=$hold_before_publish_minutes,
 			tag_dedup_threshold=$tag_dedup_threshold, tag_expiry_days=$tag_expiry_days,
 			follow_up_min_hours_since_last=$follow_up_min_hours_since_last, follow_up_min_new_sources=$follow_up_min_new_sources,
@@ -90,7 +89,6 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		 WHERE id = 1`
 	).run({
 		$merge_strictness: merged.mergeStrictness,
-		$default_poll_interval_minutes: merged.defaultPollIntervalMinutes,
 		$hold_before_publish_minutes: merged.holdBeforePublishMinutes,
 		$tag_dedup_threshold: merged.tagDedupThreshold,
 		$tag_expiry_days: merged.tagExpiryDays,
