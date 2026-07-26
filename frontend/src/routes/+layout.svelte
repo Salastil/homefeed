@@ -1,7 +1,8 @@
 <script lang="ts">
 	import '../lib/styles/app.css';
+	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { invalidateAll } from '$app/navigation';
+	import { invalidateAll, invalidate } from '$app/navigation';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import PrivateAccessModal from '$lib/components/PrivateAccessModal.svelte';
 	import Sidebar from '$lib/components/sidebar/Sidebar.svelte';
@@ -12,6 +13,17 @@
 	let { children, data }: { children: any; data: LayoutData } = $props();
 
 	let showLoginModal = $state(false);
+
+	// Weather/Stocks/PoE2/Bookmarks are all backend-polled on their own cadence (15m-1h) —
+	// without this, a tab left open never sees those updates, since SvelteKit only re-runs
+	// a load() on navigation or explicit invalidation, never on a timer by itself. Scoped
+	// to this layout's own 'app:sidebar' dependency (see +layout.ts) rather than
+	// invalidateAll(), so it doesn't also re-run page-level loads — e.g. the home feed's
+	// own pagination state would otherwise reset every refresh.
+	onMount(() => {
+		const interval = setInterval(() => invalidate('app:sidebar'), 5 * 60_000);
+		return () => clearInterval(interval);
+	});
 
 	// Admin pages already use full page width for their own tab UI — the sidebar's utility
 	// widgets don't belong there, unlike every reader-facing route (home, category,
