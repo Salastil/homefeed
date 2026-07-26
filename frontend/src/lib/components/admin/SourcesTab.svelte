@@ -196,7 +196,6 @@
 				<option value="telegram">Telegram</option>
 				<option value="youtube">YouTube</option>
 				<option value="nitter">Nitter</option>
-				<option value="custom">Custom</option>
 			</select>
 			{#if form.type === 'youtube'}
 				<input placeholder="Channel URL (@handle or /channel/UC…), or channel ID" bind:value={form.channelId} />

@@ -1,7 +1,7 @@
 export interface Source {
 	id: string;
 	name: string;
-	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'nitter' | 'custom';
+	type: 'rss' | 'api' | 'telegram' | 'youtube' | 'nitter';
 	category: string[];
 	url: string | null;
 	config: Record<string, unknown>;

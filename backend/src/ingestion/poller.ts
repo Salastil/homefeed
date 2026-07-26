@@ -15,8 +15,7 @@ const adapters: Record<Source['type'], SourceAdapter> = {
 	telegram: telegramAdapter,
 	api: apiAdapter,
 	youtube: youtubeAdapter,
-	nitter: nitterAdapter,
-	custom: apiAdapter
+	nitter: nitterAdapter
 };
 
 // Which source types point at a real webpage worth following for the full article,

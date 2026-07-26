@@ -37,7 +37,7 @@ export function migrate() {
 		CREATE TABLE IF NOT EXISTS sources (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
-			type TEXT NOT NULL, -- rss | api | telegram | custom
+			type TEXT NOT NULL, -- rss | api | telegram | youtube | nitter
 			category TEXT NOT NULL DEFAULT '[]', -- JSON array
 			url TEXT,
 			config TEXT NOT NULL DEFAULT '{}', -- JSON: apiKey, telegramChannelId, authHeaders
@@ -200,7 +200,6 @@ export function migrate() {
 			weather_updated_at TEXT, -- ISO timestamp, NULL pre-first-poll
 			poe2_league_id TEXT,
 			poe2_league_name TEXT,
-			poe2_primary_currency_name TEXT, -- unused since the watchlist moved to arbitrary currency pairs (no single "quoted in" currency anymore) — column kept rather than dropped, SQLite ALTER TABLE can't drop columns without a full table rebuild
 			poe2_updated_at TEXT
 		);
 
@@ -347,7 +346,6 @@ export function migrate() {
 	if (!hasColumn('global_settings', 'poe2_league_id')) {
 		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_league_id TEXT');
 		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_league_name TEXT');
-		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_primary_currency_name TEXT');
 		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_updated_at TEXT');
 	}
 
@@ -366,19 +364,6 @@ export function migrate() {
 		defaults.forEach(([label, symbol], i) => {
 			stmt.run(`stk-${symbol.replace(/[^a-z0-9]+/gi, '-')}`, label, symbol, i + 1, new Date().toISOString());
 		});
-	}
-
-	// Stocks switched data providers from Stooq (walled off behind a proof-of-work
-	// challenge) to Yahoo Finance, which uses different symbol syntax — rewrites only
-	// rows still holding exactly one of the three old Stooq-format default symbols we
-	// ourselves seeded, never touching a symbol the admin typed in themselves.
-	const stooqToYahooSymbols: [string, string][] = [
-		['^dji', '^DJI'],
-		['^spx', '^GSPC'],
-		['btcusd', 'BTC-USD']
-	];
-	for (const [oldSymbol, newSymbol] of stooqToYahooSymbols) {
-		db.prepare('UPDATE stock_tickers SET symbol = ? WHERE symbol = ?').run(newSymbol, oldSymbol);
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —
