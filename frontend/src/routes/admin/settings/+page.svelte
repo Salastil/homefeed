@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import MergeTab from '$lib/components/admin/MergeTab.svelte';
-	import SourcesTab from '$lib/components/admin/SourcesTab.svelte';
 	import ModelsTab from '$lib/components/admin/ModelsTab.svelte';
 	import RetentionTab from '$lib/components/admin/RetentionTab.svelte';
 	import EventsTab from '$lib/components/admin/EventsTab.svelte';
@@ -12,8 +11,7 @@
 	let { data }: { data: PageData } = $props();
 
 	const tabs = [
-		{ id: 'merge', label: 'Merge' },
-		{ id: 'sources', label: 'Sources' },
+		{ id: 'merge', label: 'Sources & Merge' },
 		{ id: 'models', label: 'Models' },
 		{ id: 'retention', label: 'Retention' },
 		{ id: 'events', label: 'Tracked events' },
@@ -38,9 +36,7 @@
 
 <div class="content">
 	{#if active === 'merge'}
-		<MergeTab settings={data.settings} />
-	{:else if active === 'sources'}
-		<SourcesTab sources={data.sources} categories={data.settings.categoryPriority} />
+		<MergeTab settings={data.settings} sources={data.sources} />
 	{:else if active === 'models'}
 		<ModelsTab settings={data.settings} models={data.models} aiStatus={data.aiStatus} />
 	{:else if active === 'retention'}

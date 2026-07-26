@@ -1,9 +1,11 @@
 <script lang="ts">
-	import type { AdminSettings } from '$lib/adminTypes';
+	import type { AdminSettings, AdminSource } from '$lib/adminTypes';
 	import { updateSettings, createCategory, deleteCategory } from '$lib/adminApi';
 	import SaveStatus from './SaveStatus.svelte';
+	import CollapsibleSection from './CollapsibleSection.svelte';
+	import SourcesTab from './SourcesTab.svelte';
 
-	let { settings }: { settings: AdminSettings } = $props();
+	let { settings, sources }: { settings: AdminSettings; sources: AdminSource[] } = $props();
 
 	let local = $state({ ...settings, categoryPriority: [...settings.categoryPriority] });
 	let status = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -89,78 +91,7 @@
 	}
 </script>
 
-<div class="panel">
-	<div class="head">
-		<span class="panel-title">Merge strictness</span>
-		<SaveStatus {status} />
-	</div>
-	<p class="hint">How similar articles must be before they're combined into one story.</p>
-	<div class="slider-row">
-		<span class="end">Loose</span>
-		<input
-			type="range"
-			min="1"
-			max="5"
-			step="1"
-			bind:value={local.mergeStrictness}
-			oninput={scheduleSave}
-		/>
-		<span class="end">Strict</span>
-		<span class="value">{local.mergeStrictness}</span>
-	</div>
-</div>
-
-<div class="grid-2">
-	<div class="panel">
-		<span class="panel-title">Poll interval</span>
-		<p class="hint">How often each source is checked for new items.</p>
-		<select bind:value={local.defaultPollIntervalMinutes} onchange={scheduleSave}>
-			<option value={5}>Every 5 minutes</option>
-			<option value={15}>Every 15 minutes</option>
-			<option value={60}>Every hour</option>
-		</select>
-	</div>
-	<div class="panel">
-		<span class="panel-title">Hold before publish</span>
-		<p class="hint">Wait window to gather more sources before finalizing a story.</p>
-		<select bind:value={local.holdBeforePublishMinutes} onchange={scheduleSave}>
-			<option value={0}>Publish immediately</option>
-			<option value={30}>Wait 30 minutes</option>
-			<option value={120}>Wait 2 hours</option>
-		</select>
-	</div>
-</div>
-
-<div class="panel">
-	<span class="panel-title">Follow-up articles</span>
-	<p class="hint">
-		Instead of editing a published article, a distinct follow-up is created once enough new
-		corroborating sources arrive after enough time has passed.
-	</p>
-	<div class="grid-2">
-		<div>
-			<label class="field-label" for="followup-hours">Minimum time since last article</label>
-			<select id="followup-hours" bind:value={local.followUpMinHoursSinceLast} onchange={scheduleSave}>
-				<option value={1}>1 hour</option>
-				<option value={6}>6 hours</option>
-				<option value={12}>12 hours</option>
-				<option value={24}>24 hours</option>
-			</select>
-		</div>
-		<div>
-			<label class="field-label" for="followup-sources">Minimum new sources</label>
-			<select id="followup-sources" bind:value={local.followUpMinNewSources} onchange={scheduleSave}>
-				<option value={1}>1</option>
-				<option value={2}>2</option>
-				<option value={3}>3</option>
-				<option value={4}>4</option>
-			</select>
-		</div>
-	</div>
-</div>
-
-<div class="panel">
-	<span class="panel-title">Category priority</span>
+<CollapsibleSection title="Category priority">
 	<p class="hint">
 		Synthesis queue processes higher-ranked categories first. Nothing is dropped — lower
 		categories just wait longer when the queue is busy. This list also drives the site's nav —
@@ -224,6 +155,84 @@
 		<button onclick={addCategory} disabled={addingCategory || !newCategoryName.trim()}>
 			{addingCategory ? 'Adding…' : '+ Add'}
 		</button>
+	</div>
+</CollapsibleSection>
+
+<CollapsibleSection title="Sources">
+	<SourcesTab {sources} categories={local.categoryPriority} />
+</CollapsibleSection>
+
+<div class="panel">
+	<div class="head">
+		<span class="panel-title">Merge strictness</span>
+		<SaveStatus {status} />
+	</div>
+	<p class="hint">How similar articles must be before they're combined into one story.</p>
+	<div class="slider-row">
+		<span class="end">Loose</span>
+		<input
+			type="range"
+			min="1"
+			max="5"
+			step="1"
+			bind:value={local.mergeStrictness}
+			oninput={scheduleSave}
+		/>
+		<span class="end">Strict</span>
+		<span class="value">{local.mergeStrictness}</span>
+	</div>
+</div>
+
+<div class="grid-2">
+	<div class="panel">
+		<span class="panel-title">Poll interval</span>
+		<p class="hint">
+			Fallback only — every source above sets its own poll interval, so this value has no
+			effect unless a source somehow has none set (not currently possible through this admin
+			panel or the API).
+		</p>
+		<select bind:value={local.defaultPollIntervalMinutes} onchange={scheduleSave}>
+			<option value={5}>Every 5 minutes</option>
+			<option value={15}>Every 15 minutes</option>
+			<option value={60}>Every hour</option>
+		</select>
+	</div>
+	<div class="panel">
+		<span class="panel-title">Hold before publish</span>
+		<p class="hint">Wait window to gather more sources before finalizing a story.</p>
+		<select bind:value={local.holdBeforePublishMinutes} onchange={scheduleSave}>
+			<option value={0}>Publish immediately</option>
+			<option value={30}>Wait 30 minutes</option>
+			<option value={120}>Wait 2 hours</option>
+		</select>
+	</div>
+</div>
+
+<div class="panel">
+	<span class="panel-title">Follow-up articles</span>
+	<p class="hint">
+		Instead of editing a published article, a distinct follow-up is created once enough new
+		corroborating sources arrive after enough time has passed.
+	</p>
+	<div class="grid-2">
+		<div>
+			<label class="field-label" for="followup-hours">Minimum time since last article</label>
+			<select id="followup-hours" bind:value={local.followUpMinHoursSinceLast} onchange={scheduleSave}>
+				<option value={1}>1 hour</option>
+				<option value={6}>6 hours</option>
+				<option value={12}>12 hours</option>
+				<option value={24}>24 hours</option>
+			</select>
+		</div>
+		<div>
+			<label class="field-label" for="followup-sources">Minimum new sources</label>
+			<select id="followup-sources" bind:value={local.followUpMinNewSources} onchange={scheduleSave}>
+				<option value={1}>1</option>
+				<option value={2}>2</option>
+				<option value={3}>3</option>
+				<option value={4}>4</option>
+			</select>
+		</div>
 	</div>
 </div>
 
