@@ -185,6 +185,10 @@ export function migrate() {
 			nitter_media_mode TEXT NOT NULL DEFAULT 'proxy', -- self-host | proxy | direct
 			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com',
 			telegram_media_mode TEXT NOT NULL DEFAULT 'self-host', -- self-host | proxy (no "direct" — Telegram has no public hotlinkable media URL)
+			widget_weather_enabled INTEGER NOT NULL DEFAULT 1,
+			widget_stocks_enabled INTEGER NOT NULL DEFAULT 1,
+			widget_bookmarks_enabled INTEGER NOT NULL DEFAULT 1,
+			widget_poe2_enabled INTEGER NOT NULL DEFAULT 1,
 			weather_location_name TEXT,
 			weather_latitude REAL,
 			weather_longitude REAL,
@@ -347,6 +351,12 @@ export function migrate() {
 		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_league_id TEXT');
 		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_league_name TEXT');
 		db.exec('ALTER TABLE global_settings ADD COLUMN poe2_updated_at TEXT');
+	}
+	if (!hasColumn('global_settings', 'widget_weather_enabled')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN widget_weather_enabled INTEGER NOT NULL DEFAULT 1');
+		db.exec('ALTER TABLE global_settings ADD COLUMN widget_stocks_enabled INTEGER NOT NULL DEFAULT 1');
+		db.exec('ALTER TABLE global_settings ADD COLUMN widget_bookmarks_enabled INTEGER NOT NULL DEFAULT 1');
+		db.exec('ALTER TABLE global_settings ADD COLUMN widget_poe2_enabled INTEGER NOT NULL DEFAULT 1');
 	}
 
 	// Seed a handful of sensible default tickers so the Stocks widget isn't empty on a

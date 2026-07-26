@@ -1,12 +1,24 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import type { Weather, StockTicker, Bookmark, Poe2Data } from '$lib/types';
+	import type { Weather, StockTicker, Bookmark, Poe2Data, WidgetsEnabled } from '$lib/types';
 	import WeatherWidget from './WeatherWidget.svelte';
 	import StocksWidget from './StocksWidget.svelte';
 	import BookmarksWidget from './BookmarksWidget.svelte';
 	import Poe2Widget from './Poe2Widget.svelte';
 
-	let { weather, stocks, bookmarks, poe2 }: { weather: Weather; stocks: StockTicker[]; bookmarks: Bookmark[]; poe2: Poe2Data } = $props();
+	let {
+		weather,
+		stocks,
+		bookmarks,
+		poe2,
+		widgetsEnabled
+	}: {
+		weather: Weather;
+		stocks: StockTicker[];
+		bookmarks: Bookmark[];
+		poe2: Poe2Data;
+		widgetsEnabled: WidgetsEnabled;
+	} = $props();
 
 	// Weather + Stocks + PoE2 + Bookmarks stacked can be taller than the viewport. Plain
 	// `position: sticky` alone can only pin a box at a constant offset — it can't reveal
@@ -55,11 +67,13 @@
 
 	$effect(() => {
 		// Widget data changing the sidebar's natural height needs a remeasure, not just a
-		// scroll-position update.
+		// scroll-position update. widgetsEnabled changes it too — a disabled widget is
+		// removed from the flow entirely, not just emptied.
 		void weather;
 		void stocks;
 		void bookmarks;
 		void poe2;
+		void widgetsEnabled;
 		remeasure();
 	});
 
@@ -76,10 +90,10 @@
 <div class="sidebar-track" bind:this={trackEl} style:height="{trackHeight}px">
 	<aside class="sidebar-viewport" style:height="{viewportHeight}px">
 		<div class="sidebar-content" bind:this={contentEl} style:transform="translateY(-{progress}px)">
-			<WeatherWidget {weather} />
-			<StocksWidget {stocks} />
-			<Poe2Widget {poe2} />
-			<BookmarksWidget {bookmarks} />
+			{#if widgetsEnabled.weather}<WeatherWidget {weather} />{/if}
+			{#if widgetsEnabled.stocks}<StocksWidget {stocks} />{/if}
+			{#if widgetsEnabled.poe2}<Poe2Widget {poe2} />{/if}
+			{#if widgetsEnabled.bookmarks}<BookmarksWidget {bookmarks} />{/if}
 		</div>
 	</aside>
 </div>

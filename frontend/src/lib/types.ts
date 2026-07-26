@@ -171,3 +171,11 @@ export interface Poe2Data {
 	updatedAt: string | null;
 	entries: Poe2WatchlistEntry[];
 }
+
+/** Per-widget sidebar visibility, admin-toggled from the consolidated "Widgets" tab. */
+export interface WidgetsEnabled {
+	weather: boolean;
+	stocks: boolean;
+	bookmarks: boolean;
+	poe2: boolean;
+}

@@ -16,6 +16,12 @@ function rowToSettings(row: any): GlobalSettings {
 		nitterMediaMode: row.nitter_media_mode,
 		fxtwitterBaseUrl: row.fxtwitter_base_url,
 		telegramMediaMode: row.telegram_media_mode,
+		widgets: {
+			weather: !!row.widget_weather_enabled,
+			stocks: !!row.widget_stocks_enabled,
+			bookmarks: !!row.widget_bookmarks_enabled,
+			poe2: !!row.widget_poe2_enabled
+		},
 		retention: {
 			publishedArticleMaxAgeDays: row.published_article_max_age_days,
 			rawItemMaxAgeDays: row.raw_item_max_age_days,
@@ -58,7 +64,8 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		retention: { ...current.retention, ...(patch.retention ?? {}) },
 		selectedModels: { ...current.selectedModels, ...(patch.selectedModels ?? {}) },
 		weather: { ...current.weather, ...(patch.weather ?? {}) },
-		poe2: { ...current.poe2, ...(patch.poe2 ?? {}) }
+		poe2: { ...current.poe2, ...(patch.poe2 ?? {}) },
+		widgets: { ...current.widgets, ...(patch.widgets ?? {}) }
 	};
 	// Named params (rather than positional `?`) so this list can be reordered or
 	// extended without the column list and the bound-values list silently drifting
@@ -71,6 +78,8 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			follow_up_min_hours_since_last=$follow_up_min_hours_since_last, follow_up_min_new_sources=$follow_up_min_new_sources,
 			ai_service_host=$ai_service_host, ai_service_port=$ai_service_port, selected_models=$selected_models,
 			nitter_media_mode=$nitter_media_mode, fxtwitter_base_url=$fxtwitter_base_url, telegram_media_mode=$telegram_media_mode,
+			widget_weather_enabled=$widget_weather_enabled, widget_stocks_enabled=$widget_stocks_enabled,
+			widget_bookmarks_enabled=$widget_bookmarks_enabled, widget_poe2_enabled=$widget_poe2_enabled,
 			published_article_max_age_days=$published_article_max_age_days, raw_item_max_age_days=$raw_item_max_age_days,
 			storage_cap_enabled=$storage_cap_enabled, storage_cap_value=$storage_cap_value, storage_cap_unit=$storage_cap_unit,
 			weather_location_name=$weather_location_name, weather_latitude=$weather_latitude, weather_longitude=$weather_longitude,
@@ -93,6 +102,10 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		$nitter_media_mode: merged.nitterMediaMode,
 		$fxtwitter_base_url: merged.fxtwitterBaseUrl,
 		$telegram_media_mode: merged.telegramMediaMode,
+		$widget_weather_enabled: merged.widgets.weather ? 1 : 0,
+		$widget_stocks_enabled: merged.widgets.stocks ? 1 : 0,
+		$widget_bookmarks_enabled: merged.widgets.bookmarks ? 1 : 0,
+		$widget_poe2_enabled: merged.widgets.poe2 ? 1 : 0,
 		$published_article_max_age_days: merged.retention.publishedArticleMaxAgeDays,
 		$raw_item_max_age_days: merged.retention.rawItemMaxAgeDays,
 		$storage_cap_enabled: merged.retention.storageCapEnabled ? 1 : 0,

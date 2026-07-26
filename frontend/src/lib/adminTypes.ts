@@ -118,6 +118,13 @@ export interface AdminPoe2Settings {
 	updatedAt: string | null;
 }
 
+export interface AdminWidgetsEnabled {
+	weather: boolean;
+	stocks: boolean;
+	bookmarks: boolean;
+	poe2: boolean;
+}
+
 export interface AdminSettings {
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	defaultPollIntervalMinutes: number;
@@ -132,6 +139,7 @@ export interface AdminSettings {
 	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
 	fxtwitterBaseUrl: string;
 	telegramMediaMode: 'self-host' | 'proxy';
+	widgets: AdminWidgetsEnabled;
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
 	weather: AdminWeatherSettings;

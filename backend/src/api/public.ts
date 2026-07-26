@@ -60,6 +60,11 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 		return categories.filter((c) => !c.isPrivate);
 	});
 
+	// Per-widget sidebar visibility — see the admin panel's consolidated "Widgets" tab.
+	// Each widget keeps polling/config regardless of this; it only gates whether the
+	// sidebar renders it at all.
+	app.get('/api/widgets', async () => settingsDb.getSettings().widgets);
+
 	// Sidebar widgets — see WeatherTab/StocksTab/BookmarksTab in the admin panel.
 	app.get('/api/weather', async () => settingsDb.getSettings().weather);
 
