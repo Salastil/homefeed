@@ -183,6 +183,7 @@ export function migrate() {
 			storage_cap_unit TEXT NOT NULL DEFAULT 'GB',
 			nitter_media_mode TEXT NOT NULL DEFAULT 'proxy', -- self-host | proxy | direct
 			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com',
+			nitter_instance_url TEXT NOT NULL DEFAULT '', -- admin's preferred instance, prefills new Nitter sources (Connections tab)
 			telegram_media_mode TEXT NOT NULL DEFAULT 'self-host', -- self-host | proxy (no "direct" — Telegram has no public hotlinkable media URL)
 			widget_weather_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_stocks_enabled INTEGER NOT NULL DEFAULT 1,
@@ -310,6 +311,9 @@ export function migrate() {
 	}
 	if (!hasColumn('global_settings', 'fxtwitter_base_url')) {
 		db.exec("ALTER TABLE global_settings ADD COLUMN fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com'");
+	}
+	if (!hasColumn('global_settings', 'nitter_instance_url')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN nitter_instance_url TEXT NOT NULL DEFAULT ''");
 	}
 	if (!hasColumn('categories', 'is_private')) {
 		db.exec('ALTER TABLE categories ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0');

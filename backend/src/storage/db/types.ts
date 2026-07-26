@@ -279,6 +279,8 @@ export interface GlobalSettings {
 	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
 	/** Base URL of the fxtwitter-compatible enrichment API — defaults to the public instance, overridable for a self-hosted FixTweet mirror. */
 	fxtwitterBaseUrl: string;
+	/** Preferred Nitter instance, admin-set in Connections — prefills new Nitter sources' feed URL (SourcesTab.svelte) rather than being fetched from directly; each source's own URL is still what's actually polled. Empty until an admin picks one. */
+	nitterInstanceUrl: string;
 	/** How Telegram message media (attached photos/videos, channel avatars) is served — see pipeline/publish.ts's resolveTelegramMedia. No "direct" option: Telegram has no public hotlinkable media URL, bytes only come from the authenticated MTProto session. */
 	telegramMediaMode: 'self-host' | 'proxy';
 	/** Per-widget enable flags — see admin/settings' consolidated "Widgets" tab. Weather/Stocks/PoE2's backend pollers (scheduler.ts) are gated on these too, not just sidebar visibility; Bookmarks has no poller so its flag only affects the sidebar. */

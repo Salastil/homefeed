@@ -2,7 +2,11 @@
 	import type { AdminSource, CategoryPriority } from '$lib/adminTypes';
 	import { addSource, deleteSource, updateSource, pollSourceNow, clearSourceContent, reissueSourceContent } from '$lib/adminApi';
 
-	let { sources: initial, categories }: { sources: AdminSource[]; categories: CategoryPriority[] } = $props();
+	let {
+		sources: initial,
+		categories,
+		nitterInstanceUrl
+	}: { sources: AdminSource[]; categories: CategoryPriority[]; nitterInstanceUrl: string } = $props();
 	let sources = $state([...initial]);
 	let showAdd = $state(false);
 	let editingId = $state<string | null>(null);
@@ -190,7 +194,14 @@
 	<div class="add-panel">
 		<div class="add-grid">
 			<input placeholder="Name" bind:value={form.name} />
-			<select bind:value={form.type}>
+			<select
+				bind:value={form.type}
+				onchange={() => {
+					if (form.type === 'nitter' && !form.url && nitterInstanceUrl) {
+						form.url = `${nitterInstanceUrl.replace(/\/+$/, '')}/`;
+					}
+				}}
+			>
 				<option value="rss">RSS</option>
 				<option value="api">API</option>
 				<option value="telegram">Telegram</option>

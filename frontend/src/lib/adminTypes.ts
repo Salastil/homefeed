@@ -137,6 +137,7 @@ export interface AdminSettings {
 	selectedModels: { embedding: string; image: string; synthesis: string };
 	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
 	fxtwitterBaseUrl: string;
+	nitterInstanceUrl: string;
 	telegramMediaMode: 'self-host' | 'proxy';
 	widgets: AdminWidgetsEnabled;
 	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
