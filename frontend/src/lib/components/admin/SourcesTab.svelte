@@ -395,7 +395,7 @@
 	}
 	.row {
 		display: grid;
-		grid-template-columns: 20px 1.4fr 0.7fr 0.9fr 0.7fr 120px;
+		grid-template-columns: 20px 1.4fr 0.7fr 0.9fr 0.7fr 170px;
 		gap: 10px;
 		padding: 10px;
 		align-items: center;
