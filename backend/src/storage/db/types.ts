@@ -281,13 +281,15 @@ export interface GlobalSettings {
 	fxtwitterBaseUrl: string;
 	/** How Telegram message media (attached photos/videos, channel avatars) is served — see pipeline/publish.ts's resolveTelegramMedia. No "direct" option: Telegram has no public hotlinkable media URL, bytes only come from the authenticated MTProto session. */
 	telegramMediaMode: 'self-host' | 'proxy';
-	/** Per-widget sidebar visibility — see admin/settings' consolidated "Widgets" tab. Each widget keeps polling/config regardless (disabling doesn't pause its poller), this only gates whether GET /api/widgets tells the sidebar to render it. */
+	/** Per-widget enable flags — see admin/settings' consolidated "Widgets" tab. Weather/Stocks/PoE2's backend pollers (scheduler.ts) are gated on these too, not just sidebar visibility; Bookmarks has no poller so its flag only affects the sidebar. */
 	widgets: {
 		weather: boolean;
 		stocks: boolean;
 		bookmarks: boolean;
 		poe2: boolean;
 	};
+	/** Sidebar widget display order, admin-sortable via the Widgets tab's up/down arrows — mirrored exactly by Sidebar.svelte. */
+	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
 	retention: {
 		publishedArticleMaxAgeDays: number | null;
 		rawItemMaxAgeDays: number | null;

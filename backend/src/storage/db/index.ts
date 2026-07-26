@@ -188,6 +188,7 @@ export function migrate() {
 			widget_stocks_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_bookmarks_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_poe2_enabled INTEGER NOT NULL DEFAULT 1,
+			widget_order TEXT NOT NULL DEFAULT '["weather","stocks","poe2","bookmarks"]', -- JSON array, admin-sortable via the Widgets tab
 			weather_location_name TEXT,
 			weather_latitude REAL,
 			weather_longitude REAL,
@@ -362,6 +363,11 @@ export function migrate() {
 		db.exec('ALTER TABLE global_settings ADD COLUMN widget_stocks_enabled INTEGER NOT NULL DEFAULT 1');
 		db.exec('ALTER TABLE global_settings ADD COLUMN widget_bookmarks_enabled INTEGER NOT NULL DEFAULT 1');
 		db.exec('ALTER TABLE global_settings ADD COLUMN widget_poe2_enabled INTEGER NOT NULL DEFAULT 1');
+	}
+	if (!hasColumn('global_settings', 'widget_order')) {
+		db.exec(
+			`ALTER TABLE global_settings ADD COLUMN widget_order TEXT NOT NULL DEFAULT '["weather","stocks","poe2","bookmarks"]'`
+		);
 	}
 
 	// Seed a handful of sensible default tickers so the Stocks widget isn't empty on a

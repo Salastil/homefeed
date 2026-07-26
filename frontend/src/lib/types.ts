@@ -173,10 +173,11 @@ export interface Poe2Data {
 	entries: Poe2WatchlistEntry[];
 }
 
-/** Per-widget sidebar visibility, admin-toggled from the consolidated "Widgets" tab. */
+/** Per-widget sidebar visibility + display order, admin-set from the consolidated "Widgets" tab. */
 export interface WidgetsEnabled {
 	weather: boolean;
 	stocks: boolean;
 	bookmarks: boolean;
 	poe2: boolean;
+	order: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
 }

@@ -90,10 +90,17 @@
 <div class="sidebar-track" bind:this={trackEl} style:height="{trackHeight}px">
 	<aside class="sidebar-viewport" style:height="{viewportHeight}px">
 		<div class="sidebar-content" bind:this={contentEl} style:transform="translateY(-{progress}px)">
-			{#if widgetsEnabled.weather}<WeatherWidget {weather} />{/if}
-			{#if widgetsEnabled.stocks}<StocksWidget {stocks} />{/if}
-			{#if widgetsEnabled.poe2}<Poe2Widget {poe2} />{/if}
-			{#if widgetsEnabled.bookmarks}<BookmarksWidget {bookmarks} />{/if}
+			{#each widgetsEnabled.order as key (key)}
+				{#if key === 'weather' && widgetsEnabled.weather}
+					<WeatherWidget {weather} />
+				{:else if key === 'stocks' && widgetsEnabled.stocks}
+					<StocksWidget {stocks} />
+				{:else if key === 'poe2' && widgetsEnabled.poe2}
+					<Poe2Widget {poe2} />
+				{:else if key === 'bookmarks' && widgetsEnabled.bookmarks}
+					<BookmarksWidget {bookmarks} />
+				{/if}
+			{/each}
 		</div>
 	</aside>
 </div>

@@ -62,10 +62,13 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 		return categories.filter((c) => !c.isPrivate);
 	});
 
-	// Per-widget sidebar visibility — see the admin panel's consolidated "Widgets" tab.
-	// Each widget keeps polling/config regardless of this; it only gates whether the
-	// sidebar renders it at all.
-	app.get('/api/widgets', async () => settingsDb.getSettings().widgets);
+	// Per-widget enable flags + display order — see the admin panel's consolidated
+	// "Widgets" tab. Weather/Stocks/PoE2's backend pollers are also gated on these
+	// flags (see scheduler.ts); Sidebar.svelte renders in exactly this order.
+	app.get('/api/widgets', async () => {
+		const { widgets, widgetOrder } = settingsDb.getSettings();
+		return { ...widgets, order: widgetOrder };
+	});
 
 	// Sidebar widgets — see WeatherTab/StocksTab/BookmarksTab in the admin panel.
 	app.get('/api/weather', async () => settingsDb.getSettings().weather);

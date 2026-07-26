@@ -19,45 +19,51 @@
 		poe2Watchlist: AdminPoe2Entry[];
 	} = $props();
 
-	// Local copy so each checkbox flips immediately — same idiom as BookmarksTab's
-	// per-row "Private" toggle, just for widget visibility instead.
+	// Local copies so each toggle/reorder reflects immediately — same idiom as
+	// BookmarksTab's per-row "Private" toggle.
 	let widgets = $state({ ...settings.widgets });
+	let widgetOrder = $state([...settings.widgetOrder]);
+
+	const titles: Record<(typeof widgetOrder)[number], string> = {
+		weather: 'Weather',
+		stocks: 'Stocks',
+		bookmarks: 'Bookmarks',
+		poe2: 'PoE2'
+	};
 
 	async function toggle(key: keyof typeof widgets) {
 		widgets[key] = !widgets[key];
 		await updateSettings({ widgets });
 	}
+
+	async function move(index: number, dir: -1 | 1) {
+		const target = index + dir;
+		if (target < 0 || target >= widgetOrder.length) return;
+		const arr = [...widgetOrder];
+		[arr[index], arr[target]] = [arr[target], arr[index]];
+		widgetOrder = arr;
+		await updateSettings({ widgetOrder });
+	}
 </script>
 
-<p class="hint">
-	Each widget can be enabled or disabled independently. Disabling Weather, Stocks, or PoE2
-	hides it from the sidebar <strong>and</strong> stops its backend poller — no more outbound
-	requests until it's turned back on, at which point it polls again immediately rather than
-	waiting out its normal schedule. You can still edit a disabled widget's settings below; they
-	just won't fetch anything new until it's re-enabled. Bookmarks has no poller, so its toggle
-	only affects sidebar visibility.
-</p>
-
-<WidgetSection title="Weather" enabled={widgets.weather} onToggle={() => toggle('weather')}>
-	<WeatherTab {settings} />
-</WidgetSection>
-
-<WidgetSection title="Stocks" enabled={widgets.stocks} onToggle={() => toggle('stocks')}>
-	<StocksTab tickers={stockTickers} />
-</WidgetSection>
-
-<WidgetSection title="Bookmarks" enabled={widgets.bookmarks} onToggle={() => toggle('bookmarks')} hasBackendPoller={false}>
-	<BookmarksTab {bookmarks} />
-</WidgetSection>
-
-<WidgetSection title="PoE2" enabled={widgets.poe2} onToggle={() => toggle('poe2')}>
-	<Poe2Tab {settings} watchlist={poe2Watchlist} />
-</WidgetSection>
-
-<style>
-	.hint {
-		font-size: 12px;
-		color: var(--text-secondary);
-		margin: 0 0 14px;
-	}
-</style>
+{#each widgetOrder as key, i (key)}
+	<WidgetSection
+		title={titles[key]}
+		enabled={widgets[key]}
+		onToggle={() => toggle(key)}
+		canMoveUp={i > 0}
+		canMoveDown={i < widgetOrder.length - 1}
+		onMoveUp={() => move(i, -1)}
+		onMoveDown={() => move(i, 1)}
+	>
+		{#if key === 'weather'}
+			<WeatherTab {settings} />
+		{:else if key === 'stocks'}
+			<StocksTab tickers={stockTickers} />
+		{:else if key === 'bookmarks'}
+			<BookmarksTab {bookmarks} />
+		{:else if key === 'poe2'}
+			<Poe2Tab {settings} watchlist={poe2Watchlist} />
+		{/if}
+	</WidgetSection>
+{/each}

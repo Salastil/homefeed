@@ -139,6 +139,7 @@ export interface AdminSettings {
 	fxtwitterBaseUrl: string;
 	telegramMediaMode: 'self-host' | 'proxy';
 	widgets: AdminWidgetsEnabled;
+	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
 	weather: AdminWeatherSettings;

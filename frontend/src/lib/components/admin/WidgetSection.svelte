@@ -1,26 +1,23 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	// Minimized by default — Weather/Stocks/Bookmarks/PoE2 stacked at full height would
-	// make the consolidated "Widgets" tab unwieldy as more get added over time. Enabled
-	// state is independent of expanded state: disabling a widget hides it from the
-	// sidebar AND stops its backend poller from making outbound requests (see
-	// scheduler.ts's widgets.* gate) — it just doesn't stop the admin from expanding
-	// this section to keep configuring it while it's off.
 	let {
 		title,
 		enabled,
 		onToggle,
-		// Weather/Stocks/PoE2 have a backend poller that scheduler.ts gates on this same
-		// flag (see scheduler.ts); Bookmarks doesn't poll anything, so disabling it only
-		// ever affects sidebar visibility — the tooltip shouldn't claim otherwise.
-		hasBackendPoller = true,
+		canMoveUp,
+		canMoveDown,
+		onMoveUp,
+		onMoveDown,
 		children
 	}: {
 		title: string;
 		enabled: boolean;
 		onToggle: () => void;
-		hasBackendPoller?: boolean;
+		canMoveUp: boolean;
+		canMoveDown: boolean;
+		onMoveUp: () => void;
+		onMoveDown: () => void;
 		children: Snippet;
 	} = $props();
 
@@ -29,23 +26,15 @@
 
 <div class="section">
 	<div class="section-head">
+		<button class="icon-btn" onclick={onMoveUp} disabled={!canMoveUp} aria-label="Move up">▲</button>
+		<button class="icon-btn" onclick={onMoveDown} disabled={!canMoveDown} aria-label="Move down">▼</button>
 		<button class="head-btn" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
 			<span class="chevron" class:open={expanded}>▸</span>
 			<span class="title">{title}</span>
-			{#if !enabled}<span class="disabled-tag">Off</span>{/if}
 		</button>
-		<label
-			class="enable-toggle"
-			title={hasBackendPoller
-				? enabled
-					? 'Disable — stops polling and hides from the sidebar'
-					: 'Enable — resumes polling and shows in the sidebar'
-				: enabled
-					? 'Disable — hides from the sidebar'
-					: 'Enable — shows in the sidebar'}
-		>
-			<input type="checkbox" checked={enabled} onchange={onToggle} />
-		</label>
+		<span class="badge" class:active={enabled} onclick={onToggle} role="button" tabindex="0">
+			{enabled ? 'Active' : 'Disabled'}
+		</span>
 	</div>
 	{#if expanded}
 		<div class="section-body">
@@ -64,9 +53,20 @@
 	.section-head {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
+		gap: 8px;
 		padding: 12px 14px;
+	}
+	.icon-btn {
+		font-size: 11px;
+		padding: 2px 6px;
+		background: transparent;
+		border: none;
+		color: var(--text-secondary);
+	}
+	.icon-btn:disabled {
+		color: var(--text-muted);
+		opacity: 0.4;
+		cursor: default;
 	}
 	.head-btn {
 		display: flex;
@@ -91,20 +91,18 @@
 	.chevron.open {
 		transform: rotate(90deg);
 	}
-	.disabled-tag {
-		font-size: 10px;
-		font-weight: 400;
-		color: var(--text-muted);
-		border: 0.5px solid var(--border);
-		padding: 1px 6px;
+	.badge {
+		font-size: 11px;
+		padding: 2px 10px;
 		border-radius: var(--radius);
+		background: var(--surface-2);
+		color: var(--text-muted);
+		cursor: pointer;
+		white-space: nowrap;
 	}
-	.enable-toggle {
-		display: flex;
-		align-items: center;
-	}
-	.enable-toggle input {
-		width: auto;
+	.badge.active {
+		background: var(--bg-accent);
+		color: var(--text-accent);
 	}
 	.section-body {
 		padding: 14px;
