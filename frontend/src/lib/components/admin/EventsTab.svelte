@@ -193,11 +193,6 @@
 					<div class="name">{event.name}</div>
 					<div class="sub">
 						{event.sourceIds.length} source{event.sourceIds.length === 1 ? '' : 's'} active
-						{#if event.keywords.length > 0}
-							· matching {event.keywords.map((k) => `"${k}"`).join(', ')}
-						{/if}
-						·
-						{event.recapIntervalHours === null ? 'no recaps' : `recap every ${event.recapIntervalHours}h`}
 					</div>
 				</div>
 				<span class="badge" class:active={event.active} onclick={() => toggleActive(event)} role="button" tabindex="0">
