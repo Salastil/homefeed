@@ -38,11 +38,27 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 			categoriesDb.setCategoryOrder(body.categoryPriority);
 			delete body.categoryPriority;
 		}
+		const before = settingsDb.getSettings();
 		const settings = withStorageUsed(settingsDb.updateSettings(body));
 		if (body.weather) {
 			// Poll immediately rather than waiting for the next scheduler tick (up to 45
 			// minutes) — the admin just changed the location/unit and expects to see it reflected.
 			pollWeatherNow().catch((err) => logger.error('weather', `Immediate poll failed: ${err.message}`));
+		}
+		if (body.widgets) {
+			// Re-enabling a widget (see the Widgets tab) should show fresh data right away
+			// instead of waiting out its normal cadence (up to 45m/15m/1h) — scheduler.ts
+			// skips polling entirely while a widget is disabled, so there's nothing recent
+			// to fall back on otherwise.
+			if (body.widgets.weather && !before.widgets.weather) {
+				pollWeatherNow().catch((err) => logger.error('weather', `Immediate poll failed: ${err.message}`));
+			}
+			if (body.widgets.stocks && !before.widgets.stocks) {
+				pollStocksNow().catch((err) => logger.error('stocks', `Immediate poll failed: ${err.message}`));
+			}
+			if (body.widgets.poe2 && !before.widgets.poe2) {
+				pollPoe2Now().catch((err) => logger.error('poe2', `Immediate poll failed: ${err.message}`));
+			}
 		}
 		return { ...settings, categoryPriority: categoriesDb.listCategories() };
 	});
