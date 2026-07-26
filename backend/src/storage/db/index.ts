@@ -133,6 +133,7 @@ export function migrate() {
 			cadence TEXT NOT NULL DEFAULT 'continuous',
 			cadence_time TEXT,
 			active INTEGER NOT NULL DEFAULT 1,
+			is_spillover INTEGER NOT NULL DEFAULT 0,
 			retention_override_days INTEGER,
 			last_recap_at TEXT,
 			created_at TEXT NOT NULL
@@ -327,6 +328,9 @@ export function migrate() {
 	}
 	if (!hasColumn('tracked_events', 'keywords')) {
 		db.exec("ALTER TABLE tracked_events ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'");
+	}
+	if (!hasColumn('tracked_events', 'is_spillover')) {
+		db.exec('ALTER TABLE tracked_events ADD COLUMN is_spillover INTEGER NOT NULL DEFAULT 0');
 	}
 	if (!hasColumn('merged_articles', 'is_recap')) {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN is_recap INTEGER NOT NULL DEFAULT 0');

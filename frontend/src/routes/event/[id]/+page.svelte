@@ -7,7 +7,7 @@
 
 <div class="head">
 	<span class="title">{data.name}</span>
-	<span class="sub">Tracked event — periodically recapped by AI</span>
+	<span class="sub">Tracked item — periodically recapped by AI</span>
 </div>
 
 <InfiniteFeed initial={data.initial} filters={data.filters} pageSize={data.pageSize} />

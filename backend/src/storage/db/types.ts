@@ -181,6 +181,8 @@ export interface TrackedEvent {
 	cadence: 'continuous' | 'daily' | 'hourly' | 'custom';
 	cadenceTime: string | null;
 	active: boolean;
+	/** Collapses into the "More »" nav tab instead of getting its own top-level tab — same idea as Category.isSpillover. */
+	isSpillover: boolean;
 	retentionOverrideDays: number | null;
 	lastRecapAt: string | null;
 	createdAt: string;

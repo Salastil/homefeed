@@ -81,6 +81,7 @@ export interface TrackedEventPublic {
 	name: string;
 	active: boolean;
 	cadence: string;
+	isSpillover: boolean;
 }
 
 export interface Category {

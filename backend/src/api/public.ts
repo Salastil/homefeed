@@ -47,7 +47,9 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 
 	app.get('/api/events', async () => {
 		// Public fields only — sourceIds, cadenceTime etc. stay admin-only.
-		return eventsDb.listEvents().map((e) => ({ id: e.id, name: e.name, active: e.active, cadence: e.cadence }));
+		return eventsDb
+			.listEvents()
+			.map((e) => ({ id: e.id, name: e.name, active: e.active, cadence: e.cadence, isSpillover: e.isSpillover }));
 	});
 
 	// Drives the site nav — admin-editable (add/remove/reorder) via /api/admin/categories,

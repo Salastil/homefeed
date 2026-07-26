@@ -169,6 +169,7 @@ export interface AdminTrackedEvent {
 	cadence: 'continuous' | 'daily' | 'hourly' | 'custom';
 	cadenceTime: string | null;
 	active: boolean;
+	isSpillover: boolean;
 	retentionOverrideDays: number | null;
 }
 

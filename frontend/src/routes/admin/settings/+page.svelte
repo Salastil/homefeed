@@ -14,7 +14,7 @@
 		{ id: 'merge', label: 'Sources & Merge' },
 		{ id: 'models', label: 'Models' },
 		{ id: 'retention', label: 'Retention' },
-		{ id: 'events', label: 'Tracked events' },
+		{ id: 'events', label: 'Tracked items' },
 		{ id: 'widgets', label: 'Widgets' },
 		{ id: 'connections', label: 'Connections' },
 		{ id: 'logs', label: 'Logs' }

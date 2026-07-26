@@ -89,6 +89,7 @@ let events = [
 		cadence: "daily",
 		cadenceTime: "18:00",
 		active: true,
+		isSpillover: false,
 		retentionOverrideDays: null
 	},
 	{
@@ -99,6 +100,7 @@ let events = [
 		cadence: "continuous",
 		cadenceTime: null,
 		active: true,
+		isSpillover: false,
 		retentionOverrideDays: 7
 	}
 ];

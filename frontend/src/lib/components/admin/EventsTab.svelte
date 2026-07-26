@@ -5,7 +5,7 @@
 	let { events: initial, sources }: { events: AdminTrackedEvent[]; sources: AdminSource[] } = $props();
 	let events = $state([...initial]);
 	let showAdd = $state(false);
-	let newEvent = $state({ name: '', cadence: 'daily' as AdminTrackedEvent['cadence'], cadenceTime: '18:00' });
+	let newEvent = $state({ name: '' });
 
 	let editingId = $state<string | null>(null);
 	function emptyEditForm() {
@@ -14,8 +14,8 @@
 			description: '',
 			sourceIdSet: new Set<string>(),
 			keywordsText: '',
-			cadence: 'daily' as AdminTrackedEvent['cadence'],
-			cadenceTime: '18:00',
+			cadence: 'continuous' as AdminTrackedEvent['cadence'],
+			cadenceTime: null as string | null,
 			retentionOverrideDays: null as number | null
 		};
 	}
@@ -25,6 +25,8 @@
 		return ids.map((id) => sources.find((s) => s.id === id)?.name).filter(Boolean).join(', ') || 'No sources assigned';
 	}
 
+	// Cadence is fixed at Continuous for every new item — see the "Recap cadence" hint
+	// below for why the dropdown is locked rather than a live choice right now.
 	async function handleAdd() {
 		if (!newEvent.name) return;
 		const created = await addEvent({
@@ -32,17 +34,25 @@
 			description: '',
 			sourceIds: [],
 			keywords: [],
-			cadence: newEvent.cadence,
-			cadenceTime: newEvent.cadence === 'daily' ? newEvent.cadenceTime : null,
+			cadence: 'continuous',
+			cadenceTime: null,
+			isSpillover: false,
 			retentionOverrideDays: null
 		});
 		events = [...events, created];
-		newEvent = { name: '', cadence: 'daily', cadenceTime: '18:00' };
+		newEvent = { name: '' };
 		showAdd = false;
 	}
 
 	async function toggleActive(event: AdminTrackedEvent) {
 		const updated = await updateEvent(event.id, { active: !event.active });
+		events = events.map((e) => (e.id === event.id ? updated : e));
+	}
+
+	// Same "More »" collapse as Category.isSpillover (see MergeTab.svelte) — an item
+	// marked here loses its own top-nav tab and shows up on /more instead.
+	async function toggleSpillover(event: AdminTrackedEvent) {
+		const updated = await updateEvent(event.id, { isSpillover: !event.isSpillover });
 		events = events.map((e) => (e.id === event.id ? updated : e));
 	}
 
@@ -59,7 +69,7 @@
 			sourceIdSet: new Set(event.sourceIds),
 			keywordsText: event.keywords.join(', '),
 			cadence: event.cadence,
-			cadenceTime: event.cadenceTime ?? '18:00',
+			cadenceTime: event.cadenceTime,
 			retentionOverrideDays: event.retentionOverrideDays
 		};
 	}
@@ -75,6 +85,9 @@
 		editForm.sourceIdSet = next;
 	}
 
+	// Cadence/cadenceTime are read-only in this form (disabled select below) and are
+	// passed straight through unchanged, so editing name/sources/keywords never
+	// accidentally shifts an item's recap timing.
 	async function saveEdit() {
 		if (!editingId || !editForm.name) return;
 		const keywords = editForm.keywordsText
@@ -87,7 +100,7 @@
 			sourceIds: [...editForm.sourceIdSet],
 			keywords,
 			cadence: editForm.cadence,
-			cadenceTime: editForm.cadence === 'daily' ? editForm.cadenceTime : null,
+			cadenceTime: editForm.cadenceTime,
 			retentionOverrideDays: editForm.retentionOverrideDays
 		});
 		events = events.map((e) => (e.id === editingId ? updated : e));
@@ -96,22 +109,26 @@
 </script>
 
 <div class="toolbar">
-	<span class="count">{events.length} tracked events</span>
-	<button class="add-btn" onclick={() => (showAdd = !showAdd)}>+ New event</button>
+	<span class="count">{events.length} tracked items</span>
+	<button class="add-btn" onclick={() => (showAdd = !showAdd)}>+ New item</button>
 </div>
 
 {#if showAdd}
 	<div class="add-panel">
 		<div class="add-grid">
-			<input placeholder="Event name (e.g. Iran war)" bind:value={newEvent.name} />
-			<select bind:value={newEvent.cadence}>
+			<input placeholder="Item name (e.g. Iran war)" bind:value={newEvent.name} />
+		</div>
+		<div class="cadence-block">
+			<div class="field-label">Recap cadence</div>
+			<select disabled value="continuous">
 				<option value="continuous">Continuous</option>
-				<option value="daily">Daily</option>
-				<option value="hourly">Hourly</option>
 			</select>
-			{#if newEvent.cadence === 'daily'}
-				<input type="text" placeholder="18:00" bind:value={newEvent.cadenceTime} />
-			{/if}
+			<p class="hint">
+				Controls how often this item's AI recap is written, on top of its individual articles
+				(which publish immediately either way). Locked for now — Continuous and Hourly
+				currently behave identically (roughly once an hour, as long as new coverage keeps
+				arriving), so every new item uses Continuous.
+			</p>
 		</div>
 		<div class="add-actions">
 			<button onclick={() => (showAdd = false)}>Cancel</button>
@@ -126,15 +143,7 @@
 		{#if editingId === event.id}
 			<div class="edit-panel">
 				<div class="add-grid">
-					<input placeholder="Event name" bind:value={editForm.name} />
-					<select bind:value={editForm.cadence}>
-						<option value="continuous">Continuous</option>
-						<option value="daily">Daily</option>
-						<option value="hourly">Hourly</option>
-					</select>
-					{#if editForm.cadence === 'daily'}
-						<input type="text" placeholder="18:00" bind:value={editForm.cadenceTime} />
-					{/if}
+					<input placeholder="Item name" bind:value={editForm.name} />
 				</div>
 				<textarea placeholder="Description (optional)" bind:value={editForm.description} rows="2"></textarea>
 
@@ -156,9 +165,27 @@
 				<input placeholder="e.g. 🇮🇷, Tehran, IRGC" bind:value={editForm.keywordsText} />
 				<p class="hint">
 					Comma-separated words, phrases, or emoji — only items from the sources above whose
-					title/summary/body contain at least one qualify for this event's recap. Leave blank to
+					title/summary/body contain at least one qualify for this item's recap. Leave blank to
 					include everything from the assigned sources.
 				</p>
+
+				<div class="cadence-block">
+					<div class="field-label">Recap cadence</div>
+					<select disabled value={editForm.cadence}>
+						<option value="continuous">Continuous</option>
+						<option value="daily">Daily</option>
+						<option value="hourly">Hourly</option>
+					</select>
+					{#if editForm.cadence === 'daily' && editForm.cadenceTime}
+						<span class="cadence-time">at {editForm.cadenceTime}</span>
+					{/if}
+					<p class="hint">
+						Controls how often this item's AI recap is written, on top of its individual
+						articles (which publish immediately either way). Locked for now — Continuous and
+						Hourly currently behave identically (roughly once an hour, as long as new coverage
+						keeps arriving); Daily instead waits for the one fixed time shown above.
+					</p>
+				</div>
 
 				<div class="add-actions">
 					<button onclick={cancelEdit}>Cancel</button>
@@ -178,6 +205,10 @@
 						{event.cadence === 'daily' ? `daily recap at ${event.cadenceTime}` : event.cadence}
 					</div>
 				</div>
+				<label class="spillover-toggle">
+					<input type="checkbox" checked={event.isSpillover} onchange={() => toggleSpillover(event)} />
+					More
+				</label>
 				<span class="badge" class:active={event.active} onclick={() => toggleActive(event)} role="button" tabindex="0">
 					{event.active ? 'Active' : 'Paused'}
 				</span>
@@ -313,5 +344,33 @@
 	}
 	.edit-panel .hint {
 		margin: 6px 0 10px;
+	}
+	.cadence-block {
+		margin-top: 12px;
+		padding-top: 12px;
+		border-top: 0.5px solid var(--border);
+	}
+	.cadence-block select:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+	.cadence-time {
+		font-size: 12px;
+		color: var(--text-secondary);
+		margin-left: 8px;
+	}
+	.cadence-block .hint {
+		margin-top: 6px;
+	}
+	.spillover-toggle {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 11px;
+		color: var(--text-secondary);
+		white-space: nowrap;
+	}
+	.spillover-toggle input {
+		width: auto;
 	}
 </style>

@@ -51,20 +51,23 @@
 	// list) — those collapse into a single trailing "More »" tab instead, so the nav
 	// doesn't get too wide or wrap once there are more than a handful of categories.
 	//
-	// A tracked event is a displayed category too, just backed by a source+keyword
+	// A tracked item is a displayed category too, just backed by a source+keyword
 	// filter instead of manual per-source category checkboxes, and periodically
 	// AI-recapped — see EventsTab.svelte. Active ones get their own /event/:id tab,
-	// appended after the regular categories.
+	// appended after the regular categories, unless marked spillover — same "More »"
+	// collapse as an overflow category, see /more's +page.ts.
 	const primaryCategories = $derived(data.categories.filter((c) => !c.isSpillover));
 	const spilloverCategories = $derived(data.categories.filter((c) => c.isSpillover));
+	const primaryEvents = $derived(data.events.filter((e) => !e.isSpillover));
+	const spilloverEvents = $derived(data.events.filter((e) => e.isSpillover));
 
 	const navItems = $derived([
 		...primaryCategories.map((cat) => ({
 			label: cat.name,
 			href: cat.name.toLowerCase() === 'top stories' ? '/' : `/category/${slugify(cat.name)}`
 		})),
-		...data.events.map((event) => ({ label: event.name, href: `/event/${event.id}` })),
-		...(spilloverCategories.length > 0 ? [{ label: 'More »', href: '/more' }] : [])
+		...primaryEvents.map((event) => ({ label: event.name, href: `/event/${event.id}` })),
+		...(spilloverCategories.length > 0 || spilloverEvents.length > 0 ? [{ label: 'More »', href: '/more' }] : [])
 	]);
 
 	function isActive(href: string): boolean {

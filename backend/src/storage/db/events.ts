@@ -12,6 +12,7 @@ function rowToEvent(row: any): TrackedEvent {
 		cadence: row.cadence,
 		cadenceTime: row.cadence_time,
 		active: !!row.active,
+		isSpillover: !!row.is_spillover,
 		retentionOverrideDays: row.retention_override_days,
 		lastRecapAt: row.last_recap_at,
 		createdAt: row.created_at
@@ -52,8 +53,8 @@ export function createEvent(input: Partial<TrackedEvent>): TrackedEvent {
 	const id = `evt-${randomUUID()}`;
 	const now = new Date().toISOString();
 	db.prepare(
-		`INSERT INTO tracked_events (id, name, description, source_ids, keywords, cadence, cadence_time, active, retention_override_days, last_recap_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
+		`INSERT INTO tracked_events (id, name, description, source_ids, keywords, cadence, cadence_time, active, is_spillover, retention_override_days, last_recap_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
 	).run(
 		id,
 		input.name ?? 'Untitled event',
@@ -63,6 +64,7 @@ export function createEvent(input: Partial<TrackedEvent>): TrackedEvent {
 		input.cadence ?? 'continuous',
 		input.cadenceTime ?? null,
 		input.active === false ? 0 : 1,
+		input.isSpillover ? 1 : 0,
 		input.retentionOverrideDays ?? null,
 		now
 	);
@@ -74,7 +76,7 @@ export function updateEvent(id: string, patch: Partial<TrackedEvent>): TrackedEv
 	if (!existing) return null;
 	const merged = { ...existing, ...patch };
 	db.prepare(
-		`UPDATE tracked_events SET name=?, description=?, source_ids=?, keywords=?, cadence=?, cadence_time=?, active=?, retention_override_days=?, last_recap_at=? WHERE id=?`
+		`UPDATE tracked_events SET name=?, description=?, source_ids=?, keywords=?, cadence=?, cadence_time=?, active=?, is_spillover=?, retention_override_days=?, last_recap_at=? WHERE id=?`
 	).run(
 		merged.name,
 		merged.description,
@@ -83,6 +85,7 @@ export function updateEvent(id: string, patch: Partial<TrackedEvent>): TrackedEv
 		merged.cadence,
 		merged.cadenceTime,
 		merged.active ? 1 : 0,
+		merged.isSpillover ? 1 : 0,
 		merged.retentionOverrideDays,
 		merged.lastRecapAt,
 		id
