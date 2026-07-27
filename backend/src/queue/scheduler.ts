@@ -1,5 +1,5 @@
 import { pollDueSources } from '../ingestion/poller.js';
-import { runSynthesisCycle, runPassthroughCycle } from './priorityQueue.js';
+import { runSynthesisCycle, runPassthroughCycle, runDirectPublishCycle } from './priorityQueue.js';
 import { runEventRecaps } from './eventsRecap.js';
 import { runRetentionSweep } from './retention.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
@@ -10,6 +10,7 @@ import { pollStocksNow } from '../stocks/poller.js';
 import { pollPoe2Now } from '../poe2/poller.js';
 
 const POLL_TICK_MS = 60_000; // checks which sources are due every minute; each source's own interval governs actual fetch frequency
+const DIRECT_PUBLISH_TICK_MS = 60_000;
 const SYNTHESIS_TICK_MS = 60_000;
 const RETENTION_TICK_MS = 60 * 60_000; // hourly
 const WEATHER_TICK_MS = 45 * 60_000;
@@ -26,6 +27,13 @@ const POE2_TICK_MS = 60 * 60_000; // poe.ninja's own overview data doesn't refre
  * fresh, differently-worded article by an overlapping cycle, repeatedly, until the
  * first cycle's assignCluster() finally landed. Node is single-threaded, so the only
  * source of "concurrent" runs here is exactly this interval overlap.
+ *
+ * Each call gets its own independent `running` flag/timer — the direct-publish and
+ * synthesis ticks are deliberately two separate calls to this (not one shared guard)
+ * precisely so a slow AI-merge backlog on one never blocks the other's fast,
+ * no-AI-needed items from publishing on schedule. They operate on disjoint item sets
+ * (see priorityQueue.ts), so there's no risk of the two racing each other into a
+ * duplicate publish the way an overlapping call to the *same* fn would.
  */
 function everyTickSkippingOverlap(ms: number, fn: () => Promise<void>) {
 	let running = false;
@@ -50,6 +58,18 @@ export function startScheduler() {
 			if (ingested > 0) logger.info('scheduler', `Poll tick: ingested ${ingested} new item(s)`);
 		} catch (err) {
 			logger.error('scheduler', `Poll tick failed: ${(err as Error).message}`);
+		}
+	});
+
+	everyTickSkippingOverlap(DIRECT_PUBLISH_TICK_MS, async () => {
+		try {
+			const settings = settingsDb.getSettings();
+			const published = await runDirectPublishCycle(settings);
+			if (published > 0) {
+				logger.info('scheduler', `Direct-publish tick: published ${published} article(s)`);
+			}
+		} catch (err) {
+			logger.error('scheduler', `Direct-publish tick failed: ${(err as Error).message}`);
 		}
 	});
 
@@ -120,5 +140,8 @@ export function startScheduler() {
 		pollPoe2Now().catch((err) => logger.error('poe2', `Poll tick failed: ${err.message}`));
 	}, POE2_TICK_MS);
 
-	logger.info('scheduler', 'Started: poll every 1m, synthesis every 1m, retention every 1h, weather every 45m, stocks every 15m, poe2 every 1h');
+	logger.info(
+		'scheduler',
+		'Started: poll every 1m, direct-publish every 1m, synthesis every 1m, retention every 1h, weather every 45m, stocks every 15m, poe2 every 1h'
+	);
 }

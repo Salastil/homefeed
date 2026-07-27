@@ -88,7 +88,10 @@ async function publishItemsDirect(
  * pipeline, this doesn't wait out the hold-before-publish window: that window exists to
  * give corroborating sources time to arrive before an AI merge locks in, which doesn't
  * apply here since there's no merging happening at all — each item is just itself.
- * Still respects category priority.
+ * Still respects category priority. Harmless overlap with runDirectPublishCycle (which
+ * runs regardless of reachability) — an item already published by one is simply gone
+ * from the other's next "unclustered" query, since assignCluster lands before either
+ * moves on to its next item.
  */
 export async function runPassthroughCycle(settings: GlobalSettings): Promise<number> {
 	const activeEvents = eventsDb.listActiveEvents();
@@ -107,41 +110,31 @@ export async function runPassthroughCycle(settings: GlobalSettings): Promise<num
 }
 
 /**
- * One pass of the synthesis queue: cluster whatever's unclustered, ordered by
- * admin-defined category priority, and publish clusters that have cleared the
- * hold-before-publish window. Items claimed by an active tracked event (belonging to
- * one of its sources and matching its keyword filter, if any) publish exactly like
- * everything else — individually or merged with same-story coverage — just tagged with
- * the event's id so they're browsable under it and eligible for eventsRecap.ts's
- * periodic AI wrap-up.
+ * Publishes every item that never needs the AI at all: YouTube/Nitter/Telegram items
+ * (always their own article, merge or no merge) and items whose category has "No AI"
+ * set (Category priority admin pane). Deliberately its own guarded tick in scheduler.ts,
+ * separate from runSynthesisCycle — these items have no reason to wait behind a slow AI
+ * merge backlog (a generate() call can run minutes on CPU-only inference; see
+ * ollama-provider.ts), and runSynthesisCycle's own reentrancy guard used to make them
+ * do exactly that: stuck for however long the current cycle's clustering/synthesis
+ * portion took, since both used to run under one guarded function. Runs regardless of
+ * Ollama's reachability — nothing here calls the AI.
  */
-export async function runSynthesisCycle(provider: InferenceProvider, settings: GlobalSettings): Promise<number> {
+export async function runDirectPublishCycle(settings: GlobalSettings): Promise<number> {
 	const activeEvents = eventsDb.listActiveEvents();
 	const items = contentItemsDb.unclusteredItemsExcludingSources([]);
 	if (items.length === 0) return 0;
 
-	// One fetch of the full source list per cycle, reused below for both the
-	// direct-publish partition and each item's category/type lookups — avoids a
-	// separate sourcesDb.getSource() round-trip per item.
 	const sourcesById = new Map(sourcesDb.listSources().map((s) => [s.id, s]));
 	const categories = categoriesDb.listCategories();
-	const rankByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.priorityRank]));
 
-	// YouTube videos, Nitter tweets, and Telegram messages never get LLM-merged with
-	// anything else — each is always its own article, same shape whether the AI service
-	// is up or not. Route them straight to publishDirect, same as the no-AI passthrough path.
 	const directPublishSourceIds = new Set(
 		[...sourcesById.values()].filter((s) => s.type === 'youtube' || s.type === 'nitter' || s.type === 'telegram').map((s) => s.id)
 	);
 	const [typeDirectItems, remaining] = partition(items, (item) => directPublishSourceIds.has(item.sourceId));
 
-	// A category with disableAi set (see the Category priority admin pane) opts its
-	// items out of clustering/synthesis entirely — each publishes on its own, using its
-	// own source's text, same as the source-type-driven direct items above.
 	const aiDisabledCategoryNames = new Set(categories.filter((c) => c.disableAi).map((c) => c.name.toLowerCase()));
-	const [categoryDirectItems, mergeableItems] = partition(remaining, (item) =>
-		inAiDisabledCategory(item, aiDisabledCategoryNames, sourcesById)
-	);
+	const [categoryDirectItems] = partition(remaining, (item) => inAiDisabledCategory(item, aiDisabledCategoryNames, sourcesById));
 
 	const publishedTypeDirect = await publishItemsDirect(
 		typeDirectItems,
@@ -157,6 +150,42 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 		activeEvents,
 		() => 'AI disabled for category',
 		'Direct publish failed'
+	);
+
+	return publishedTypeDirect + publishedCategoryDirect;
+}
+
+/**
+ * One pass of the synthesis queue: cluster whatever's unclustered (excluding items
+ * runDirectPublishCycle already owns — see there), ordered by admin-defined category
+ * priority, and publish clusters that have cleared the hold-before-publish window.
+ * Items claimed by an active tracked event (belonging to one of its sources and
+ * matching its keyword filter, if any) publish exactly like everything else —
+ * individually or merged with same-story coverage — just tagged with the event's id so
+ * they're browsable under it and eligible for eventsRecap.ts's periodic AI wrap-up.
+ */
+export async function runSynthesisCycle(provider: InferenceProvider, settings: GlobalSettings): Promise<number> {
+	const activeEvents = eventsDb.listActiveEvents();
+	const items = contentItemsDb.unclusteredItemsExcludingSources([]);
+	if (items.length === 0) return 0;
+
+	// One fetch of the full source list per cycle, reused below for both the
+	// direct-publish exclusion and each item's category/rank lookups — avoids a
+	// separate sourcesDb.getSource() round-trip per item.
+	const sourcesById = new Map(sourcesDb.listSources().map((s) => [s.id, s]));
+	const categories = categoriesDb.listCategories();
+	const rankByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.priorityRank]));
+
+	// YouTube/Nitter/Telegram items and AI-disabled-category items are runDirectPublishCycle's
+	// job (its own guarded tick, so a slow merge backlog here never blocks them) — excluded
+	// here too since a batch just ingested this instant may still be unclustered when this
+	// runs before that cycle's own pass gets to it.
+	const directPublishSourceIds = new Set(
+		[...sourcesById.values()].filter((s) => s.type === 'youtube' || s.type === 'nitter' || s.type === 'telegram').map((s) => s.id)
+	);
+	const aiDisabledCategoryNames = new Set(categories.filter((c) => c.disableAi).map((c) => c.name.toLowerCase()));
+	const mergeableItems = items.filter(
+		(item) => !directPublishSourceIds.has(item.sourceId) && !inAiDisabledCategory(item, aiDisabledCategoryNames, sourcesById)
 	);
 
 	const ranked = mergeableItems
@@ -216,5 +245,5 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 		);
 	}
 
-	return published + publishedTypeDirect + publishedCategoryDirect;
+	return published;
 }
