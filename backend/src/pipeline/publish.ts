@@ -36,12 +36,6 @@ function anyPushesToTopStories(items: ContentItem[]): boolean {
 	return items.some((item) => sources.getSource(item.sourceId)?.pushToTopStories ?? false);
 }
 
-/** Takes the first line of the synthesized body as a working title until a dedicated title-generation step exists. */
-function deriveTitle(body: string): string {
-	const firstLine = body.split('\n')[0];
-	return firstLine.length > 100 ? firstLine.slice(0, 97) + '…' : firstLine;
-}
-
 /**
  * Resolves the hero image for a regular (non-tweet) article: try the best candidate
  * from the source items, download and locally host it; if there isn't one, fall back
@@ -362,7 +356,7 @@ export async function publishCluster(
 	const items = cluster.items;
 
 	const sourceNames = new Map(items.map((item) => [item.sourceId, sources.getSource(item.sourceId)?.name ?? 'Unknown source']));
-	const { body, tagLabels } = await synthesizeArticle(provider, settings.selectedModels.synthesis, items, sourceNames, settings);
+	const { title, body, tagLabels } = await synthesizeArticle(provider, settings.selectedModels.synthesis, items, sourceNames, settings);
 
 	const resolvedTags = [];
 	for (const label of tagLabels) {
@@ -418,7 +412,7 @@ export async function publishCluster(
 
 	const now = new Date().toISOString();
 	const article = articles.insertArticle({
-		title: deriveTitle(body),
+		title,
 		body,
 		heroImage,
 		video,
@@ -461,7 +455,7 @@ export async function publishEventRecap(
 	event: TrackedEvent,
 	constituents: MergedArticle[]
 ): Promise<MergedArticle> {
-	const { body, tagLabels } = await synthesizeRecap(provider, settings.selectedModels.synthesis, event.name, constituents, settings);
+	const { title, body, tagLabels } = await synthesizeRecap(provider, settings.selectedModels.synthesis, event.name, constituents, settings);
 
 	const resolvedTags = [];
 	for (const label of tagLabels) {
@@ -478,7 +472,7 @@ export async function publishEventRecap(
 	const now = new Date().toISOString();
 
 	return articles.insertArticle({
-		title: `${event.name}: recap`,
+		title: title || `${event.name}: recap`,
 		body,
 		heroImage,
 		video: null,
