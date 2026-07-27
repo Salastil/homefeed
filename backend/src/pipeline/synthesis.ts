@@ -1,7 +1,27 @@
 import type { InferenceProvider } from '../inference/provider.js';
 import type { ContentItem, MergedArticle } from '../storage/db/types.js';
+import { DEFAULT_NUM_CTX, DEFAULT_NUM_PREDICT } from '../inference/ollama-provider.js';
+import { logger } from '../storage/db/logs.js';
 
 const TAG_DELIMITER = '---TAGS---';
+
+// Ollama truncates prompts that don't fit its context window by keeping a small prefix
+// and dropping everything else in the middle — silently, with no error, and with no
+// regard for which sources end up cut (see ollama-provider.ts for the incident that
+// prompted this). Rather than relying on that, prompts here are sized to fit
+// DEFAULT_NUM_CTX up front: each source/article gets an equal character budget, cut only
+// when the whole prompt would otherwise overflow, so every source stays at least
+// partially represented (and attributable) instead of some being dropped outright.
+// ~4 chars/token is a rough heuristic (no tokenizer available here) — good enough for a
+// safety margin, not meant to be exact.
+const CHARS_PER_TOKEN = 4;
+const RESERVED_OVERHEAD_TOKENS = 300; // system prompt + per-entry headers/formatting
+const MAX_INPUT_CHARS = (DEFAULT_NUM_CTX - DEFAULT_NUM_PREDICT - RESERVED_OVERHEAD_TOKENS) * CHARS_PER_TOKEN;
+const MIN_ENTRY_CHARS = 300; // floor so a huge cluster/recap doesn't shrink every entry to nothing
+
+function capEntryText(text: string, budgetChars: number): string {
+	return text.length > budgetChars ? text.slice(0, budgetChars) + '…' : text;
+}
 
 const RECAP_SYSTEM_PROMPT = `You are a neutral news synthesis assistant. Given a chronological list of articles already published about an ongoing tracked event, write a single recap article that:
 - Summarizes what has happened across the period covered, in chronological order
@@ -27,9 +47,17 @@ export interface SynthesisResult {
 }
 
 function buildPrompt(items: ContentItem[]): string {
-	return items
-		.map((item, i) => `Source ${i + 1} (${item.sourceId}):\nTitle: ${item.title}\nSummary: ${item.summary}`)
-		.join('\n\n');
+	const budgetPerItem = Math.max(MIN_ENTRY_CHARS, Math.floor(MAX_INPUT_CHARS / items.length));
+	let truncated = 0;
+	const entries = items.map((item, i) => {
+		const summary = capEntryText(item.summary, budgetPerItem);
+		if (summary !== item.summary) truncated++;
+		return `Source ${i + 1} (${item.sourceId}):\nTitle: ${item.title}\nSummary: ${summary}`;
+	});
+	if (truncated > 0) {
+		logger.warn('synthesis', `Trimmed ${truncated}/${items.length} source summar${truncated === 1 ? 'y' : 'ies'} to fit the model's context window`);
+	}
+	return entries.join('\n\n');
 }
 
 function parseResult(raw: string): SynthesisResult {
@@ -48,15 +76,22 @@ export async function synthesizeArticle(
 	items: ContentItem[]
 ): Promise<SynthesisResult> {
 	const prompt = buildPrompt(items);
-	const raw = await provider.generate(prompt, { model, system: SYSTEM_PROMPT });
+	const raw = await provider.generate(prompt, { model, system: SYSTEM_PROMPT, numCtx: DEFAULT_NUM_CTX, numPredict: DEFAULT_NUM_PREDICT });
 	return parseResult(raw);
 }
 
 function buildRecapPrompt(eventName: string, articles: MergedArticle[]): string {
-	const entries = articles
-		.map((article, i) => `Article ${i + 1} (published ${article.publishedAt}):\nTitle: ${article.title}\n${article.body}`)
-		.join('\n\n');
-	return `Tracked event: ${eventName}\n\n${entries}`;
+	const budgetPerArticle = Math.max(MIN_ENTRY_CHARS, Math.floor(MAX_INPUT_CHARS / articles.length));
+	let truncated = 0;
+	const entries = articles.map((article, i) => {
+		const body = capEntryText(article.body, budgetPerArticle);
+		if (body !== article.body) truncated++;
+		return `Article ${i + 1} (published ${article.publishedAt}):\nTitle: ${article.title}\n${body}`;
+	});
+	if (truncated > 0) {
+		logger.warn('events', `Trimmed ${truncated}/${articles.length} recap article bod${truncated === 1 ? 'y' : 'ies'} to fit the model's context window`);
+	}
+	return `Tracked event: ${eventName}\n\n${entries.join('\n\n')}`;
 }
 
 /**
@@ -74,6 +109,11 @@ export async function synthesizeRecap(
 	articles: MergedArticle[]
 ): Promise<SynthesisResult> {
 	const prompt = buildRecapPrompt(eventName, articles);
-	const raw = await provider.generate(prompt, { model, system: RECAP_SYSTEM_PROMPT });
+	const raw = await provider.generate(prompt, {
+		model,
+		system: RECAP_SYSTEM_PROMPT,
+		numCtx: DEFAULT_NUM_CTX,
+		numPredict: DEFAULT_NUM_PREDICT
+	});
 	return parseResult(raw);
 }
