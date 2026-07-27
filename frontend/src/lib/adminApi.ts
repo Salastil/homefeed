@@ -13,7 +13,8 @@ import type {
 	AdminStockTicker,
 	AdminBookmark,
 	Poe2BrowseEntry,
-	AdminPoe2Entry
+	AdminPoe2Entry,
+	PipelineStats
 } from './adminTypes';
 
 async function request<T>(path: string, options: RequestInit = {}, fetchFn: typeof fetch = fetch): Promise<T> {
@@ -175,6 +176,8 @@ export const getLogs = (filters: { level?: 'info' | 'warn' | 'error'; limit?: nu
 	const qs = new URLSearchParams(filters as Record<string, string>).toString();
 	return request<LogEntry[]>(`/api/admin/logs${qs ? `?${qs}` : ''}`, {}, fetchFn);
 };
+
+export const getPipelineStats = (fetchFn?: typeof fetch) => request<PipelineStats>('/api/admin/pipeline-stats', {}, fetchFn);
 
 // Weather — config/cache lives on AdminSettings.weather (see updateSettings above); this
 // is just the geocoding lookup used to resolve a typed city name to lat/lon.

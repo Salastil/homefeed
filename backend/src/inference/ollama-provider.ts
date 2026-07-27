@@ -1,5 +1,6 @@
 import { Agent } from 'undici';
 import type { InferenceProvider } from './provider.js';
+import * as stats from './stats.js';
 
 /**
  * Node's global fetch (undici) defaults to a 5-minute headers/body timeout — fine for
@@ -51,28 +52,52 @@ export class OllamaProvider implements InferenceProvider {
 
 	async generate(
 		prompt: string,
-		opts: { model?: string; system?: string; numCtx?: number; numPredict?: number } = {}
+		opts: { model?: string; system?: string; numCtx?: number; numPredict?: number; label?: string } = {}
 	): Promise<string> {
-		const res = await fetch(`${this.base()}/api/generate`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				model: opts.model,
-				prompt,
-				system: opts.system,
-				stream: false,
-				options: {
-					num_ctx: opts.numCtx ?? DEFAULT_NUM_CTX,
-					num_predict: opts.numPredict ?? DEFAULT_NUM_PREDICT
-				}
-			}),
-			// Not in the ambient RequestInit type this project resolves to, but Node's global
-			// fetch (built on undici) honors it at runtime — see noTimeoutDispatcher above.
-			dispatcher: noTimeoutDispatcher
-		} as RequestInit);
-		if (!res.ok) throw new Error(`Ollama generate failed: ${res.status} ${await res.text()}`);
-		const data = (await res.json()) as { response: string };
-		return data.response;
+		const startedAt = Date.now();
+		stats.recordGenerateStart(opts.label ?? 'synthesis');
+		try {
+			const res = await fetch(`${this.base()}/api/generate`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					model: opts.model,
+					prompt,
+					system: opts.system,
+					stream: false,
+					options: {
+						num_ctx: opts.numCtx ?? DEFAULT_NUM_CTX,
+						num_predict: opts.numPredict ?? DEFAULT_NUM_PREDICT
+					}
+				}),
+				// Not in the ambient RequestInit type this project resolves to, but Node's global
+				// fetch (built on undici) honors it at runtime — see noTimeoutDispatcher above.
+				dispatcher: noTimeoutDispatcher
+			} as RequestInit);
+			if (!res.ok) throw new Error(`Ollama generate failed: ${res.status} ${await res.text()}`);
+			const data = (await res.json()) as {
+				response: string;
+				eval_count?: number;
+				eval_duration?: number;
+				prompt_eval_count?: number;
+				prompt_eval_duration?: number;
+				total_duration?: number;
+			};
+			// Ollama reports these *_duration fields in nanoseconds — dividing eval_count by
+			// (eval_duration/1e9) gives generation tokens/sec, and total_duration/1e6 gives
+			// wall-clock milliseconds (falling back to a local measurement if a given Ollama
+			// version's response ever omits it).
+			stats.recordGenerateEnd({
+				genTokensPerSec: data.eval_count && data.eval_duration ? data.eval_count / (data.eval_duration / 1e9) : null,
+				promptTokensPerSec:
+					data.prompt_eval_count && data.prompt_eval_duration ? data.prompt_eval_count / (data.prompt_eval_duration / 1e9) : null,
+				totalDurationMs: data.total_duration ? data.total_duration / 1e6 : Date.now() - startedAt
+			});
+			return data.response;
+		} catch (err) {
+			stats.recordGenerateEnd(null);
+			throw err;
+		}
 	}
 
 	async embed(text: string, opts: { model?: string } = {}): Promise<number[]> {

@@ -137,7 +137,8 @@ export async function synthesizeArticle(
 ): Promise<SynthesisResult> {
 	const prompt = buildPrompt(items, sourceNames);
 	const system = SYSTEM_PROMPT_BASE + styleAddendum(settings);
-	const raw = await provider.generate(prompt, { model, system, numCtx: DEFAULT_NUM_CTX, numPredict: DEFAULT_NUM_PREDICT });
+	const label = `Merging ${items.length} source${items.length === 1 ? '' : 's'}: "${items[0]?.title.slice(0, 60) ?? ''}"`;
+	const raw = await provider.generate(prompt, { model, system, numCtx: DEFAULT_NUM_CTX, numPredict: DEFAULT_NUM_PREDICT, label });
 	return parseResult(raw);
 }
 
@@ -175,7 +176,8 @@ export async function synthesizeRecap(
 		model,
 		system: RECAP_SYSTEM_PROMPT_BASE + styleAddendum(settings),
 		numCtx: DEFAULT_NUM_CTX,
-		numPredict: DEFAULT_NUM_PREDICT
+		numPredict: DEFAULT_NUM_PREDICT,
+		label: `Recapping event: "${eventName.slice(0, 60)}"`
 	});
 	return parseResult(raw);
 }
