@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { InferenceProvider } from '../inference/provider.js';
 import type { Cluster } from './clustering.js';
-import { synthesizeArticle, synthesizeRecap } from './synthesis.js';
+import { synthesizeArticle, synthesizeRecap, extractTags } from './synthesis.js';
 import { selectBestImage, faviconUrlFor } from './image-selection.js';
 import { downloadAndStore, promoteToPublished, storeMediaBuffer } from '../storage/media/index.js';
 import { downloadMessageMedia, downloadChannelAvatar } from '../telegram/client.js';
@@ -34,6 +34,25 @@ function uniqueCategories(items: ContentItem[]): string[] {
 /** An article shows on the homepage if any of its contributing sources opted into "Push to Top Stories?". */
 function anyPushesToTopStories(items: ContentItem[]): boolean {
 	return items.some((item) => sources.getSource(item.sourceId)?.pushToTopStories ?? false);
+}
+
+/** Embeds each label and resolves/dedupes it against existing tags — shared by every publish path that has tagLabels in hand (from a full synthesis call or the lightweight extractTags), so the dedup behavior stays identical regardless of how the labels were produced. */
+async function resolveTagIds(
+	provider: InferenceProvider,
+	tagLabels: string[],
+	settings: GlobalSettings,
+	logSource: string
+): Promise<string[]> {
+	const tagIds: string[] = [];
+	for (const label of tagLabels) {
+		try {
+			const embedding = await provider.embed(label, { model: settings.selectedModels.embedding });
+			tagIds.push(tags.resolveOrCreateTag(label, embedding, settings.tagDedupThreshold).id);
+		} catch (err) {
+			logger.error(logSource, `Tag embedding failed for "${label}": ${(err as Error).message}`);
+		}
+	}
+	return tagIds;
 }
 
 /**
@@ -219,19 +238,19 @@ async function resolveQuotedTweet(
 }
 
 /**
- * Publishes a single item as-is, with no AI calls at all — used when the AI service
- * isn't reachable (e.g. Ollama hasn't been set up yet, per the "assume it arrives
- * after the backend launches" requirement). No rewriting, no tag extraction, no
- * embedding. This is deliberately a lesser version of the real pipeline: once Ollama
- * is available, newly-ingested items get the full embed/cluster/synthesize treatment
- * and can be linked as follow-ups to these passthrough articles via the normal
- * tag-based thread detection — but these earlier articles aren't retroactively
- * rewritten or merged with anything after the fact.
+ * Publishes a single item as-is — the title/body are never rewritten or merged (see
+ * priorityQueue.ts for why: single-source clusters, YouTube/Nitter/Telegram items, and
+ * AI-disabled categories all route here specifically to avoid that risk). When a
+ * provider is given (AI is actually reachable and this item isn't in an AI-disabled
+ * category), it still gets tags via a lightweight standalone extraction call — every
+ * published article should be taggable/discoverable via /tag/[slug], not just the
+ * AI-merged ones. Passing no provider (Ollama unreachable, or the item's category has
+ * AI turned off entirely) skips tagging too — same as the old "no tags yet" behavior.
  */
 export async function publishDirect(
 	item: ContentItem,
 	settings: GlobalSettings,
-	opts: { eventId?: string } = {}
+	opts: { eventId?: string; provider?: InferenceProvider } = {}
 ): Promise<MergedArticle> {
 	const category = uniqueCategories([item]);
 	const storedMediaIds: string[] = [];
@@ -305,6 +324,16 @@ export async function publishDirect(
 		};
 	}
 
+	let tagIds: string[] = [];
+	if (opts.provider) {
+		try {
+			const tagLabels = await extractTags(opts.provider, settings.selectedModels.synthesis, item);
+			tagIds = await resolveTagIds(opts.provider, tagLabels, settings, 'synthesis');
+		} catch (err) {
+			logger.error('synthesis', `Tag extraction failed for "${item.title}": ${(err as Error).message}`);
+		}
+	}
+
 	const article = await articles.insertArticle({
 		title: item.title,
 		body: item.body || item.summary,
@@ -329,7 +358,7 @@ export async function publishDirect(
 		publishedAt: item.publishedAt,
 		updatedAt: item.publishedAt,
 		mergeConfidence: 1.0,
-		tags: [], // no LLM available to extract tags yet — backfilling these later is a reasonable future improvement
+		tags: tagIds,
 		threadId: randomUUID(),
 		previousArticleId: null,
 		nextArticleId: null,
@@ -358,16 +387,7 @@ export async function publishCluster(
 	const sourceNames = new Map(items.map((item) => [item.sourceId, sources.getSource(item.sourceId)?.name ?? 'Unknown source']));
 	const { title, body, tagLabels } = await synthesizeArticle(provider, settings.selectedModels.synthesis, items, sourceNames, settings);
 
-	const resolvedTags = [];
-	for (const label of tagLabels) {
-		try {
-			const embedding = await provider.embed(label, { model: settings.selectedModels.embedding });
-			resolvedTags.push(tags.resolveOrCreateTag(label, embedding, settings.tagDedupThreshold));
-		} catch (err) {
-			logger.error('synthesis', `Tag embedding failed for "${label}": ${(err as Error).message}`);
-		}
-	}
-	const tagIds = resolvedTags.map((t) => t.id);
+	const tagIds = await resolveTagIds(provider, tagLabels, settings, 'synthesis');
 
 	const { heroImage, storedMediaId } = await resolveHeroImage(items, items[0]?.link ?? '');
 	const videoItem = items.find((i) => i.videos.length > 0);
@@ -456,16 +476,7 @@ export async function publishEventRecap(
 	constituents: MergedArticle[]
 ): Promise<MergedArticle> {
 	const { title, body, tagLabels } = await synthesizeRecap(provider, settings.selectedModels.synthesis, event.name, constituents, settings);
-
-	const resolvedTags = [];
-	for (const label of tagLabels) {
-		try {
-			const embedding = await provider.embed(label, { model: settings.selectedModels.embedding });
-			resolvedTags.push(tags.resolveOrCreateTag(label, embedding, settings.tagDedupThreshold));
-		} catch (err) {
-			logger.error('events', `Tag embedding failed for "${label}": ${(err as Error).message}`);
-		}
-	}
+	const tagIds = await resolveTagIds(provider, tagLabels, settings, 'events');
 
 	const category = [...new Set(constituents.flatMap((a) => a.category))];
 	const heroImage = constituents.find((a) => a.heroImage)?.heroImage ?? null;
@@ -486,7 +497,7 @@ export async function publishEventRecap(
 		publishedAt: now,
 		updatedAt: now,
 		mergeConfidence: 1.0,
-		tags: resolvedTags.map((t) => t.id),
+		tags: tagIds,
 		threadId: randomUUID(),
 		previousArticleId: null,
 		nextArticleId: null,

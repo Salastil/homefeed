@@ -34,6 +34,10 @@ export function getTags(fetchFn?: typeof fetch): Promise<Tag[]> {
 	return get<Tag[]>('/api/tags', fetchFn);
 }
 
+export function getTagBySlug(slug: string, fetchFn?: typeof fetch): Promise<Tag> {
+	return get<Tag>(`/api/tag/${slug}`, fetchFn);
+}
+
 export function getEvents(fetchFn?: typeof fetch): Promise<TrackedEventPublic[]> {
 	return get<TrackedEventPublic[]>('/api/events', fetchFn);
 }

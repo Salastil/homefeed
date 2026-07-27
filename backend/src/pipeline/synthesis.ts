@@ -32,6 +32,44 @@ function capEntryText(text: string, budgetChars: number): string {
 	return text.length > budgetChars ? text.slice(0, budgetChars) + '…' : text;
 }
 
+const TAG_EXTRACTION_SYSTEM_PROMPT = `You are a tagging assistant. Given a news item's title and summary, respond with ONLY 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named people, places, organizations, or named events) that this item is about — nothing else, no commentary, no leading text. If nothing salient qualifies, respond with an empty line.`;
+
+/** Short response — a handful of tags, not prose — so this doesn't need DEFAULT_NUM_PREDICT's full budget. */
+const TAG_EXTRACTION_NUM_PREDICT = 40;
+
+function parseTagLabels(raw: string): string[] {
+	return raw
+		.split(',')
+		.map((t) => t.trim())
+		.filter((t) => t.length > 0 && t.length < 60);
+}
+
+/**
+ * Lightweight standalone tag extraction for a single item — unlike synthesizeArticle,
+ * this doesn't rewrite or attribute anything, so it's safe to run even for items that
+ * publish verbatim via publishDirect (single-source clusters, or format-based direct
+ * publishes like YouTube/Nitter/Telegram — see priorityQueue.ts). Every published
+ * article should end up with tags regardless of whether it went through a full AI
+ * merge, and this is the minimal AI call that makes that possible without triggering
+ * the rewrite/attribution risk a full synthesizeArticle call would add for no benefit.
+ */
+export async function extractTags(
+	provider: InferenceProvider,
+	model: string,
+	item: Pick<ContentItem, 'title' | 'summary' | 'body'>
+): Promise<string[]> {
+	const summary = capEntryText(item.body || item.summary, MAX_INPUT_CHARS);
+	const prompt = `Title: ${item.title}\nSummary: ${summary}`;
+	const raw = await provider.generate(prompt, {
+		model,
+		system: TAG_EXTRACTION_SYSTEM_PROMPT,
+		numCtx: DEFAULT_NUM_CTX,
+		numPredict: TAG_EXTRACTION_NUM_PREDICT,
+		label: `Extracting tags: "${item.title.slice(0, 60)}"`
+	});
+	return parseTagLabels(raw);
+}
+
 const RECAP_SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given a chronological list of articles already published about an ongoing tracked event, write your response in exactly three parts, in this order:
 
 1. A short, specific headline for this recap (a single line, ideally under 12 words, no surrounding quotation marks, no trailing period).
@@ -109,10 +147,7 @@ function buildPrompt(items: ContentItem[], sourceNames: Map<string, string>): st
 
 function parseResult(raw: string): SynthesisResult {
 	const [beforeTags, tagSection] = raw.split(TAG_DELIMITER_RE);
-	const tagLabels = (tagSection ?? '')
-		.split(',')
-		.map((t) => t.trim())
-		.filter((t) => t.length > 0 && t.length < 60);
+	const tagLabels = parseTagLabels(tagSection ?? '');
 
 	const titleSplit = (beforeTags ?? raw).split(TITLE_DELIMITER_RE);
 	const titlePart = titleSplit[0];

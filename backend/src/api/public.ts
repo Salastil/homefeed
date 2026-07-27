@@ -45,11 +45,25 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 		return tagsDb.listActiveTags();
 	});
 
+	app.get('/api/tag/:slug', async (req, reply) => {
+		const { slug } = req.params as { slug: string };
+		const tag = tagsDb.getTagBySlug(slug);
+		if (!tag) return reply.code(404).send({ error: 'not found' });
+		return tag;
+	});
+
 	app.get('/api/events', async () => {
-		// Public fields only — sourceIds, keywords etc. stay admin-only.
-		return eventsDb
-			.listEvents()
-			.map((e) => ({ id: e.id, name: e.name, active: e.active, recapIntervalHours: e.recapIntervalHours, isSpillover: e.isSpillover }));
+		// Public fields only — sourceIds, keywords etc. stay admin-only. lastRecapAt is
+		// safe to expose (just a timestamp, no source/keyword detail) and lets the
+		// tracked-event page show when the next AI recap is due.
+		return eventsDb.listEvents().map((e) => ({
+			id: e.id,
+			name: e.name,
+			active: e.active,
+			recapIntervalHours: e.recapIntervalHours,
+			lastRecapAt: e.lastRecapAt,
+			isSpillover: e.isSpillover
+		}));
 	});
 
 	// Drives the site nav — admin-editable (add/remove/reorder) via /api/admin/categories,

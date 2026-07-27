@@ -14,5 +14,12 @@ export const load: PageLoad = async ({ params, fetch, parent }) => {
 
 	const filters = { eventId: params.id };
 	const initial = await getFeed({ ...filters, limit: PAGE_SIZE }, fetch);
-	return { initial, filters, name: match?.name ?? 'Tracked event', pageSize: PAGE_SIZE };
+	return {
+		initial,
+		filters,
+		name: match?.name ?? 'Tracked event',
+		recapIntervalHours: match?.recapIntervalHours ?? null,
+		lastRecapAt: match?.lastRecapAt ?? null,
+		pageSize: PAGE_SIZE
+	};
 };

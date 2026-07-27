@@ -59,20 +59,24 @@ function inAiDisabledCategory(item: ContentItem, disabledNames: Set<string>, sou
 /**
  * Shared by both the passthrough (no-AI) and synthesis direct-publish paths — same
  * publish-then-tag-then-log/error shape, differing only in how the success/failure
- * message describes why the item skipped merging.
+ * message describes why the item skipped merging. `provider`, when given, still gets
+ * these articles tagged (via publishDirect's lightweight extraction) without rewriting
+ * anything — omit it entirely for items whose category has AI turned off, or when
+ * Ollama isn't reachable at all (see call sites).
  */
 async function publishItemsDirect(
 	items: ContentItem[],
 	settings: GlobalSettings,
 	activeEvents: TrackedEvent[],
 	describeSuccess: (item: ContentItem) => string,
-	failureLabel: string
+	failureLabel: string,
+	provider?: InferenceProvider
 ): Promise<number> {
 	let published = 0;
 	for (const item of items) {
 		try {
 			const eventId = claimedEventId(item, activeEvents) ?? undefined;
-			const article = await publishDirect(item, settings, { eventId });
+			const article = await publishDirect(item, settings, { eventId, provider });
 			contentItemsDb.assignCluster([item.id], article.id);
 			published++;
 			logger.info('synthesis', `Published "${article.title}" directly (${describeSuccess(item)})`);
@@ -119,9 +123,13 @@ export async function runPassthroughCycle(settings: GlobalSettings): Promise<num
  * ollama-provider.ts), and runSynthesisCycle's own reentrancy guard used to make them
  * do exactly that: stuck for however long the current cycle's clustering/synthesis
  * portion took, since both used to run under one guarded function. Runs regardless of
- * Ollama's reachability — nothing here calls the AI.
+ * Ollama's reachability — merging/rewriting never happens here either way. `provider`
+ * is optional and only used for tagging (see publishItemsDirect): scheduler.ts passes
+ * one only when Ollama is actually reachable, and even then only type-direct items
+ * (YouTube/Nitter/Telegram — direct-published purely because of format) get tagged,
+ * never category-direct items (AI turned off for that category entirely, on purpose).
  */
-export async function runDirectPublishCycle(settings: GlobalSettings): Promise<number> {
+export async function runDirectPublishCycle(settings: GlobalSettings, provider?: InferenceProvider): Promise<number> {
 	const activeEvents = eventsDb.listActiveEvents();
 	const items = contentItemsDb.unclusteredItemsExcludingSources([]);
 	if (items.length === 0) {
@@ -145,7 +153,8 @@ export async function runDirectPublishCycle(settings: GlobalSettings): Promise<n
 		settings,
 		activeEvents,
 		(item) => sourcesById.get(item.sourceId)?.type ?? 'unknown',
-		'Direct publish failed'
+		'Direct publish failed',
+		provider
 	);
 
 	const publishedCategoryDirect = await publishItemsDirect(
@@ -230,7 +239,7 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 			// actual synthesis to justify the risk.
 			const article =
 				cluster.items.length === 1
-					? await publishDirect(cluster.items[0], settings, { eventId })
+					? await publishDirect(cluster.items[0], settings, { eventId, provider })
 					: await publishCluster(provider, settings, cluster, { eventId });
 			contentItemsDb.assignCluster(
 				cluster.items.map((i) => i.id),
