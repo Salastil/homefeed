@@ -50,12 +50,17 @@ function buildPrompt(items: ContentItem[]): string {
 	const budgetPerItem = Math.max(MIN_ENTRY_CHARS, Math.floor(MAX_INPUT_CHARS / items.length));
 	let truncated = 0;
 	const entries = items.map((item, i) => {
-		const summary = capEntryText(item.summary, budgetPerItem);
-		if (summary !== item.summary) truncated++;
-		return `Source ${i + 1} (${item.sourceId}):\nTitle: ${item.title}\nSummary: ${summary}`;
+		// Same fallback publishDirect uses (publish.ts) — body is the full article text
+		// when the feed supplies it (e.g. RSS <content:encoded>), summary is a ~500-char
+		// blurb. Using summary alone starved the model of real content to synthesize
+		// from, so a single-source cluster just echoed the blurb back nearly verbatim.
+		const full = item.body || item.summary;
+		const text = capEntryText(full, budgetPerItem);
+		if (text !== full) truncated++;
+		return `Source ${i + 1} (${item.sourceId}):\nTitle: ${item.title}\nSummary: ${text}`;
 	});
 	if (truncated > 0) {
-		logger.warn('synthesis', `Trimmed ${truncated}/${items.length} source summar${truncated === 1 ? 'y' : 'ies'} to fit the model's context window`);
+		logger.warn('synthesis', `Trimmed ${truncated}/${items.length} source article${truncated === 1 ? '' : 's'} to fit the model's context window`);
 	}
 	return entries.join('\n\n');
 }
