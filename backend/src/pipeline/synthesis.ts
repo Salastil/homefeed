@@ -163,6 +163,23 @@ function parseResult(raw: string): SynthesisResult {
 	return { title, body, tagLabels };
 }
 
+/**
+ * A quantized/small model occasionally reproduces just the requested delimiter
+ * scaffold ("---TITLE---\n\n---TAGS---") with no real headline or article text in
+ * between — a structurally "valid" response by parseResult's own logic (delimiters
+ * found, nothing crashed) but empty in substance. Left unchecked this published a
+ * blank article (empty title/body, still with real sources/hero image attached) once
+ * in production. Treating an empty body as a hard failure lets the caller's existing
+ * catch-and-retry logic (see priorityQueue.ts's runSynthesisCycle) leave the cluster
+ * unclustered for the next cycle instead of ever inserting one of these.
+ */
+function assertNonEmpty(result: SynthesisResult, context: string): SynthesisResult {
+	if (!result.body.trim()) {
+		throw new Error(`Model returned an empty article body for ${context}`);
+	}
+	return result;
+}
+
 export async function synthesizeArticle(
 	provider: InferenceProvider,
 	model: string,
@@ -174,7 +191,7 @@ export async function synthesizeArticle(
 	const system = SYSTEM_PROMPT_BASE + styleAddendum(settings);
 	const label = `Merging ${items.length} source${items.length === 1 ? '' : 's'}: "${items[0]?.title.slice(0, 60) ?? ''}"`;
 	const raw = await provider.generate(prompt, { model, system, numCtx: DEFAULT_NUM_CTX, numPredict: DEFAULT_NUM_PREDICT, label });
-	return parseResult(raw);
+	return assertNonEmpty(parseResult(raw), `"${items[0]?.title.slice(0, 60) ?? ''}"`);
 }
 
 function buildRecapPrompt(eventName: string, articles: MergedArticle[]): string {
@@ -214,5 +231,5 @@ export async function synthesizeRecap(
 		numPredict: DEFAULT_NUM_PREDICT,
 		label: `Recapping event: "${eventName.slice(0, 60)}"`
 	});
-	return parseResult(raw);
+	return assertNonEmpty(parseResult(raw), `event recap "${eventName.slice(0, 60)}"`);
 }
