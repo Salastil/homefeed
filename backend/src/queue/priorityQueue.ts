@@ -186,7 +186,14 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 			// in practice a cluster's items are all near-duplicate coverage of the same
 			// story, so they'd all match the same event's filter anyway when they match at all.
 			const eventId = cluster.items.map((i) => claimedEventId(i, activeEvents)).find((id) => id !== null) ?? undefined;
-			const article = await publishCluster(provider, settings, cluster, { eventId });
+			// A single-item cluster has nothing to merge — publish the source's own text
+			// verbatim instead of asking the LLM to "lightly rewrite" it, which only risked
+			// introducing errors (or fabricated attribution — see synthesis.ts) with no
+			// actual synthesis to justify the risk.
+			const article =
+				cluster.items.length === 1
+					? await publishDirect(cluster.items[0], settings, { eventId })
+					: await publishCluster(provider, settings, cluster, { eventId });
 			contentItemsDb.assignCluster(
 				cluster.items.map((i) => i.id),
 				cluster.id

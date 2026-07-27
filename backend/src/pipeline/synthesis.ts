@@ -37,8 +37,6 @@ const SYSTEM_PROMPT = `You are a neutral news synthesis assistant. Given summari
 - Stays neutral and factual, without editorializing
 - Is 2-4 short paragraphs
 
-If only one source is provided, lightly rewrite it in your own words rather than merging, and do not attribute it to any outlet other than that single given source.
-
 After the article, on a new line, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this article is about. If nothing salient qualifies, leave the tag line empty.`;
 
 export interface SynthesisResult {
