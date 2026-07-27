@@ -13,6 +13,7 @@
 	let newCategoryName = $state('');
 	let newCategoryPrivate = $state(false);
 	let newCategorySpillover = $state(false);
+	let newCategoryDisableAi = $state(false);
 	let addingCategory = $state(false);
 
 	// Advisory only — the nav starts getting too wide / wrapping past ~10 tabs, so this
@@ -48,11 +49,12 @@
 		if (!name) return;
 		addingCategory = true;
 		try {
-			const created = await createCategory(name, newCategoryPrivate, newCategorySpillover);
+			const created = await createCategory(name, newCategoryPrivate, newCategorySpillover, newCategoryDisableAi);
 			local.categoryPriority = [...local.categoryPriority, created];
 			newCategoryName = '';
 			newCategoryPrivate = false;
 			newCategorySpillover = false;
+			newCategoryDisableAi = false;
 		} finally {
 			addingCategory = false;
 		}
@@ -65,6 +67,11 @@
 
 	function toggleSpillover(id: string) {
 		local.categoryPriority = local.categoryPriority.map((c) => (c.id === id ? { ...c, isSpillover: !c.isSpillover } : c));
+		scheduleSave();
+	}
+
+	function toggleDisableAi(id: string) {
+		local.categoryPriority = local.categoryPriority.map((c) => (c.id === id ? { ...c, disableAi: !c.disableAi } : c));
 		scheduleSave();
 	}
 
@@ -98,7 +105,9 @@
 		private category (and everything in it) is hidden from the public site until a visitor
 		logs in with the lock icon in the masthead. A "More" category is collapsed into a single
 		"More »" nav tab instead of getting its own, and shows up on that overflow page with its
-		latest few articles.
+		latest few articles. "No AI" skips clustering and synthesis for that category — each item
+		publishes on its own, using its own source's text, instead of being merged/rewritten by the
+		model.
 	</p>
 	{#if primaryCategoryCount > 10}
 		<p class="hint warn">
@@ -119,6 +128,10 @@
 					<label class="private-toggle">
 						<input type="checkbox" checked={cat.isSpillover} onchange={() => toggleSpillover(cat.id)} />
 						More
+					</label>
+					<label class="private-toggle">
+						<input type="checkbox" checked={cat.disableAi} onchange={() => toggleDisableAi(cat.id)} />
+						No AI
 					</label>
 				{/if}
 				<button class="icon-btn" onclick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">▲</button>
@@ -150,6 +163,10 @@
 		<label class="private-toggle">
 			<input type="checkbox" bind:checked={newCategorySpillover} />
 			More
+		</label>
+		<label class="private-toggle">
+			<input type="checkbox" bind:checked={newCategoryDisableAi} />
+			No AI
 		</label>
 		<button onclick={addCategory} disabled={addingCategory || !newCategoryName.trim()}>
 			{addingCategory ? 'Adding…' : '+ Add'}

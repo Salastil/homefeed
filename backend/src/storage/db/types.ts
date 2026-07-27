@@ -206,6 +206,8 @@ export interface Category {
 	isPrivate: boolean;
 	/** Grouped into the nav's "More »" overflow page instead of getting its own top-level tab — see +layout.svelte and /more. */
 	isSpillover: boolean;
+	/** Skips clustering/AI synthesis for this category's items — each one publishes directly (own article, own source's text), same as YouTube/Nitter/Telegram items always do. See priorityQueue.ts's runSynthesisCycle. */
+	disableAi: boolean;
 }
 
 export interface StockTicker {

@@ -179,7 +179,8 @@ export function migrate() {
 			priority_rank INTEGER NOT NULL,
 			is_default INTEGER NOT NULL DEFAULT 0,
 			is_private INTEGER NOT NULL DEFAULT 0,
-			is_spillover INTEGER NOT NULL DEFAULT 0 -- collapsed into the nav's "More »" overflow page instead of its own tab
+			is_spillover INTEGER NOT NULL DEFAULT 0, -- collapsed into the nav's "More »" overflow page instead of its own tab
+			disable_ai INTEGER NOT NULL DEFAULT 0 -- skip clustering/synthesis for this category's items; publish each one directly
 		);
 
 		CREATE TABLE IF NOT EXISTS logs (
@@ -318,6 +319,9 @@ export function migrate() {
 	}
 	if (!hasColumn('categories', 'is_spillover')) {
 		db.exec('ALTER TABLE categories ADD COLUMN is_spillover INTEGER NOT NULL DEFAULT 0');
+	}
+	if (!hasColumn('categories', 'disable_ai')) {
+		db.exec('ALTER TABLE categories ADD COLUMN disable_ai INTEGER NOT NULL DEFAULT 0');
 	}
 	if (!hasColumn('content_items', 'telegram_message')) {
 		db.exec('ALTER TABLE content_items ADD COLUMN telegram_message TEXT');
