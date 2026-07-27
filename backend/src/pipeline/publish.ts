@@ -349,8 +349,9 @@ export async function publishDirect(
 
 /**
  * Publishing is always automatic — there's no draft/review state (see schema doc).
- * A cluster of size 1 publishes as-is via the same path; synthesizeArticle lightly
- * rewrites rather than merges when there's only one source.
+ * Callers should route a size-1 cluster to publishDirect instead — there's nothing to
+ * merge, so an LLM rewrite would only add risk (hallucinated attribution, altered
+ * facts) for no synthesis benefit. See priorityQueue.ts's runSynthesisCycle.
  */
 export async function publishCluster(
 	provider: InferenceProvider,
