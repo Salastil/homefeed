@@ -107,6 +107,11 @@ export const pollSourceNow = (id: string, fetchFn?: typeof fetch) =>
 export const reissueSourceContent = (id: string, fetchFn?: typeof fetch) =>
 	request<{ articlesDeleted: number; itemsRequeued: number }>(`/api/admin/sources/${id}/reissue`, { method: 'POST' }, fetchFn);
 
+// Fixes one specific bad article regardless of how many sources it merged — unlike
+// reissueSourceContent above, which deliberately won't touch a multi-source article.
+export const reissueArticle = (id: string, fetchFn?: typeof fetch) =>
+	request<{ articlesDeleted: number; itemsRequeued: number }>(`/api/admin/articles/${id}/reissue`, { method: 'POST' }, fetchFn);
+
 // Content clearing — wipe articles/media/a source's raw items so they can be repopulated fresh.
 export const clearSourceContent = (id: string, fetchFn?: typeof fetch) =>
 	request<{ itemsDeleted: number; articlesDeleted: number }>(`/api/admin/content/sources/${id}`, { method: 'DELETE' }, fetchFn);
