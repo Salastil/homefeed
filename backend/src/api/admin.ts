@@ -6,7 +6,7 @@ import * as categoriesDb from '../storage/db/categories.js';
 import * as stocksDb from '../storage/db/stocks.js';
 import * as bookmarksDb from '../storage/db/bookmarks.js';
 import * as poe2WatchlistDb from '../storage/db/poe2Watchlist.js';
-import { clearSourceContent, reissueSourceContent, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
+import { clearSourceContent, reissueSourceContent, reissueArticle, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
 import { totalStorageBytes } from '../storage/media/index.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import { pollSourceNow } from '../ingestion/poller.js';
@@ -149,6 +149,17 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const source = sourcesDb.getSource(id);
 		if (!source) return reply.code(404).send({ error: 'not found' });
 		return reissueSourceContent(id);
+	});
+
+	// Fixes one specific bad article (e.g. a degenerate/empty AI synthesis — see
+	// synthesis.ts's assertNonEmpty) by deleting it and requeuing every item it merged,
+	// regardless of how many different sources contributed — reissueSourceContent above
+	// deliberately won't touch a multi-source article at all.
+	app.post('/api/admin/articles/:id/reissue', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		const result = reissueArticle(id);
+		if (!result) return reply.code(404).send({ error: 'not found' });
+		return result;
 	});
 
 	// --- Tracked events ---

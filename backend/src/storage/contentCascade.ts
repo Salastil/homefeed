@@ -86,6 +86,29 @@ export function reissueSourceContent(sourceId: string): ReissueResult {
 	return { articlesDeleted, itemsRequeued: requeueIds.size };
 }
 
+/**
+ * Deletes one specific article (and its media) and requeues every content item that
+ * contributed to it — unlike reissueSourceContent, this works regardless of how many
+ * different sources the article merged together, since it's scoped to the article
+ * itself rather than "everything from source X". Exists for exactly the failure mode
+ * synthesis.ts's assertNonEmpty guards against going forward: a bad synthesis call
+ * that already made it into a published (garbage) article before that guard existed,
+ * where the source-scoped reissue tools can't help because the article spans sources.
+ * Returns null if the article doesn't exist.
+ */
+export function reissueArticle(articleId: string): ReissueResult | null {
+	const article = articlesDb.getArticle(articleId);
+	if (!article) return null;
+
+	const itemIds = article.sources.map((s) => s.itemId);
+	deleteMediaByArticleId(article.id);
+	articlesDb.deleteArticle(article.id);
+	contentItemsDb.resetClusterForItems(itemIds);
+
+	logger.info('admin', `Reissuing article ${articleId}: deleted, ${itemIds.length} item(s) requeued`);
+	return { articlesDeleted: 1, itemsRequeued: itemIds.length };
+}
+
 /** Wipes every published article and its media, keeping raw ingested items intact so they can be re-synthesized fresh. */
 export function clearAllArticles(): number {
 	const articles = articlesDb.allArticlesNewestFirst();
