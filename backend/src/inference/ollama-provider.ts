@@ -79,8 +79,17 @@ export class OllamaProvider implements InferenceProvider {
 		const res = await fetch(`${this.base()}/api/embeddings`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ model: opts.model, prompt: text })
-		});
+			body: JSON.stringify({ model: opts.model, prompt: text }),
+			// Ollama serves one inference request at a time (n_slots = 1) — an embed call
+			// queued behind a slow generate() call waits for that same slot, and on this
+			// CPU-only hardware a generate() call can easily run past 5 minutes. Without
+			// this, that wait alone was enough to trip the same default fetch timeout
+			// generate() had (see noTimeoutDispatcher above), silently dropping the item
+			// from embedPendingItems — it never got clustered, so a single-source item
+			// unlucky enough to be embedded while Ollama was busy never published at all,
+			// retried every cycle with the same result for as long as Ollama stayed busy.
+			dispatcher: noTimeoutDispatcher
+		} as RequestInit);
 		if (!res.ok) throw new Error(`Ollama embed failed: ${res.status} ${await res.text()}`);
 		const data = (await res.json()) as { embedding: number[] };
 		return data.embedding;
