@@ -43,6 +43,8 @@ function rowToSettings(row: any): GlobalSettings {
 		fxtwitterBaseUrl: row.fxtwitter_base_url,
 		nitterInstanceUrl: row.nitter_instance_url,
 		telegramMediaMode: row.telegram_media_mode,
+		synthesisStylePreset: row.synthesis_style_preset,
+		synthesisCustomInstructions: row.synthesis_custom_instructions,
 		...widgetsAndOrder(),
 		retention: {
 			publishedArticleMaxAgeDays: row.published_article_max_age_days,
@@ -90,6 +92,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			ai_service_host=$ai_service_host, ai_service_port=$ai_service_port, selected_models=$selected_models,
 			nitter_media_mode=$nitter_media_mode, fxtwitter_base_url=$fxtwitter_base_url, nitter_instance_url=$nitter_instance_url,
 			telegram_media_mode=$telegram_media_mode,
+			synthesis_style_preset=$synthesis_style_preset, synthesis_custom_instructions=$synthesis_custom_instructions,
 			published_article_max_age_days=$published_article_max_age_days, raw_item_max_age_days=$raw_item_max_age_days,
 			storage_cap_enabled=$storage_cap_enabled, storage_cap_value=$storage_cap_value, storage_cap_unit=$storage_cap_unit
 		 WHERE id = 1`
@@ -107,6 +110,8 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		$fxtwitter_base_url: merged.fxtwitterBaseUrl,
 		$nitter_instance_url: merged.nitterInstanceUrl,
 		$telegram_media_mode: merged.telegramMediaMode,
+		$synthesis_style_preset: merged.synthesisStylePreset,
+		$synthesis_custom_instructions: merged.synthesisCustomInstructions,
 		$published_article_max_age_days: merged.retention.publishedArticleMaxAgeDays,
 		$raw_item_max_age_days: merged.retention.rawItemMaxAgeDays,
 		$storage_cap_enabled: merged.retention.storageCapEnabled ? 1 : 0,

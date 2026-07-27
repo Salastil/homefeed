@@ -34,7 +34,9 @@
 					followUpMinNewSources: local.followUpMinNewSources,
 					tagDedupThreshold: local.tagDedupThreshold,
 					tagExpiryDays: local.tagExpiryDays,
-					categoryPriority: local.categoryPriority
+					categoryPriority: local.categoryPriority,
+					synthesisStylePreset: local.synthesisStylePreset,
+					synthesisCustomInstructions: local.synthesisCustomInstructions
 				});
 				status = 'saved';
 				setTimeout(() => (status = 'idle'), 1500);
@@ -200,6 +202,29 @@
 </div>
 
 <div class="panel">
+	<span class="panel-title">Writing style</span>
+	<p class="hint">
+		Applies to AI-merged articles and event recaps only — a story with just one source
+		publishes with its original text untouched, no AI involved.
+	</p>
+	<select bind:value={local.synthesisStylePreset} onchange={scheduleSave}>
+		<option value="default">Default (neutral, wire-service tone)</option>
+		<option value="casual">Casual</option>
+		<option value="formal">Formal</option>
+	</select>
+	<label class="field-label" for="custom-instructions" style="margin-top: 10px;">
+		Additional instructions (optional)
+	</label>
+	<textarea
+		id="custom-instructions"
+		rows="3"
+		placeholder={'e.g. "Keep paragraphs under 3 sentences", "Never use the word notably"'}
+		bind:value={local.synthesisCustomInstructions}
+		oninput={scheduleSave}
+	></textarea>
+</div>
+
+<div class="panel">
 	<span class="panel-title">Hold before publish</span>
 	<p class="hint">Wait window to gather more sources before finalizing a story.</p>
 	<select bind:value={local.holdBeforePublishMinutes} onchange={scheduleSave}>
@@ -327,6 +352,12 @@
 	}
 	select {
 		width: 100%;
+	}
+	textarea {
+		width: 100%;
+		margin-top: 6px;
+		font: inherit;
+		resize: vertical;
 	}
 	.priority-list {
 		display: flex;

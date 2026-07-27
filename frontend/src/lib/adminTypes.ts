@@ -155,6 +155,8 @@ export interface AdminSettings {
 	fxtwitterBaseUrl: string;
 	nitterInstanceUrl: string;
 	telegramMediaMode: 'self-host' | 'proxy';
+	synthesisStylePreset: 'default' | 'casual' | 'formal';
+	synthesisCustomInstructions: string;
 	widgets: AdminWidgetsEnabled;
 	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
 	retention: RetentionSettings;

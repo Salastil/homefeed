@@ -362,7 +362,7 @@ export async function publishCluster(
 	const items = cluster.items;
 
 	const sourceNames = new Map(items.map((item) => [item.sourceId, sources.getSource(item.sourceId)?.name ?? 'Unknown source']));
-	const { body, tagLabels } = await synthesizeArticle(provider, settings.selectedModels.synthesis, items, sourceNames);
+	const { body, tagLabels } = await synthesizeArticle(provider, settings.selectedModels.synthesis, items, sourceNames, settings);
 
 	const resolvedTags = [];
 	for (const label of tagLabels) {
@@ -461,7 +461,7 @@ export async function publishEventRecap(
 	event: TrackedEvent,
 	constituents: MergedArticle[]
 ): Promise<MergedArticle> {
-	const { body, tagLabels } = await synthesizeRecap(provider, settings.selectedModels.synthesis, event.name, constituents);
+	const { body, tagLabels } = await synthesizeRecap(provider, settings.selectedModels.synthesis, event.name, constituents, settings);
 
 	const resolvedTags = [];
 	for (const label of tagLabels) {
