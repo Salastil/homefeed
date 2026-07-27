@@ -1,7 +1,39 @@
 import { db } from './index.js';
 import type { GlobalSettings } from './types.js';
+import * as installedWidgetsDb from './installedWidgets.js';
+import { getKv, setKv } from './widgetKv.js';
+
+const BUILTIN_WIDGET_IDS = ['weather', 'stocks', 'bookmarks', 'poe2'] as const;
+
+interface Poe2LeagueCache {
+	leagueId: string | null;
+	leagueName: string | null;
+	updatedAt: string | null;
+}
+
+// widgets/widgetOrder are computed from the installed_widgets registry (see
+// storage/db/installedWidgets.ts, widgets/registry.ts) rather than stored as their own
+// global_settings columns — the registry is the single source of truth for enable state
+// and ordering for every widget, built-in or uploaded. Only the four built-in ids are
+// reflected here since GlobalSettings.widgets/widgetOrder are closed unions the frontend
+// depends on (uploaded widgets have no frontend representation yet).
+function widgetsAndOrder(): Pick<GlobalSettings, 'widgets' | 'widgetOrder'> {
+	const installed = installedWidgetsDb.listInstalled();
+	const byId = new Map(installed.map((w) => [w.id, w]));
+	const widgets = {
+		weather: !!byId.get('weather')?.enabled,
+		stocks: !!byId.get('stocks')?.enabled,
+		bookmarks: !!byId.get('bookmarks')?.enabled,
+		poe2: !!byId.get('poe2')?.enabled
+	};
+	const widgetOrder = installed.map((w) => w.id).filter((id): id is (typeof BUILTIN_WIDGET_IDS)[number] =>
+		(BUILTIN_WIDGET_IDS as readonly string[]).includes(id)
+	);
+	return { widgets, widgetOrder };
+}
 
 function rowToSettings(row: any): GlobalSettings {
+	const poe2Cache = getKv<Poe2LeagueCache>('poe2', 'leagueCache') ?? { leagueId: null, leagueName: null, updatedAt: null };
 	return {
 		mergeStrictness: row.merge_strictness,
 		holdBeforePublishMinutes: row.hold_before_publish_minutes,
@@ -16,13 +48,7 @@ function rowToSettings(row: any): GlobalSettings {
 		fxtwitterBaseUrl: row.fxtwitter_base_url,
 		nitterInstanceUrl: row.nitter_instance_url,
 		telegramMediaMode: row.telegram_media_mode,
-		widgets: {
-			weather: !!row.widget_weather_enabled,
-			stocks: !!row.widget_stocks_enabled,
-			bookmarks: !!row.widget_bookmarks_enabled,
-			poe2: !!row.widget_poe2_enabled
-		},
-		widgetOrder: JSON.parse(row.widget_order),
+		...widgetsAndOrder(),
 		retention: {
 			publishedArticleMaxAgeDays: row.published_article_max_age_days,
 			rawItemMaxAgeDays: row.raw_item_max_age_days,
@@ -44,11 +70,7 @@ function rowToSettings(row: any): GlobalSettings {
 			alerts: JSON.parse(row.weather_alerts),
 			updatedAt: row.weather_updated_at
 		},
-		poe2: {
-			leagueId: row.poe2_league_id,
-			leagueName: row.poe2_league_name,
-			updatedAt: row.poe2_updated_at
-		}
+		poe2: poe2Cache
 	};
 }
 
@@ -68,6 +90,19 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		poe2: { ...current.poe2, ...(patch.poe2 ?? {}) },
 		widgets: { ...current.widgets, ...(patch.widgets ?? {}) }
 	};
+
+	if (patch.widgets) {
+		for (const id of BUILTIN_WIDGET_IDS) {
+			if (patch.widgets[id] !== undefined) installedWidgetsDb.setEnabled(id, patch.widgets[id]);
+		}
+	}
+	if (patch.widgetOrder) {
+		installedWidgetsDb.reorder(patch.widgetOrder);
+	}
+	if (patch.poe2) {
+		setKv('poe2', 'leagueCache', merged.poe2);
+	}
+
 	// Named params (rather than positional `?`) so this list can be reordered or
 	// extended without the column list and the bound-values list silently drifting
 	// out of sync — node:sqlite binds each by its `$name` key, not position.
@@ -80,16 +115,12 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			ai_service_host=$ai_service_host, ai_service_port=$ai_service_port, selected_models=$selected_models,
 			nitter_media_mode=$nitter_media_mode, fxtwitter_base_url=$fxtwitter_base_url, nitter_instance_url=$nitter_instance_url,
 			telegram_media_mode=$telegram_media_mode,
-			widget_weather_enabled=$widget_weather_enabled, widget_stocks_enabled=$widget_stocks_enabled,
-			widget_bookmarks_enabled=$widget_bookmarks_enabled, widget_poe2_enabled=$widget_poe2_enabled,
-			widget_order=$widget_order,
 			published_article_max_age_days=$published_article_max_age_days, raw_item_max_age_days=$raw_item_max_age_days,
 			storage_cap_enabled=$storage_cap_enabled, storage_cap_value=$storage_cap_value, storage_cap_unit=$storage_cap_unit,
 			weather_location_name=$weather_location_name, weather_latitude=$weather_latitude, weather_longitude=$weather_longitude,
 			weather_unit=$weather_unit, weather_wind_unit=$weather_wind_unit, weather_pressure_unit=$weather_pressure_unit,
 			weather_current=$weather_current, weather_hourly=$weather_hourly, weather_daily=$weather_daily,
-			weather_alerts=$weather_alerts, weather_updated_at=$weather_updated_at,
-			poe2_league_id=$poe2_league_id, poe2_league_name=$poe2_league_name, poe2_updated_at=$poe2_updated_at
+			weather_alerts=$weather_alerts, weather_updated_at=$weather_updated_at
 		 WHERE id = 1`
 	).run({
 		$merge_strictness: merged.mergeStrictness,
@@ -105,11 +136,6 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		$fxtwitter_base_url: merged.fxtwitterBaseUrl,
 		$nitter_instance_url: merged.nitterInstanceUrl,
 		$telegram_media_mode: merged.telegramMediaMode,
-		$widget_weather_enabled: merged.widgets.weather ? 1 : 0,
-		$widget_stocks_enabled: merged.widgets.stocks ? 1 : 0,
-		$widget_bookmarks_enabled: merged.widgets.bookmarks ? 1 : 0,
-		$widget_poe2_enabled: merged.widgets.poe2 ? 1 : 0,
-		$widget_order: JSON.stringify(merged.widgetOrder),
 		$published_article_max_age_days: merged.retention.publishedArticleMaxAgeDays,
 		$raw_item_max_age_days: merged.retention.rawItemMaxAgeDays,
 		$storage_cap_enabled: merged.retention.storageCapEnabled ? 1 : 0,
@@ -125,10 +151,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		$weather_hourly: JSON.stringify(merged.weather.hourly),
 		$weather_daily: JSON.stringify(merged.weather.daily),
 		$weather_alerts: JSON.stringify(merged.weather.alerts),
-		$weather_updated_at: merged.weather.updatedAt,
-		$poe2_league_id: merged.poe2.leagueId,
-		$poe2_league_name: merged.poe2.leagueName,
-		$poe2_updated_at: merged.poe2.updatedAt
+		$weather_updated_at: merged.weather.updatedAt
 	});
 	return getSettings();
 }

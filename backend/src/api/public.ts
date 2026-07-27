@@ -4,9 +4,6 @@ import * as tagsDb from '../storage/db/tags.js';
 import * as eventsDb from '../storage/db/events.js';
 import * as categoriesDb from '../storage/db/categories.js';
 import * as settingsDb from '../storage/db/settings.js';
-import * as stocksDb from '../storage/db/stocks.js';
-import * as bookmarksDb from '../storage/db/bookmarks.js';
-import * as poe2WatchlistDb from '../storage/db/poe2Watchlist.js';
 import { hasPrivateAccess } from './privateAccess.js';
 
 export async function registerPublicRoutes(app: FastifyInstance) {
@@ -70,19 +67,7 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 		return { ...widgets, order: widgetOrder };
 	});
 
-	// Sidebar widgets — see WeatherTab/StocksTab/BookmarksTab in the admin panel.
-	app.get('/api/weather', async () => settingsDb.getSettings().weather);
-
-	app.get('/api/stocks', async () => stocksDb.listStockTickers());
-
-	app.get('/api/bookmarks', async (req) => {
-		const bookmarks = bookmarksDb.listBookmarks();
-		if (hasPrivateAccess(req)) return bookmarks;
-		return bookmarks.filter((b) => !b.isPrivate);
-	});
-
-	app.get('/api/poe2', async () => {
-		const { leagueName, updatedAt } = settingsDb.getSettings().poe2;
-		return { leagueName, updatedAt, entries: poe2WatchlistDb.listWatchlist() };
-	});
+	// Per-widget public routes (GET /api/weather, /api/stocks, /api/bookmarks, /api/poe2)
+	// are registered by each widget's own plugin — see widgets/registry.ts's generic
+	// registerPublicRoutes loop in index.ts.
 }

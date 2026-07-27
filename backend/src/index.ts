@@ -14,6 +14,7 @@ import { registerPrivateAccess, privateAccessConfigured } from './api/privateAcc
 import { startScheduler } from './queue/scheduler.js';
 import { initFromSavedSession } from './telegram/client.js';
 import { logger } from './storage/db/logs.js';
+import { loadAllWidgets, loadedWidgets } from './widgets/registry.js';
 
 const PORT = Number(process.env.PORT) || 4000;
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
@@ -35,6 +36,7 @@ async function main() {
 	migrate();
 	printApiKeyBanner();
 	await initFromSavedSession();
+	await loadAllWidgets();
 
 	const app = Fastify({ logger: false });
 
@@ -73,6 +75,15 @@ async function main() {
 	await registerPublicRoutes(app);
 	await registerAdminRoutes(app);
 	await registerPrivateAccess(app);
+
+	// Each loaded widget (built-in or uploaded — see widgets/registry.ts) registers its
+	// own routes here rather than being hardcoded into public.ts/admin.ts. Runs after
+	// registerAuth so any /api/admin/* route a widget registers is gated by the same
+	// X-Api-Key preHandler automatically.
+	for (const plugin of loadedWidgets.values()) {
+		plugin.registerPublicRoutes?.(app);
+		plugin.registerAdminRoutes?.(app);
+	}
 
 	// Fastify's own logger is off (see below) — without this, an unhandled exception
 	// in any route handler produces a bare 500 with zero trace anywhere, including the

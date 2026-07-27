@@ -33,6 +33,18 @@ export function migrate() {
 		db.exec('DROP TABLE IF EXISTS poe2_watchlist;');
 	}
 
+	// PoE2 moved into the pluggable-widget system (backend/src/widgets/poe2/) and its
+	// schema now follows the widget_<id>_ naming convention its plugin.migrate() owns —
+	// a plain rename (metadata-only in SQLite, no row copy) rather than grandfathering
+	// the old names in via an exceptions list, since it's cheap and PoE2 is meant to be
+	// the reference implementation of the convention it establishes.
+	const hasOldPoe2Table = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='poe2_watchlist'`).get();
+	if (hasOldPoe2Table) {
+		db.exec('ALTER TABLE poe2_watchlist RENAME TO widget_poe2_watchlist;');
+		db.exec('ALTER TABLE poe2_rate_history RENAME TO widget_poe2_rate_history;');
+		db.exec('DROP INDEX IF EXISTS idx_poe2_rate_history_watchlist;');
+	}
+
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS sources (
 			id TEXT PRIMARY KEY,
@@ -223,35 +235,32 @@ export function migrate() {
 			created_at TEXT NOT NULL
 		);
 
-		-- Sidebar "PoE2" widget — tracks exchange rates between arbitrary currency pairs
-		-- (see poe2/poller.ts), always against the current challenge league (auto-detected,
-		-- no admin config). Rate is "1 base = last_rate quote"; both currencies' names are
-		-- captured at add-time from the browse picker, not re-resolved. No icon columns —
-		-- the UI doesn't display them.
-		CREATE TABLE IF NOT EXISTS poe2_watchlist (
-			id TEXT PRIMARY KEY,
-			base_currency_id TEXT NOT NULL, -- opaque id from the exchange overview's lines[].id, e.g. "exalted"
-			base_name TEXT NOT NULL,
-			quote_currency_id TEXT NOT NULL,
-			quote_name TEXT NOT NULL,
-			priority_rank INTEGER NOT NULL,
-			last_rate REAL,
-			last_change_24h REAL,
-			last_polled_at TEXT,
-			last_error TEXT,
-			created_at TEXT NOT NULL
+		-- Generic config/cache store for pluggable widgets (see widgets/types.ts,
+		-- storage/db/widgetKv.ts) — lets a widget stay fully prunable by widget_id alone on
+		-- uninstall without a bespoke table for simple key/value state.
+		CREATE TABLE IF NOT EXISTS widget_kv (
+			widget_id TEXT NOT NULL,
+			key TEXT NOT NULL,
+			value TEXT NOT NULL, -- JSON
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (widget_id, key)
 		);
 
-		-- Per-poll rate snapshots for the pairs above — poe.ninja doesn't expose a matching
-		-- 24h change window, so it's computed ourselves from this history (see
-		-- poe2/poller.ts). Pruned to the last 2 days on every poll.
-		CREATE TABLE IF NOT EXISTS poe2_rate_history (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			watchlist_id TEXT NOT NULL,
-			rate REAL NOT NULL,
-			recorded_at TEXT NOT NULL
+		-- Registry of installed sidebar widgets, both built-in (weather/stocks/bookmarks,
+		-- and poe2 as the pluggable reference implementation) and uploaded (see
+		-- widgets/registry.ts, widgets/install.ts). Replaces the old closed
+		-- widgets/widgetOrder unions on global_settings — see storage/db/settings.ts.
+		CREATE TABLE IF NOT EXISTS installed_widgets (
+			id TEXT PRIMARY KEY,
+			display_name TEXT NOT NULL,
+			source TEXT NOT NULL, -- 'builtin' | 'uploaded'
+			code_path TEXT NOT NULL, -- builtin: identifying module path segment; uploaded: on-disk install dir under ./data/
+			enabled INTEGER NOT NULL DEFAULT 1,
+			priority_rank INTEGER NOT NULL,
+			version TEXT NOT NULL DEFAULT '1.0.0',
+			owned_tables TEXT NOT NULL DEFAULT '[]', -- JSON array, self-reported by the plugin — used by the uninstall safety-net sweep
+			installed_at TEXT NOT NULL
 		);
-		CREATE INDEX IF NOT EXISTS idx_poe2_rate_history_watchlist ON poe2_rate_history(watchlist_id, recorded_at);
 
 		-- Sidebar "Bookmarks" widget — admin-curated links, each independently hidden/public
 		-- via is_private (same private-access lock feature as categories.is_private).
@@ -416,5 +425,59 @@ export function migrate() {
 				maxRank.m + 1
 			);
 		}
+	}
+
+	// One-time seed of the installed_widgets registry from whatever the pre-registry
+	// install had (upgrade path) or sensible defaults (fresh install) — see
+	// widgets/registry.ts, storage/db/installedWidgets.ts. Raw SQL rather than importing
+	// installedWidgets.ts here to avoid a circular import (it imports `db` from this
+	// file).
+	const widgetCount = db.prepare('SELECT COUNT(*) as c FROM installed_widgets').get() as { c: number };
+	if (widgetCount.c === 0) {
+		const settingsRow = db.prepare('SELECT * FROM global_settings WHERE id = 1').get() as any;
+		const order: string[] = settingsRow
+			? JSON.parse(settingsRow.widget_order ?? '["weather","stocks","poe2","bookmarks"]')
+			: ['weather', 'stocks', 'poe2', 'bookmarks'];
+		const displayNames: Record<string, string> = { weather: 'Weather', stocks: 'Stocks', bookmarks: 'Bookmarks', poe2: 'PoE2' };
+		const codePaths: Record<string, string> = { weather: 'weather', stocks: 'stocks', bookmarks: 'bookmarks', poe2: 'widgets/poe2' };
+		const ownedTables: Record<string, string[]> = { poe2: ['widget_poe2_watchlist', 'widget_poe2_rate_history'] };
+		const enabledOf = (id: string) => (settingsRow ? !!settingsRow[`widget_${id}_enabled`] : true);
+		const insertWidget = db.prepare(
+			`INSERT INTO installed_widgets (id, display_name, source, code_path, enabled, priority_rank, owned_tables, installed_at)
+				VALUES (?, ?, 'builtin', ?, ?, ?, ?, ?)`
+		);
+		const installedAt = new Date().toISOString();
+		order.forEach((id, i) => {
+			insertWidget.run(
+				id,
+				displayNames[id] ?? id,
+				codePaths[id] ?? id,
+				enabledOf(id) ? 1 : 0,
+				i + 1,
+				JSON.stringify(ownedTables[id] ?? []),
+				installedAt
+			);
+		});
+	}
+
+	// PoE2's league cache (previously bare global_settings columns) moves into the
+	// generic widget_kv store so it's prunable via the same deleteAllKv('poe2') path as
+	// everything else the widget owns, rather than needing bespoke column-nulling logic
+	// on uninstall. One-time copy, guarded on the widget_kv row not already existing.
+	const poe2CacheRow = db.prepare('SELECT poe2_league_id, poe2_league_name, poe2_updated_at FROM global_settings WHERE id = 1').get() as
+		| { poe2_league_id: string | null; poe2_league_name: string | null; poe2_updated_at: string | null }
+		| undefined;
+	const hasPoe2Kv = db.prepare("SELECT 1 FROM widget_kv WHERE widget_id = 'poe2' AND key = 'leagueCache'").get();
+	if (poe2CacheRow?.poe2_league_id && !hasPoe2Kv) {
+		db.prepare(
+			`INSERT INTO widget_kv (widget_id, key, value, updated_at) VALUES ('poe2', 'leagueCache', ?, ?)`
+		).run(
+			JSON.stringify({
+				leagueId: poe2CacheRow.poe2_league_id,
+				leagueName: poe2CacheRow.poe2_league_name,
+				updatedAt: poe2CacheRow.poe2_updated_at
+			}),
+			new Date().toISOString()
+		);
 	}
 }

@@ -256,6 +256,21 @@ export interface Poe2WatchlistEntry {
 	createdAt: string;
 }
 
+/** A row in `installed_widgets` — the registry of both built-in and uploaded sidebar widgets (see widgets/registry.ts). */
+export interface InstalledWidget {
+	id: string;
+	displayName: string;
+	source: 'builtin' | 'uploaded';
+	/** Builtin: the module's identifying path segment (e.g. 'weather', 'widgets/poe2'). Uploaded: the on-disk install directory, e.g. './data/widgets-installed/<id>'. */
+	codePath: string;
+	enabled: boolean;
+	priorityRank: number;
+	version: string;
+	/** Self-reported by the plugin (WidgetPlugin.ownedTables) at install/load time — used by the uninstall safety-net sweep. */
+	ownedTables: string[];
+	installedAt: string;
+}
+
 export interface Bookmark {
 	id: string;
 	name: string;
