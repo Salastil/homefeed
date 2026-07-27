@@ -7,6 +7,7 @@ import { embedPendingItems } from '../pipeline/embedding.js';
 import { clusterItems } from '../pipeline/clustering.js';
 import { publishCluster, publishDirect } from '../pipeline/publish.js';
 import { logger } from '../storage/db/logs.js';
+import * as backlogStats from './backlogStats.js';
 import type { GlobalSettings, ContentItem, TrackedEvent, Source } from '../storage/db/types.js';
 
 function partition<T>(items: T[], predicate: (item: T) => boolean): [T[], T[]] {
@@ -123,7 +124,10 @@ export async function runPassthroughCycle(settings: GlobalSettings): Promise<num
 export async function runDirectPublishCycle(settings: GlobalSettings): Promise<number> {
 	const activeEvents = eventsDb.listActiveEvents();
 	const items = contentItemsDb.unclusteredItemsExcludingSources([]);
-	if (items.length === 0) return 0;
+	if (items.length === 0) {
+		backlogStats.recordDirectPublishCycle(0);
+		return 0;
+	}
 
 	const sourcesById = new Map(sourcesDb.listSources().map((s) => [s.id, s]));
 	const categories = categoriesDb.listCategories();
@@ -152,7 +156,9 @@ export async function runDirectPublishCycle(settings: GlobalSettings): Promise<n
 		'Direct publish failed'
 	);
 
-	return publishedTypeDirect + publishedCategoryDirect;
+	const total = publishedTypeDirect + publishedCategoryDirect;
+	backlogStats.recordDirectPublishCycle(total);
+	return total;
 }
 
 /**
@@ -167,7 +173,10 @@ export async function runDirectPublishCycle(settings: GlobalSettings): Promise<n
 export async function runSynthesisCycle(provider: InferenceProvider, settings: GlobalSettings): Promise<number> {
 	const activeEvents = eventsDb.listActiveEvents();
 	const items = contentItemsDb.unclusteredItemsExcludingSources([]);
-	if (items.length === 0) return 0;
+	if (items.length === 0) {
+		backlogStats.recordSynthesisCycle(0);
+		return 0;
+	}
 
 	// One fetch of the full source list per cycle, reused below for both the
 	// direct-publish exclusion and each item's category/rank lookups — avoids a
@@ -244,6 +253,8 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 			`${pending} item(s) ingested, waiting on hold-before-publish (~${minutesLeft}m remaining on the earliest)`
 		);
 	}
+
+	backlogStats.recordSynthesisCycle(published);
 
 	return published;
 }

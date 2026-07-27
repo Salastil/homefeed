@@ -9,6 +9,8 @@ import { totalStorageBytes } from '../storage/media/index.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import { pollSourceNow } from '../ingestion/poller.js';
 import { logger, listLogs } from '../storage/db/logs.js';
+import * as backlogStats from '../queue/backlogStats.js';
+import * as ollamaStats from '../inference/stats.js';
 import * as telegramClient from '../telegram/client.js';
 import { loadedWidgets } from '../widgets/registry.js';
 import { installUploadedWidget } from '../widgets/install.js';
@@ -293,5 +295,38 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 			level: level === 'info' || level === 'warn' || level === 'error' ? level : undefined,
 			limit: limit ? Number(limit) : undefined
 		});
+	});
+
+	// Backlog/throughput dashboard for the Logs tab — backlog counts are recomputed live
+	// from the DB on every request (cheap: no AI calls, see backlogStats.ts), while Ollama
+	// throughput/in-flight status comes from a rolling in-memory sample of recent
+	// generate() calls (see inference/stats.ts) since that can only be observed as calls
+	// actually happen, not recomputed on demand.
+	app.get('/api/admin/pipeline-stats', async () => {
+		const settings = settingsDb.getSettings();
+		const backlog = backlogStats.getBacklogSnapshot(settings);
+		const throughput = ollamaStats.getThroughput();
+		const inFlight = ollamaStats.getInFlight();
+		const { lastDirectCycle, lastSynthesisCycle } = backlogStats.getLastCycles();
+
+		// Estimate is deliberately conservative: only clusters that actually need an LLM
+		// call (2+ items — see backlogStats.ts) count toward it, and it's null (rather than
+		// a misleading guess) until at least one real generate() call has completed, since
+		// there's no token-speed data to estimate from yet.
+		const estimatedMinutesToClear =
+			backlog.clusters.readyNowNeedingSynthesis === 0
+				? 0
+				: throughput.avgGenerateDurationMs !== null
+					? Math.ceil((backlog.clusters.readyNowNeedingSynthesis * throughput.avgGenerateDurationMs) / 60_000)
+					: null;
+
+		return {
+			timestamp: new Date().toISOString(),
+			ollama: { inFlight, ...throughput },
+			backlog,
+			estimatedMinutesToClear,
+			lastDirectCycle,
+			lastSynthesisCycle
+		};
 	});
 }

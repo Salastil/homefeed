@@ -16,7 +16,8 @@ import type {
 	AdminPoe2Entry,
 	AdminWeatherSettings,
 	InstalledWidget,
-	WidgetUploadManifest
+	WidgetUploadManifest,
+	PipelineStats
 } from './adminTypes';
 
 async function request<T>(path: string, options: RequestInit = {}, fetchFn: typeof fetch = fetch): Promise<T> {
@@ -178,6 +179,8 @@ export const getLogs = (filters: { level?: 'info' | 'warn' | 'error'; limit?: nu
 	const qs = new URLSearchParams(filters as Record<string, string>).toString();
 	return request<LogEntry[]>(`/api/admin/logs${qs ? `?${qs}` : ''}`, {}, fetchFn);
 };
+
+export const getPipelineStats = (fetchFn?: typeof fetch) => request<PipelineStats>('/api/admin/pipeline-stats', {}, fetchFn);
 
 // Weather — config/cache now live behind the widget's own dedicated admin route (see
 // backend/src/widgets/weather/plugin.ts) rather than riding along on AdminSettings.

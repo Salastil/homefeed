@@ -211,6 +211,33 @@ export interface TelegramStatus {
 	phone: string | null;
 }
 
+export interface PipelineStats {
+	timestamp: string;
+	ollama: {
+		inFlight: { label: string; elapsedMs: number } | null;
+		sampleCount: number;
+		avgGenTokensPerSec: number | null;
+		avgPromptTokensPerSec: number | null;
+		avgGenerateDurationMs: number | null;
+	};
+	backlog: {
+		totalUnclusteredItems: number;
+		directEligibleItems: number;
+		awaitingEmbeddingItems: number;
+		clusters: {
+			total: number;
+			readyNow: number;
+			readyNowNeedingSynthesis: number;
+			onHold: number;
+			itemsOnHold: number;
+			earliestHoldRemainingMs: number | null;
+		};
+	};
+	estimatedMinutesToClear: number | null;
+	lastDirectCycle: { at: string; published: number } | null;
+	lastSynthesisCycle: { at: string; published: number } | null;
+}
+
 export interface LogEntry {
 	id: number;
 	timestamp: string;
