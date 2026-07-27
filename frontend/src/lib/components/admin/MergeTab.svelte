@@ -204,7 +204,9 @@
 	<p class="hint">Wait window to gather more sources before finalizing a story.</p>
 	<select bind:value={local.holdBeforePublishMinutes} onchange={scheduleSave}>
 		<option value={0}>Publish immediately</option>
+		<option value={15}>Wait 15 minutes</option>
 		<option value={30}>Wait 30 minutes</option>
+		<option value={60}>Wait 1 hour</option>
 		<option value={120}>Wait 2 hours</option>
 	</select>
 </div>
