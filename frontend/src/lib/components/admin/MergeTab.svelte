@@ -158,7 +158,7 @@
 </CollapsibleSection>
 
 <CollapsibleSection title="Sources">
-	<SourcesTab {sources} categories={local.categoryPriority} />
+	<SourcesTab {sources} categories={local.categoryPriority} nitterInstanceUrl={settings.nitterInstanceUrl} />
 </CollapsibleSection>
 
 <div class="panel">

@@ -12,28 +12,32 @@
 
 <div class="sections">
 	{#each data.categorySections as section (section.category.id)}
-		{#if section.articles.length > 0}
-			<section class="cat-section">
-				<a class="cat-name" href={`/category/${slugify(section.category.name)}`}>{section.category.name}</a>
-				<div class="list">
+		<section class="cat-section">
+			<a class="cat-name" href={`/category/${slugify(section.category.name)}`}>{section.category.name}</a>
+			<div class="list">
+				{#if section.articles.length > 0}
 					{#each section.articles as article (article.id)}
 						<ArticleListRow {article} />
 					{/each}
-				</div>
-			</section>
-		{/if}
+				{:else}
+					<div class="empty">No stories here yet.</div>
+				{/if}
+			</div>
+		</section>
 	{/each}
 	{#each data.eventSections as section (section.event.id)}
-		{#if section.articles.length > 0}
-			<section class="cat-section">
-				<a class="cat-name" href={`/event/${section.event.id}`}>{section.event.name}</a>
-				<div class="list">
+		<section class="cat-section">
+			<a class="cat-name" href={`/event/${section.event.id}`}>{section.event.name}</a>
+			<div class="list">
+				{#if section.articles.length > 0}
 					{#each section.articles as article (article.id)}
 						<ArticleListRow {article} />
 					{/each}
-				</div>
-			</section>
-		{/if}
+				{:else}
+					<div class="empty">No stories here yet.</div>
+				{/if}
+			</div>
+		</section>
 	{/each}
 </div>
 
@@ -68,5 +72,10 @@
 	}
 	.list {
 		max-width: 720px;
+	}
+	.empty {
+		font-size: 12px;
+		color: var(--text-muted);
+		padding: 4px 0;
 	}
 </style>
