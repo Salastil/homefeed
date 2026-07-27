@@ -28,6 +28,12 @@ export function listActiveTags(): Tag[] {
 	return rows.map(rowToTag);
 }
 
+/** By slug rather than id — that's what tag chips link by (see publish.ts/frontend tag pages). Matches regardless of active/expired status: an old article's tag chip should still resolve to its (now possibly expired) tag rather than 404 just because nothing new has used it lately. */
+export function getTagBySlug(slug: string): Tag | null {
+	const row = db.prepare('SELECT * FROM tags WHERE slug = ?').get(slug);
+	return row ? rowToTag(row) : null;
+}
+
 function cosineSimilarity(a: number[], b: number[]): number {
 	if (a.length === 0 || b.length === 0 || a.length !== b.length) return 0;
 	let dot = 0,

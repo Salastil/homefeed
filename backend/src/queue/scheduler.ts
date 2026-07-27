@@ -95,7 +95,14 @@ export function startScheduler() {
 	everyTickSkippingOverlap(DIRECT_PUBLISH_TICK_MS, async () => {
 		try {
 			const settings = settingsDb.getSettings();
-			const published = await runDirectPublishCycle(settings);
+			const p = provider();
+			// This tick runs regardless of Ollama's reachability (nothing here rewrites or
+			// merges), but tagging direct-published items (see runDirectPublishCycle/
+			// publishDirect) does need a working AI service — only offer the provider
+			// through when it's actually reachable, so an unconfigured Ollama doesn't spam
+			// the log with a failed tag-extraction attempt on every single item, every tick.
+			const reachable = await p.isReachable();
+			const published = await runDirectPublishCycle(settings, reachable ? p : undefined);
 			if (published > 0) {
 				logger.info('scheduler', `Direct-publish tick: published ${published} article(s)`);
 			}
