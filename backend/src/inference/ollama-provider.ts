@@ -1,4 +1,18 @@
+import { Agent } from 'undici';
 import type { InferenceProvider } from './provider.js';
+
+/**
+ * Node's global fetch (undici) defaults to a 5-minute headers/body timeout — fine for
+ * ordinary HTTP calls, but a real problem for /api/generate on CPU-only inference: a
+ * near-full context window can legitimately take longer than that just for prompt
+ * processing on the reference hardware (i5-6600K, no GPU, ~17 tokens/sec). Once
+ * synthesis prompts started carrying full article bodies instead of short blurbs, every
+ * generate() call past a few thousand tokens got killed at exactly 5m0s — visible in
+ * Ollama's own log as the request being cancelled, not a genuine model/server error —
+ * so no cluster could ever finish synthesizing. No timeout at all here; Ollama's own
+ * process is the natural backstop, not a clock tuned for hardware this doesn't run on.
+ */
+const noTimeoutDispatcher = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
 
 /**
  * Default context window / max-generation length requested from Ollama when a caller
@@ -51,8 +65,11 @@ export class OllamaProvider implements InferenceProvider {
 					num_ctx: opts.numCtx ?? DEFAULT_NUM_CTX,
 					num_predict: opts.numPredict ?? DEFAULT_NUM_PREDICT
 				}
-			})
-		});
+			}),
+			// Not in the ambient RequestInit type this project resolves to, but Node's global
+			// fetch (built on undici) honors it at runtime — see noTimeoutDispatcher above.
+			dispatcher: noTimeoutDispatcher
+		} as RequestInit);
 		if (!res.ok) throw new Error(`Ollama generate failed: ${res.status} ${await res.text()}`);
 		const data = (await res.json()) as { response: string };
 		return data.response;
