@@ -1,25 +1,36 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
-import { loadUploadedWidget } from './registry.js';
+import { loadUploadedWidget, loadedWidgets } from './registry.js';
 import { startWidgetPolling } from '../queue/scheduler.js';
 import { validateManifest, type WidgetManifest } from './manifest.js';
+import { validateRoutesBuildable } from '../server.js';
+import { logger } from '../storage/db/logs.js';
 
 const WIDGETS_INSTALLED_DIR = process.env.WIDGETS_INSTALLED_DIR || './data/widgets-installed';
 
-export type InstallResult = { ok: true; id: string } | { ok: false; error: string };
+export type InstallResult =
+	| { ok: true; id: string; needsServerSwap: boolean }
+	| { ok: false; error: string };
 
 // Installs and hot-loads a widget uploaded live to the running backend (see
 // api/admin.ts's POST /api/admin/widgets) — writes its files under ./data/, never
 // dist/ or src/, so it survives a rebuild/redeploy of the core app. Its migrate()
-// runs and its poll interval (if declared) starts immediately, with no restart
-// required. NOTE: its registerPublicRoutes/registerAdminRoutes, if declared, do NOT
-// take effect until the next restart — Fastify throws "instance is already
-// listening" if you try to add a route after app.listen() has resolved, and there's
-// no supported way around that short of a much larger request-dispatch redesign. A
-// live-installed widget's data/poll side works immediately; its custom HTTP routes
-// don't until the process restarts (see widgets/registry.ts's startup discovery,
-// which re-registers everything, routes included, on every boot).
+// runs and its poll interval (if declared) starts immediately. If it declares
+// registerPublicRoutes/registerAdminRoutes, `needsServerSwap` comes back true — the
+// caller (api/admin.ts's POST route) must call server.ts's swapLiveServer() itself,
+// AFTER sending its own response, never inline here: this function runs inside the
+// very request handler whose underlying Fastify instance a swap would close, so
+// awaiting the swap here would drop the response before the client ever sees it (hit
+// this for real in testing). validateRoutesBuildable() is safe to await here — it
+// never touches the live server, only a throwaway instance on an ephemeral port — so
+// a widget whose routes are actually broken (e.g. a path collision) is still caught
+// and rolled back within this same call, before anything user-visible commits.
+//
+// Either way this is a full HTTP-server rebuild within the running process, not a
+// process restart — the DB connection, scheduler intervals, Telegram session, and
+// (critically) the admin API key all survive; a process restart would regenerate the
+// key and log the admin out.
 export async function installUploadedWidget(manifest: unknown, files: unknown): Promise<InstallResult> {
 	const validationError = validateManifest(manifest, files);
 	if (validationError) return { ok: false, error: validationError };
@@ -55,6 +66,23 @@ export async function installUploadedWidget(manifest: unknown, files: unknown): 
 		frontendEntry: m.frontendEntry ?? null
 	});
 
+	const needsServerSwap = !!(plugin.registerPublicRoutes || plugin.registerAdminRoutes);
+	if (needsServerSwap) {
+		try {
+			await validateRoutesBuildable();
+		} catch (err) {
+			// A widget whose routes break Fastify's registration (e.g. a path collision)
+			// isn't a successful install — the site itself was never at risk since this
+			// only ever touched a throwaway ephemeral-port instance, but this widget still
+			// needs to be fully rolled back rather than left half-installed.
+			logger.error('widgets', `Install of "${m.id}" rolled back — its routes failed to register: ${(err as Error).message}`);
+			loadedWidgets.delete(m.id);
+			installedWidgetsDb.deleteInstalled(m.id);
+			fs.rmSync(dir, { recursive: true, force: true });
+			return { ok: false, error: `widget's routes failed to register: ${(err as Error).message}` };
+		}
+	}
+
 	startWidgetPolling(plugin);
-	return { ok: true, id: m.id };
+	return { ok: true, id: m.id, needsServerSwap };
 }

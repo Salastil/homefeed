@@ -13,7 +13,19 @@ import * as telegramClient from '../telegram/client.js';
 import { loadedWidgets } from '../widgets/registry.js';
 import { installUploadedWidget } from '../widgets/install.js';
 import { uninstallWidget } from '../widgets/uninstall.js';
+import { swapLiveServer } from '../server.js';
 import type { GlobalSettings } from '../storage/db/types.js';
+
+// Rebuilds and swaps in the live Fastify instance to pick up a widget's newly
+// (de)registered routes — MUST run after the triggering request has already sent its
+// response, never awaited inline in that handler, since the swap closes the very
+// instance serving it (see widgets/install.ts's and uninstall.ts's doc comments for
+// why — this dropped the response entirely when tried inline during testing).
+function scheduleServerSwap(context: string) {
+	setImmediate(() => {
+		swapLiveServer().catch((err) => logger.error('server', `Route swap after ${context} failed: ${(err as Error).message}`));
+	});
+}
 
 // Not part of GlobalSettings itself (nothing to persist) — computed fresh on every
 // settings read/write so the Retention tab's "currently using" line and usage bar
@@ -235,7 +247,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const { manifest, files } = req.body as { manifest?: unknown; files?: unknown };
 		const result = await installUploadedWidget(manifest, files);
 		if (!result.ok) return reply.code(400).send({ error: result.error });
-		return reply.code(201).send({ id: result.id });
+		reply.code(201).send({ id: result.id });
+		if (result.needsServerSwap) scheduleServerSwap(`installing "${result.id}"`);
 	});
 
 	app.patch('/api/admin/widgets/:id', async (req, reply) => {
@@ -263,8 +276,9 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const widget = installedWidgetsDb.getInstalled(id);
 		if (!widget) return reply.code(404).send({ error: 'not found' });
 		if (widget.source === 'builtin') return reply.code(400).send({ error: 'built-in widgets cannot be deleted' });
-		await uninstallWidget(id);
-		return reply.code(204).send();
+		const hadRoutes = await uninstallWidget(id);
+		reply.code(204).send();
+		if (hadRoutes) scheduleServerSwap(`deleting "${id}"`);
 	});
 
 	// --- Logs ---

@@ -15,10 +15,18 @@ const WIDGETS_DATA_DIR = process.env.WIDGETS_DATA_DIR || './data/widgets-data';
 // guarantee, matching every table/kv row/on-disk file regardless of the widget's own
 // cooperation). Callers (see api/admin.ts's DELETE /api/admin/widgets/:id) are
 // responsible for rejecting built-in widgets before calling this.
-export async function uninstallWidget(id: string): Promise<void> {
+//
+// Returns whether the deleted widget had declared routes, i.e. whether the caller needs
+// to swap the live server afterward (see server.ts's swapLiveServer()) — deliberately NOT
+// done inline here: this runs inside the DELETE route's own request handler, and that
+// handler is served by the very Fastify instance a swap would close, which drops the
+// response before the client ever sees it (hit this for real in testing). The caller must
+// send its response first, then swap — see api/admin.ts.
+export async function uninstallWidget(id: string): Promise<boolean> {
 	stopWidgetPolling(id);
 
 	const plugin = loadedWidgets.get(id);
+	const hadRoutes = !!(plugin?.registerPublicRoutes || plugin?.registerAdminRoutes);
 	if (plugin?.uninstall) {
 		try {
 			plugin.uninstall(db);
@@ -35,4 +43,6 @@ export async function uninstallWidget(id: string): Promise<void> {
 
 	loadedWidgets.delete(id);
 	installedWidgetsDb.deleteInstalled(id);
+
+	return hadRoutes;
 }
