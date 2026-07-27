@@ -285,6 +285,10 @@ export interface GlobalSettings {
 	nitterInstanceUrl: string;
 	/** How Telegram message media (attached photos/videos, channel avatars) is served — see pipeline/publish.ts's resolveTelegramMedia. No "direct" option: Telegram has no public hotlinkable media URL, bytes only come from the authenticated MTProto session. */
 	telegramMediaMode: 'self-host' | 'proxy';
+	/** Tone preset applied to every AI-synthesized article/recap (see pipeline/synthesis.ts's STYLE_PRESETS) — 'default' is the original neutral wire-service tone with no addendum. Never applies to single-source items, which always publish verbatim without going through the AI at all. */
+	synthesisStylePreset: 'default' | 'casual' | 'formal';
+	/** Free-text instructions appended to the synthesis system prompt alongside the style preset — e.g. "keep it under 3 sentences per paragraph". Empty string means no addendum. */
+	synthesisCustomInstructions: string;
 	/** Per-widget enable flags — see admin/settings' consolidated "Widgets" tab. Weather/Stocks/PoE2's backend pollers (scheduler.ts) are gated on these too, not just sidebar visibility; Bookmarks has no poller so its flag only affects the sidebar. */
 	widgets: {
 		weather: boolean;

@@ -1,5 +1,5 @@
 import type { InferenceProvider } from '../inference/provider.js';
-import type { ContentItem, MergedArticle } from '../storage/db/types.js';
+import type { ContentItem, GlobalSettings, MergedArticle } from '../storage/db/types.js';
 import { DEFAULT_NUM_CTX, DEFAULT_NUM_PREDICT } from '../inference/ollama-provider.js';
 import { logger } from '../storage/db/logs.js';
 
@@ -23,7 +23,7 @@ function capEntryText(text: string, budgetChars: number): string {
 	return text.length > budgetChars ? text.slice(0, budgetChars) + '…' : text;
 }
 
-const RECAP_SYSTEM_PROMPT = `You are a neutral news synthesis assistant. Given a chronological list of articles already published about an ongoing tracked event, write a single recap article that:
+const RECAP_SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given a chronological list of articles already published about an ongoing tracked event, write a single recap article that:
 - Summarizes what has happened across the period covered, in chronological order
 - Highlights the most significant developments rather than restating every article
 - Stays neutral and factual, without editorializing
@@ -31,13 +31,31 @@ const RECAP_SYSTEM_PROMPT = `You are a neutral news synthesis assistant. Given a
 
 After the recap, on a new line, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this recap is about. If nothing salient qualifies, leave the tag line empty.`;
 
-const SYSTEM_PROMPT = `You are a neutral news synthesis assistant. Given summaries from multiple news sources describing the same event, write a single original article that:
+const SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given summaries from multiple news sources describing the same event, write a single original article that:
 - Attributes specific claims to the outlet that reported them, using each source's exact name as given below (e.g. if a source is labeled "Source 1 (Reuters)", write "Reuters reported..."). Never invent, guess, or substitute an outlet name that isn't one of the source names actually given below.
 - Does not copy phrasing verbatim from any source
 - Stays neutral and factual, without editorializing
 - Is 2-4 short paragraphs
 
 After the article, on a new line, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this article is about. If nothing salient qualifies, leave the tag line empty.`;
+
+// Admin-selectable presets (Merge tab, "Writing style") — appended to whichever base
+// prompt applies. 'default' adds nothing: the base prompts above already describe the
+// original neutral wire-service tone this pipeline shipped with.
+const STYLE_PRESETS: Record<GlobalSettings['synthesisStylePreset'], string> = {
+	default: '',
+	casual: 'Write in a casual, conversational tone, like a knowledgeable friend catching you up on what happened — contractions and plain language are fine. Still stay factual and keep outlet attribution accurate.',
+	formal: 'Write in a formal, measured register — precise language, no contractions, no colloquialisms.'
+};
+
+/** Admin-configurable tone: a preset plus optional free-text instructions, both from GlobalSettings — the only two knobs that affect HOW the model writes, as opposed to WHAT gets clustered/published. Appended to the base prompt, never replacing its structural rules (attribution, paragraph count, tag format). */
+function styleAddendum(settings: GlobalSettings): string {
+	const preset = STYLE_PRESETS[settings.synthesisStylePreset] ?? '';
+	const custom = settings.synthesisCustomInstructions.trim();
+	const lines = [preset, custom].filter(Boolean);
+	if (lines.length === 0) return '';
+	return `\n\nAdditional style instructions from the site admin (follow these without breaking the rules above):\n${lines.join('\n')}`;
+}
 
 export interface SynthesisResult {
 	body: string;
@@ -83,10 +101,12 @@ export async function synthesizeArticle(
 	provider: InferenceProvider,
 	model: string,
 	items: ContentItem[],
-	sourceNames: Map<string, string>
+	sourceNames: Map<string, string>,
+	settings: GlobalSettings
 ): Promise<SynthesisResult> {
 	const prompt = buildPrompt(items, sourceNames);
-	const raw = await provider.generate(prompt, { model, system: SYSTEM_PROMPT, numCtx: DEFAULT_NUM_CTX, numPredict: DEFAULT_NUM_PREDICT });
+	const system = SYSTEM_PROMPT_BASE + styleAddendum(settings);
+	const raw = await provider.generate(prompt, { model, system, numCtx: DEFAULT_NUM_CTX, numPredict: DEFAULT_NUM_PREDICT });
 	return parseResult(raw);
 }
 
@@ -116,12 +136,13 @@ export async function synthesizeRecap(
 	provider: InferenceProvider,
 	model: string,
 	eventName: string,
-	articles: MergedArticle[]
+	articles: MergedArticle[],
+	settings: GlobalSettings
 ): Promise<SynthesisResult> {
 	const prompt = buildRecapPrompt(eventName, articles);
 	const raw = await provider.generate(prompt, {
 		model,
-		system: RECAP_SYSTEM_PROMPT,
+		system: RECAP_SYSTEM_PROMPT_BASE + styleAddendum(settings),
 		numCtx: DEFAULT_NUM_CTX,
 		numPredict: DEFAULT_NUM_PREDICT
 	});

@@ -186,6 +186,8 @@ export function migrate() {
 			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com',
 			nitter_instance_url TEXT NOT NULL DEFAULT 'https://nitter.net', -- admin's preferred instance, prefills new Nitter sources (Connections tab)
 			telegram_media_mode TEXT NOT NULL DEFAULT 'self-host', -- self-host | proxy (no "direct" — Telegram has no public hotlinkable media URL)
+			synthesis_style_preset TEXT NOT NULL DEFAULT 'default', -- default | casual | formal — see pipeline/synthesis.ts's STYLE_PRESETS
+			synthesis_custom_instructions TEXT NOT NULL DEFAULT '', -- free-text addendum appended to the synthesis system prompt, on top of the preset
 			widget_weather_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_stocks_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_bookmarks_enabled INTEGER NOT NULL DEFAULT 1,
@@ -393,6 +395,12 @@ export function migrate() {
 		defaults.forEach(([label, symbol], i) => {
 			stmt.run(`stk-${symbol.replace(/[^a-z0-9]+/gi, '-')}`, label, symbol, i + 1, new Date().toISOString());
 		});
+	}
+	if (!hasColumn('global_settings', 'synthesis_style_preset')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN synthesis_style_preset TEXT NOT NULL DEFAULT 'default'");
+	}
+	if (!hasColumn('global_settings', 'synthesis_custom_instructions')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN synthesis_custom_instructions TEXT NOT NULL DEFAULT ''");
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —
