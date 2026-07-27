@@ -3,7 +3,16 @@ import type { ContentItem, GlobalSettings, MergedArticle } from '../storage/db/t
 import { DEFAULT_NUM_CTX, DEFAULT_NUM_PREDICT } from '../inference/ollama-provider.js';
 import { logger } from '../storage/db/logs.js';
 
+const TITLE_DELIMITER = '---TITLE---';
 const TAG_DELIMITER = '---TAGS---';
+
+// Small/quantized models don't always reproduce a literal delimiter exactly — extra
+// dashes, an inserted blank line, different case (seen in production with the tag
+// delimiter: "---\n\nTAGS---" instead of "---TAGS---", which an exact-string split
+// missed entirely, leaking the raw delimiter text into the published body). Splitting
+// on a loose regex instead tolerates that variance.
+const TITLE_DELIMITER_RE = /-{2,}\s*TITLE\s*-{2,}/i;
+const TAG_DELIMITER_RE = /-{2,}\s*TAGS\s*-{2,}/i;
 
 // Ollama truncates prompts that don't fit its context window by keeping a small prefix
 // and dropping everything else in the middle — silently, with no error, and with no
@@ -23,21 +32,25 @@ function capEntryText(text: string, budgetChars: number): string {
 	return text.length > budgetChars ? text.slice(0, budgetChars) + '…' : text;
 }
 
-const RECAP_SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given a chronological list of articles already published about an ongoing tracked event, write a single recap article that:
-- Summarizes what has happened across the period covered, in chronological order
-- Highlights the most significant developments rather than restating every article
-- Stays neutral and factual, without editorializing
-- Is 3-5 short paragraphs
+const RECAP_SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given a chronological list of articles already published about an ongoing tracked event, write your response in exactly three parts, in this order:
 
-After the recap, on a new line, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this recap is about. If nothing salient qualifies, leave the tag line empty.`;
+1. A short, specific headline for this recap (a single line, ideally under 12 words, no surrounding quotation marks, no trailing period).
+2. On a new line, write exactly "${TITLE_DELIMITER}", then the recap article:
+   - Summarizes what has happened across the period covered, in chronological order
+   - Highlights the most significant developments rather than restating every article
+   - Stays neutral and factual, without editorializing
+   - Is 3-5 short paragraphs
+3. On a new line after the recap, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this recap is about. If nothing salient qualifies, leave the tag line empty.`;
 
-const SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given summaries from multiple news sources describing the same event, write a single original article that:
-- Attributes specific claims to the outlet that reported them, using each source's exact name as given below (e.g. if a source is labeled "Source 1 (Reuters)", write "Reuters reported..."). Never invent, guess, or substitute an outlet name that isn't one of the source names actually given below.
-- Does not copy phrasing verbatim from any source
-- Stays neutral and factual, without editorializing
-- Is 2-4 short paragraphs
+const SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given summaries from multiple news sources describing the same event, write your response in exactly three parts, in this order:
 
-After the article, on a new line, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this article is about. If nothing salient qualifies, leave the tag line empty.`;
+1. A short, specific headline for this story (a single line, ideally under 12 words, no surrounding quotation marks, no trailing period, no site/outlet name).
+2. On a new line, write exactly "${TITLE_DELIMITER}", then the article:
+   - Attributes specific claims to the outlet that reported them, using each source's exact name as given below (e.g. if a source is labeled "Source 1 (Reuters)", write "Reuters reported..."). Never invent, guess, or substitute an outlet name that isn't one of the source names actually given below.
+   - Does not copy phrasing verbatim from any source
+   - Stays neutral and factual, without editorializing
+   - Is 2-4 short paragraphs
+3. On a new line after the article, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this article is about. If nothing salient qualifies, leave the tag line empty.`;
 
 // Admin-selectable presets (Merge tab, "Writing style") — appended to whichever base
 // prompt applies. 'default' adds nothing: the base prompts above already describe the
@@ -58,8 +71,15 @@ function styleAddendum(settings: GlobalSettings): string {
 }
 
 export interface SynthesisResult {
+	title: string;
 	body: string;
 	tagLabels: string[];
+}
+
+/** Only used when the model doesn't follow the requested title/delimiter format at all — a real headline beats a truncated sentence fragment, but publishing with no title at all is worse than either. */
+function fallbackTitle(body: string): string {
+	const firstLine = body.split('\n')[0];
+	return firstLine.length > 100 ? firstLine.slice(0, 97) + '…' : firstLine;
 }
 
 function buildPrompt(items: ContentItem[], sourceNames: Map<string, string>): string {
@@ -88,13 +108,24 @@ function buildPrompt(items: ContentItem[], sourceNames: Map<string, string>): st
 }
 
 function parseResult(raw: string): SynthesisResult {
-	const [body, tagSection] = raw.split(TAG_DELIMITER);
+	const [beforeTags, tagSection] = raw.split(TAG_DELIMITER_RE);
 	const tagLabels = (tagSection ?? '')
 		.split(',')
 		.map((t) => t.trim())
 		.filter((t) => t.length > 0 && t.length < 60);
 
-	return { body: body.trim(), tagLabels };
+	const titleSplit = (beforeTags ?? raw).split(TITLE_DELIMITER_RE);
+	const titlePart = titleSplit[0];
+	// join() rather than titleSplit[1] in case the delimiter text somehow appears again
+	// inside the body itself — keeps that content rather than silently dropping it.
+	const bodyPart = titleSplit.length > 1 ? titleSplit.slice(1).join('') : undefined;
+	// If the title delimiter never showed up, the model didn't follow the requested
+	// format — treat the whole thing as body rather than mistaking the article itself
+	// for a "title", and fall back to the old truncated-first-line heuristic.
+	const body = (bodyPart ?? titlePart).trim();
+	const title = bodyPart !== undefined ? titlePart.trim() : fallbackTitle(body);
+
+	return { title, body, tagLabels };
 }
 
 export async function synthesizeArticle(
