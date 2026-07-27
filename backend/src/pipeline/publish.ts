@@ -360,7 +360,8 @@ export async function publishCluster(
 ): Promise<MergedArticle> {
 	const items = cluster.items;
 
-	const { body, tagLabels } = await synthesizeArticle(provider, settings.selectedModels.synthesis, items);
+	const sourceNames = new Map(items.map((item) => [item.sourceId, sources.getSource(item.sourceId)?.name ?? 'Unknown source']));
+	const { body, tagLabels } = await synthesizeArticle(provider, settings.selectedModels.synthesis, items, sourceNames);
 
 	const resolvedTags = [];
 	for (const label of tagLabels) {

@@ -32,12 +32,12 @@ const RECAP_SYSTEM_PROMPT = `You are a neutral news synthesis assistant. Given a
 After the recap, on a new line, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this recap is about. If nothing salient qualifies, leave the tag line empty.`;
 
 const SYSTEM_PROMPT = `You are a neutral news synthesis assistant. Given summaries from multiple news sources describing the same event, write a single original article that:
-- Attributes specific claims to the outlet that reported them (e.g. "Reuters reported...", "AP notes...")
+- Attributes specific claims to the outlet that reported them, using each source's exact name as given below (e.g. if a source is labeled "Source 1 (Reuters)", write "Reuters reported..."). Never invent, guess, or substitute an outlet name that isn't one of the source names actually given below.
 - Does not copy phrasing verbatim from any source
 - Stays neutral and factual, without editorializing
 - Is 2-4 short paragraphs
 
-If only one source is provided, lightly rewrite it in your own words rather than merging.
+If only one source is provided, lightly rewrite it in your own words rather than merging, and do not attribute it to any outlet other than that single given source.
 
 After the article, on a new line, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this article is about. If nothing salient qualifies, leave the tag line empty.`;
 
@@ -46,7 +46,7 @@ export interface SynthesisResult {
 	tagLabels: string[];
 }
 
-function buildPrompt(items: ContentItem[]): string {
+function buildPrompt(items: ContentItem[], sourceNames: Map<string, string>): string {
 	const budgetPerItem = Math.max(MIN_ENTRY_CHARS, Math.floor(MAX_INPUT_CHARS / items.length));
 	let truncated = 0;
 	const entries = items.map((item, i) => {
@@ -57,7 +57,13 @@ function buildPrompt(items: ContentItem[]): string {
 		const full = item.body || item.summary;
 		const text = capEntryText(full, budgetPerItem);
 		if (text !== full) truncated++;
-		return `Source ${i + 1} (${item.sourceId}):\nTitle: ${item.title}\nSummary: ${text}`;
+		// The label here (not item.sourceId, an opaque internal id the model can't use)
+		// is the only real outlet name the model ever sees — without it, a small model
+		// has nothing to attribute to and falls back to copying the illustrative outlet
+		// names out of its own system prompt instructions instead (seen in production:
+		// a single-source item fabricating "Reuters reported..."/"AP notes..." wholesale).
+		const name = sourceNames.get(item.sourceId) ?? 'Unknown source';
+		return `Source ${i + 1} (${name}):\nTitle: ${item.title}\nSummary: ${text}`;
 	});
 	if (truncated > 0) {
 		logger.warn('synthesis', `Trimmed ${truncated}/${items.length} source article${truncated === 1 ? '' : 's'} to fit the model's context window`);
@@ -78,9 +84,10 @@ function parseResult(raw: string): SynthesisResult {
 export async function synthesizeArticle(
 	provider: InferenceProvider,
 	model: string,
-	items: ContentItem[]
+	items: ContentItem[],
+	sourceNames: Map<string, string>
 ): Promise<SynthesisResult> {
-	const prompt = buildPrompt(items);
+	const prompt = buildPrompt(items, sourceNames);
 	const raw = await provider.generate(prompt, { model, system: SYSTEM_PROMPT, numCtx: DEFAULT_NUM_CTX, numPredict: DEFAULT_NUM_PREDICT });
 	return parseResult(raw);
 }
