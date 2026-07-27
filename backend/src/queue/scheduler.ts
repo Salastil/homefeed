@@ -16,22 +16,44 @@ const WEATHER_TICK_MS = 45 * 60_000;
 const STOCKS_TICK_MS = 15 * 60_000; // per admin spec — stock prices move faster than weather
 const POE2_TICK_MS = 60 * 60_000; // poe.ninja's own overview data doesn't refresh faster than hourly, so polling more often than this just re-fetches the same numbers
 
+/**
+ * Runs fn on every tick, but skips a tick outright if the previous one is still in
+ * flight instead of overlapping it. Matters most for the synthesis tick: an item stays
+ * "unclustered" (cluster_id IS NULL — see contentItems.unclusteredItemsExcludingSources)
+ * until AFTER its cluster finishes synthesizing and publishing, so a generate() call
+ * that runs past the next tick (easily minutes, on CPU-only inference — see
+ * ollama-provider.ts) used to let the same item get picked up and republished as a
+ * fresh, differently-worded article by an overlapping cycle, repeatedly, until the
+ * first cycle's assignCluster() finally landed. Node is single-threaded, so the only
+ * source of "concurrent" runs here is exactly this interval overlap.
+ */
+function everyTickSkippingOverlap(ms: number, fn: () => Promise<void>) {
+	let running = false;
+	setInterval(() => {
+		if (running) return;
+		running = true;
+		fn().finally(() => {
+			running = false;
+		});
+	}, ms);
+}
+
 export function startScheduler() {
 	const provider = () => {
 		const s = settingsDb.getSettings();
 		return new OllamaProvider(s.aiServiceHost, s.aiServicePort);
 	};
 
-	setInterval(async () => {
+	everyTickSkippingOverlap(POLL_TICK_MS, async () => {
 		try {
 			const ingested = await pollDueSources();
 			if (ingested > 0) logger.info('scheduler', `Poll tick: ingested ${ingested} new item(s)`);
 		} catch (err) {
 			logger.error('scheduler', `Poll tick failed: ${(err as Error).message}`);
 		}
-	}, POLL_TICK_MS);
+	});
 
-	setInterval(async () => {
+	everyTickSkippingOverlap(SYNTHESIS_TICK_MS, async () => {
 		try {
 			const settings = settingsDb.getSettings();
 			const p = provider();
@@ -55,16 +77,16 @@ export function startScheduler() {
 		} catch (err) {
 			logger.error('scheduler', `Synthesis tick failed: ${(err as Error).message}`);
 		}
-	}, SYNTHESIS_TICK_MS);
+	});
 
-	setInterval(() => {
+	everyTickSkippingOverlap(RETENTION_TICK_MS, async () => {
 		try {
 			runRetentionSweep(settingsDb.getSettings());
 			logger.info('retention', 'Retention sweep completed');
 		} catch (err) {
 			logger.error('retention', `Retention tick failed: ${(err as Error).message}`);
 		}
-	}, RETENTION_TICK_MS);
+	});
 
 	// Immediate first call for all three — unlike RSS sources (whose "due" check makes a
 	// brand-new source eligible on the very next 1-minute tick), weather/stocks/poe2 have
