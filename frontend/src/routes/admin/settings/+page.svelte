@@ -44,7 +44,15 @@
 	{:else if active === 'events'}
 		<EventsTab events={data.events} sources={data.sources} />
 	{:else if active === 'widgets'}
-		<WidgetsTab settings={data.settings} stockTickers={data.stockTickers} bookmarks={data.bookmarks} poe2Watchlist={data.poe2Watchlist} />
+		<WidgetsTab
+			settings={data.settings}
+			stockTickers={data.stockTickers}
+			bookmarks={data.bookmarks}
+			poe2Watchlist={data.poe2Watchlist}
+			weatherConfig={data.weatherConfig}
+			poe2={data.poe2}
+			installedWidgets={data.installedWidgets}
+		/>
 	{:else if active === 'connections'}
 		<ConnectionsTab settings={data.settings} aiStatus={data.aiStatus} telegramStatus={data.telegramStatus} />
 	{:else if active === 'logs'}

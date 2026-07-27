@@ -8,6 +8,8 @@ export interface WidgetManifest {
 	version: string;
 	/** Relative path within `files` to the ESM entry point, e.g. "index.mjs" — a default export satisfying WidgetPlugin. */
 	entry: string;
+	/** Optional relative path within `files` to a pre-built browser JS bundle (plain vanilla JS, not raw Svelte source — see widgets/registry.ts's frontend-loading notes) exporting a default `{ mount(container, ctx) }`. Served from /widget-assets/<id>/* and dynamic-import()ed by the sidebar's DynamicWidgetSlot. Omit for a widget with no custom UI — it falls back to the generic report card. */
+	frontendEntry?: string;
 }
 
 // Upload body shape: { manifest, files: { "index.mjs": "<source text>", ... } } — plain
@@ -21,11 +23,17 @@ export function validateManifest(manifest: unknown, files: unknown): string | nu
 	if (typeof m.displayName !== 'string' || !m.displayName.trim()) return 'manifest.displayName is required';
 	if (typeof m.version !== 'string' || !m.version.trim()) return 'manifest.version is required';
 	if (typeof m.entry !== 'string' || !m.entry.trim()) return 'manifest.entry is required';
+	if (m.frontendEntry !== undefined && (typeof m.frontendEntry !== 'string' || !m.frontendEntry.trim())) {
+		return 'manifest.frontendEntry must be a non-empty string when present';
+	}
 
 	if (!files || typeof files !== 'object' || Array.isArray(files)) return 'files must be a non-empty object';
 	const entries = Object.entries(files as Record<string, unknown>);
 	if (entries.length === 0) return 'files must be a non-empty object';
 	if (!(m.entry in (files as Record<string, unknown>))) return `entry "${m.entry as string}" not found in files`;
+	if (m.frontendEntry !== undefined && !(m.frontendEntry in (files as Record<string, unknown>))) {
+		return `frontendEntry "${m.frontendEntry as string}" not found in files`;
+	}
 
 	let totalBytes = 0;
 	for (const [relPath, content] of entries) {

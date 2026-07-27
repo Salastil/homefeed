@@ -52,7 +52,7 @@ export const poe2Plugin: WidgetPlugin = {
 	},
 
 	registerPublicRoutes(app) {
-		app.get('/api/poe2', async () => {
+		app.get('/api/widget/poe2', async () => {
 			const { leagueName, updatedAt } = getLeagueCache();
 			return { leagueName, updatedAt, entries: poe2Db.listWatchlist() };
 		});
@@ -60,7 +60,7 @@ export const poe2Plugin: WidgetPlugin = {
 
 	registerAdminRoutes(app) {
 		// League is always auto-detected, never admin-set.
-		app.get('/api/admin/poe2/browse', async (_req, reply) => {
+		app.get('/api/admin/widget/poe2/browse', async (_req, reply) => {
 			try {
 				const league = await fetchCurrentLeague();
 				return await browseCurrencies(league.id);
@@ -69,9 +69,9 @@ export const poe2Plugin: WidgetPlugin = {
 			}
 		});
 
-		app.get('/api/admin/poe2/watchlist', async () => poe2Db.listWatchlist());
+		app.get('/api/admin/widget/poe2/watchlist', async () => poe2Db.listWatchlist());
 
-		app.post('/api/admin/poe2/watchlist', async (req, reply) => {
+		app.post('/api/admin/widget/poe2/watchlist', async (req, reply) => {
 			const { base, quote } = req.body as {
 				base?: { currencyId?: string; name?: string };
 				quote?: { currencyId?: string; name?: string };
@@ -92,7 +92,7 @@ export const poe2Plugin: WidgetPlugin = {
 			return reply.code(201).send(created);
 		});
 
-		app.delete('/api/admin/poe2/watchlist/:id', async (req, reply) => {
+		app.delete('/api/admin/widget/poe2/watchlist/:id', async (req, reply) => {
 			const { id } = req.params as { id: string };
 			poe2Db.removeWatchlistEntry(id);
 			return reply.code(204).send();

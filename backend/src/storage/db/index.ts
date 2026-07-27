@@ -45,6 +45,20 @@ export function migrate() {
 		db.exec('DROP INDEX IF EXISTS idx_poe2_rate_history_watchlist;');
 	}
 
+	// Stocks and Bookmarks moved into the pluggable-widget system too (backend/src/widgets/
+	// stocks/, widgets/bookmarks/) — same plain-rename treatment as PoE2 above, now owned by
+	// each widget's own plugin.migrate() instead of this file's CREATE TABLE block.
+	const hasOldStockTickersTable = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='stock_tickers'`).get();
+	if (hasOldStockTickersTable) {
+		db.exec('ALTER TABLE stock_tickers RENAME TO widget_stocks_tickers;');
+	}
+	// "bookmarks" is generic enough to collide with something else entirely — check for the
+	// old bookmarks shape specifically (its distinctive is_private column) before renaming.
+	const oldBookmarksCols = db.prepare(`PRAGMA table_info(bookmarks)`).all() as { name: string }[];
+	if (oldBookmarksCols.some((c) => c.name === 'is_private')) {
+		db.exec('ALTER TABLE bookmarks RENAME TO widget_bookmarks_items;');
+	}
+
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS sources (
 			id TEXT PRIMARY KEY,
@@ -220,21 +234,6 @@ export function migrate() {
 			poe2_updated_at TEXT
 		);
 
-		-- Sidebar "Stocks" widget — polled every 15 minutes from Yahoo Finance (see
-		-- stocks/poller.ts). Price/change/poll-state live directly on the row, same as
-		-- sources.last_polled_at, rather than a separate quote-cache table.
-		CREATE TABLE IF NOT EXISTS stock_tickers (
-			id TEXT PRIMARY KEY,
-			label TEXT NOT NULL,
-			symbol TEXT NOT NULL, -- Yahoo symbol syntax, e.g. "^DJI", "AAPL", "BTC-USD"
-			priority_rank INTEGER NOT NULL,
-			last_price REAL,
-			last_change_percent REAL,
-			last_polled_at TEXT,
-			last_error TEXT,
-			created_at TEXT NOT NULL
-		);
-
 		-- Generic config/cache store for pluggable widgets (see widgets/types.ts,
 		-- storage/db/widgetKv.ts) — lets a widget stay fully prunable by widget_id alone on
 		-- uninstall without a bespoke table for simple key/value state.
@@ -259,18 +258,8 @@ export function migrate() {
 			priority_rank INTEGER NOT NULL,
 			version TEXT NOT NULL DEFAULT '1.0.0',
 			owned_tables TEXT NOT NULL DEFAULT '[]', -- JSON array, self-reported by the plugin — used by the uninstall safety-net sweep
+			frontend_entry TEXT, -- relative path to an optional pre-built browser JS bundle, served from /widget-assets/<id>/*
 			installed_at TEXT NOT NULL
-		);
-
-		-- Sidebar "Bookmarks" widget — admin-curated links, each independently hidden/public
-		-- via is_private (same private-access lock feature as categories.is_private).
-		CREATE TABLE IF NOT EXISTS bookmarks (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			url TEXT NOT NULL,
-			priority_rank INTEGER NOT NULL,
-			is_private INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL
 		);
 
 		-- Singleton row (see storage/crypto.ts) — encrypted Telegram API credentials and
@@ -382,22 +371,8 @@ export function migrate() {
 			`ALTER TABLE global_settings ADD COLUMN widget_order TEXT NOT NULL DEFAULT '["weather","stocks","poe2","bookmarks"]'`
 		);
 	}
-
-	// Seed a handful of sensible default tickers so the Stocks widget isn't empty on a
-	// fresh install — the admin can remove/replace any of them via the Stocks tab.
-	const tickerCount = db.prepare('SELECT COUNT(*) as c FROM stock_tickers').get() as { c: number };
-	if (tickerCount.c === 0) {
-		const defaults: [string, string][] = [
-			['Dow Jones', '^DJI'],
-			['S&P 500', '^GSPC'],
-			['Bitcoin', 'BTC-USD']
-		];
-		const stmt = db.prepare(
-			'INSERT INTO stock_tickers (id, label, symbol, priority_rank, created_at) VALUES (?, ?, ?, ?, ?)'
-		);
-		defaults.forEach(([label, symbol], i) => {
-			stmt.run(`stk-${symbol.replace(/[^a-z0-9]+/gi, '-')}`, label, symbol, i + 1, new Date().toISOString());
-		});
+	if (!hasColumn('installed_widgets', 'frontend_entry')) {
+		db.exec('ALTER TABLE installed_widgets ADD COLUMN frontend_entry TEXT');
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —
@@ -439,7 +414,12 @@ export function migrate() {
 			? JSON.parse(settingsRow.widget_order ?? '["weather","stocks","poe2","bookmarks"]')
 			: ['weather', 'stocks', 'poe2', 'bookmarks'];
 		const displayNames: Record<string, string> = { weather: 'Weather', stocks: 'Stocks', bookmarks: 'Bookmarks', poe2: 'PoE2' };
-		const codePaths: Record<string, string> = { weather: 'weather', stocks: 'stocks', bookmarks: 'bookmarks', poe2: 'widgets/poe2' };
+		const codePaths: Record<string, string> = {
+			weather: 'widgets/weather',
+			stocks: 'widgets/stocks',
+			bookmarks: 'widgets/bookmarks',
+			poe2: 'widgets/poe2'
+		};
 		const ownedTables: Record<string, string[]> = { poe2: ['widget_poe2_watchlist', 'widget_poe2_rate_history'] };
 		const enabledOf = (id: string) => (settingsRow ? !!settingsRow[`widget_${id}_enabled`] : true);
 		const insertWidget = db.prepare(
@@ -478,6 +458,37 @@ export function migrate() {
 				updatedAt: poe2CacheRow.poe2_updated_at
 			}),
 			new Date().toISOString()
+		);
+	}
+
+	// Weather's config (admin-set location/units) and cache (last-polled forecast) move off
+	// their bare global_settings columns into two widget_kv entries — same "every widget
+	// owns its own data" consistency as PoE2's league cache above. Old columns left in
+	// place, unread.
+	const weatherRow = db.prepare('SELECT * FROM global_settings WHERE id = 1').get() as any;
+	const hasWeatherConfigKv = db.prepare("SELECT 1 FROM widget_kv WHERE widget_id = 'weather' AND key = 'config'").get();
+	if (weatherRow?.weather_location_name && !hasWeatherConfigKv) {
+		const nowIso = new Date().toISOString();
+		db.prepare(`INSERT INTO widget_kv (widget_id, key, value, updated_at) VALUES ('weather', 'config', ?, ?)`).run(
+			JSON.stringify({
+				locationName: weatherRow.weather_location_name,
+				latitude: weatherRow.weather_latitude,
+				longitude: weatherRow.weather_longitude,
+				unit: weatherRow.weather_unit,
+				windUnit: weatherRow.weather_wind_unit,
+				pressureUnit: weatherRow.weather_pressure_unit
+			}),
+			nowIso
+		);
+		db.prepare(`INSERT INTO widget_kv (widget_id, key, value, updated_at) VALUES ('weather', 'cache', ?, ?)`).run(
+			JSON.stringify({
+				current: weatherRow.weather_current ? JSON.parse(weatherRow.weather_current) : null,
+				hourly: JSON.parse(weatherRow.weather_hourly ?? '[]'),
+				daily: JSON.parse(weatherRow.weather_daily ?? '[]'),
+				alerts: JSON.parse(weatherRow.weather_alerts ?? '[]'),
+				updatedAt: weatherRow.weather_updated_at
+			}),
+			nowIso
 		);
 	}
 }

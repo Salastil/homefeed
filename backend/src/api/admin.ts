@@ -37,14 +37,6 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		}
 		const before = settingsDb.getSettings();
 		const settings = withStorageUsed(settingsDb.updateSettings(body));
-		if (body.weather) {
-			// Poll immediately rather than waiting for the next scheduler tick (up to 45
-			// minutes) — the admin just changed the location/unit and expects to see it reflected.
-			loadedWidgets
-				.get('weather')
-				?.poll?.run()
-				.catch((err) => logger.error('weather', `Immediate poll failed: ${err.message}`));
-		}
 		if (body.widgets) {
 			// Re-enabling a widget (see the Widgets tab) should show fresh data right away
 			// instead of waiting out its normal cadence — scheduler.ts skips polling
@@ -244,6 +236,26 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const result = await installUploadedWidget(manifest, files);
 		if (!result.ok) return reply.code(400).send({ error: result.error });
 		return reply.code(201).send({ id: result.id });
+	});
+
+	app.patch('/api/admin/widgets/:id', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		const { enabled } = req.body as { enabled?: boolean };
+		const widget = installedWidgetsDb.getInstalled(id);
+		if (!widget) return reply.code(404).send({ error: 'not found' });
+		if (typeof enabled === 'boolean') {
+			installedWidgetsDb.setEnabled(id, enabled);
+			// Re-enabling should show fresh data right away rather than waiting out the
+			// widget's own poll interval — same "immediate poll on enable" behavior the
+			// 4 built-ins get via PATCH /api/admin/settings above.
+			if (enabled && !widget.enabled) {
+				loadedWidgets
+					.get(id)
+					?.poll?.run()
+					.catch((err) => logger.error(id, `Immediate poll failed: ${err.message}`));
+			}
+		}
+		return installedWidgetsDb.getInstalled(id);
 	});
 
 	app.delete('/api/admin/widgets/:id', async (req, reply) => {

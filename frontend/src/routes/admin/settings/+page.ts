@@ -10,23 +10,30 @@ import {
 	getLogs,
 	getStockTickers,
 	getAdminBookmarks,
-	getPoe2Watchlist
+	getPoe2Watchlist,
+	getWeatherConfig,
+	listWidgets
 } from '$lib/adminApi';
+import { getPoe2 } from '$lib/api';
 import type { ModelCatalog, AiStatus, TelegramStatus } from '$lib/adminTypes';
 
 const EMPTY_MODELS: ModelCatalog = { embedding: [], image: [], synthesis: [] };
 
 export const load: PageLoad = async ({ fetch }) => {
 	try {
-		const [settings, sources, events, logs, stockTickers, bookmarks, poe2Watchlist] = await Promise.all([
-			getSettings(fetch),
-			getSources(fetch),
-			getEvents(fetch),
-			getLogs({}, fetch),
-			getStockTickers(fetch),
-			getAdminBookmarks(fetch),
-			getPoe2Watchlist(fetch)
-		]);
+		const [settings, sources, events, logs, stockTickers, bookmarks, poe2Watchlist, weatherConfig, poe2, installedWidgets] =
+			await Promise.all([
+				getSettings(fetch),
+				getSources(fetch),
+				getEvents(fetch),
+				getLogs({}, fetch),
+				getStockTickers(fetch),
+				getAdminBookmarks(fetch),
+				getPoe2Watchlist(fetch),
+				getWeatherConfig(fetch),
+				getPoe2(fetch),
+				listWidgets(fetch)
+			]);
 
 		// The AI service (Ollama) may not be running yet — that shouldn't take down the
 		// whole settings page, just leave the Models/Connections tabs showing "unreachable".
@@ -42,7 +49,21 @@ export const load: PageLoad = async ({ fetch }) => {
 			() => ({ credentialsConfigured: false, connected: false, phone: null })
 		);
 
-		return { settings, sources, events, models, aiStatus, telegramStatus, logs, stockTickers, bookmarks, poe2Watchlist };
+		return {
+			settings,
+			sources,
+			events,
+			models,
+			aiStatus,
+			telegramStatus,
+			logs,
+			stockTickers,
+			bookmarks,
+			poe2Watchlist,
+			weatherConfig,
+			poe2,
+			installedWidgets
+		};
 	} catch (err) {
 		if ((err as { status?: number }).status === 401) {
 			throw redirect(302, '/admin/login?redirectTo=/admin/settings');

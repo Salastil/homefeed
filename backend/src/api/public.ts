@@ -4,6 +4,9 @@ import * as tagsDb from '../storage/db/tags.js';
 import * as eventsDb from '../storage/db/events.js';
 import * as categoriesDb from '../storage/db/categories.js';
 import * as settingsDb from '../storage/db/settings.js';
+import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
+import { getKv } from '../storage/db/widgetKv.js';
+import type { WidgetReport } from '../widgets/report.js';
 import { hasPrivateAccess } from './privateAccess.js';
 
 export async function registerPublicRoutes(app: FastifyInstance) {
@@ -59,15 +62,34 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 		return categories.filter((c) => !c.isPrivate);
 	});
 
-	// Per-widget enable flags + display order — see the admin panel's consolidated
-	// "Widgets" tab. Weather/Stocks/PoE2's backend pollers are also gated on these
-	// flags (see scheduler.ts); Sidebar.svelte renders in exactly this order.
+	// Per-widget enable flags + display order for the 4 built-ins — see the admin panel's
+	// consolidated "Widgets" tab. Weather/Stocks/PoE2's backend pollers are also gated on
+	// these flags (see scheduler.ts); Sidebar.svelte renders in exactly this order. The
+	// `pluggable` array lists enabled *uploaded* widgets separately (their ids aren't part
+	// of the closed weather|stocks|bookmarks|poe2 union `order` uses) — see
+	// widgets/registry.ts, Sidebar.svelte's GenericWidgetCard/DynamicWidgetSlot.
 	app.get('/api/widgets', async () => {
 		const { widgets, widgetOrder } = settingsDb.getSettings();
-		return { ...widgets, order: widgetOrder };
+		const pluggable = installedWidgetsDb
+			.listInstalled()
+			.filter((w) => w.source === 'uploaded' && w.enabled)
+			.map((w) => ({ id: w.id, displayName: w.displayName, frontendEntry: w.frontendEntry }));
+		return { ...widgets, order: widgetOrder, pluggable };
 	});
 
-	// Per-widget public routes (GET /api/weather, /api/stocks, /api/bookmarks, /api/poe2)
-	// are registered by each widget's own plugin — see widgets/registry.ts's generic
+	// Generic live-data feed any widget (built-in or uploaded) can publish to via
+	// setKv(id, 'report', ...) in its own poll.run() — see widgets/report.ts. Registered
+	// once here rather than per-widget, so it works for a widget uploaded after this
+	// process started, with zero new route registration (Fastify refuses routes added
+	// after app.listen(), so this is what makes "poll live -> sidebar shows it live" work
+	// for an uploaded widget without a restart).
+	app.get('/api/widget/:id/report', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		if (!installedWidgetsDb.getInstalled(id)?.enabled) return reply.code(404).send();
+		return { data: getKv<WidgetReport>(id, 'report') };
+	});
+
+	// Per-widget public routes (GET /api/widget/weather, /stocks, /bookmarks, /poe2) are
+	// registered by each widget's own plugin — see widgets/registry.ts's generic
 	// registerPublicRoutes loop in index.ts.
 }

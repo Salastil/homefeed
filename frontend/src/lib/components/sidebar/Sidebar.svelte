@@ -5,6 +5,8 @@
 	import StocksWidget from './StocksWidget.svelte';
 	import BookmarksWidget from './BookmarksWidget.svelte';
 	import Poe2Widget from './Poe2Widget.svelte';
+	import GenericWidgetCard from './GenericWidgetCard.svelte';
+	import DynamicWidgetSlot from './DynamicWidgetSlot.svelte';
 
 	let {
 		weather,
@@ -99,6 +101,13 @@
 					<Poe2Widget {poe2} />
 				{:else if key === 'bookmarks' && widgetsEnabled.bookmarks}
 					<BookmarksWidget {bookmarks} />
+				{/if}
+			{/each}
+			{#each widgetsEnabled.pluggable as w (w.id)}
+				{#if w.frontendEntry}
+					<DynamicWidgetSlot id={w.id} displayName={w.displayName} frontendEntry={w.frontendEntry} />
+				{:else}
+					<GenericWidgetCard id={w.id} displayName={w.displayName} />
 				{/if}
 			{/each}
 		</div>

@@ -19,6 +19,7 @@ import { loadAllWidgets, loadedWidgets } from './widgets/registry.js';
 const PORT = Number(process.env.PORT) || 4000;
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
 const MEDIA_DIR = process.env.MEDIA_DIR || './data/media';
+const WIDGETS_INSTALLED_DIR = process.env.WIDGETS_INSTALLED_DIR || './data/widgets-installed';
 
 function printApiKeyBanner() {
 	const line = '='.repeat(64);
@@ -100,6 +101,26 @@ async function main() {
 		if (filename.includes('..') || filename.includes('/')) return reply.code(400).send();
 		const filePath = path.join(MEDIA_DIR, filename);
 		if (!fs.existsSync(filePath)) return reply.code(404).send();
+		return reply.send(fs.createReadStream(filePath));
+	});
+
+	// A widget's optional pre-built frontend bundle (see widgets/manifest.ts's
+	// frontendEntry) — one generic wildcard route rather than one per widget, so it works
+	// for a widget uploaded after this process started, with no restart (unlike a
+	// widget's own custom API routes, which do need one — see widgets/install.ts).
+	// Explicit Content-Type is required here (unlike /media/:filename above) — browsers
+	// reject a dynamically-imported module whose response isn't served as a JS MIME
+	// type. The wildcard also lets a bundle's own relative imports (e.g. `import
+	// './helper.mjs'`) resolve automatically, since the browser requests those against
+	// this same route.
+	app.get('/widget-assets/:id/*', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		const rel = (req.params as { '*': string })['*'];
+		if (rel.includes('..')) return reply.code(400).send();
+		const filePath = path.join(WIDGETS_INSTALLED_DIR, id, rel);
+		if (!fs.existsSync(filePath)) return reply.code(404).send();
+		if (rel.endsWith('.mjs') || rel.endsWith('.js')) reply.type('text/javascript');
+		else if (rel.endsWith('.css')) reply.type('text/css');
 		return reply.send(fs.createReadStream(filePath));
 	});
 

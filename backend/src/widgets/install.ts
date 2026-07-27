@@ -51,7 +51,8 @@ export async function installUploadedWidget(manifest: unknown, files: unknown): 
 		source: 'uploaded',
 		codePath: dir,
 		version: m.version,
-		ownedTables: plugin.ownedTables ?? []
+		ownedTables: plugin.ownedTables ?? [],
+		frontendEntry: m.frontendEntry ?? null
 	});
 
 	startWidgetPolling(plugin);

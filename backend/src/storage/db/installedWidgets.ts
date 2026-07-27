@@ -11,6 +11,7 @@ function rowToWidget(row: any): InstalledWidget {
 		priorityRank: row.priority_rank,
 		version: row.version,
 		ownedTables: JSON.parse(row.owned_tables),
+		frontendEntry: row.frontend_entry ?? null,
 		installedAt: row.installed_at
 	};
 }
@@ -33,13 +34,14 @@ export function insertWidget(widget: {
 	priorityRank?: number;
 	version?: string;
 	ownedTables?: string[];
+	frontendEntry?: string | null;
 }): InstalledWidget {
 	const maxRank = db.prepare('SELECT COALESCE(MAX(priority_rank), 0) as m FROM installed_widgets').get() as { m: number };
 	const priorityRank = widget.priorityRank ?? maxRank.m + 1;
 	const installedAt = new Date().toISOString();
 	db.prepare(
-		`INSERT INTO installed_widgets (id, display_name, source, code_path, enabled, priority_rank, version, owned_tables, installed_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		`INSERT INTO installed_widgets (id, display_name, source, code_path, enabled, priority_rank, version, owned_tables, frontend_entry, installed_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		widget.id,
 		widget.displayName,
@@ -49,6 +51,7 @@ export function insertWidget(widget: {
 		priorityRank,
 		widget.version ?? '1.0.0',
 		JSON.stringify(widget.ownedTables ?? []),
+		widget.frontendEntry ?? null,
 		installedAt
 	);
 	return getInstalled(widget.id)!;

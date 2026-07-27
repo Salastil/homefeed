@@ -6,9 +6,9 @@ import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
 import { logger } from '../storage/db/logs.js';
 import type { WidgetPlugin } from './types.js';
 import { sweepOrphanedWidgetData } from './sweep.js';
-import { weatherPlugin } from '../weather/plugin.js';
-import { stocksPlugin } from '../stocks/plugin.js';
-import { bookmarksPlugin } from '../bookmarks/plugin.js';
+import { weatherPlugin } from './weather/plugin.js';
+import { stocksPlugin } from './stocks/plugin.js';
+import { bookmarksPlugin } from './bookmarks/plugin.js';
 import { poe2Plugin } from './poe2/plugin.js';
 
 // Both built-in and uploaded widgets funnel into this one map — scheduler dispatch and

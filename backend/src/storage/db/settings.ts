@@ -1,15 +1,8 @@
 import { db } from './index.js';
 import type { GlobalSettings } from './types.js';
 import * as installedWidgetsDb from './installedWidgets.js';
-import { getKv, setKv } from './widgetKv.js';
 
 const BUILTIN_WIDGET_IDS = ['weather', 'stocks', 'bookmarks', 'poe2'] as const;
-
-interface Poe2LeagueCache {
-	leagueId: string | null;
-	leagueName: string | null;
-	updatedAt: string | null;
-}
 
 // widgets/widgetOrder are computed from the installed_widgets registry (see
 // storage/db/installedWidgets.ts, widgets/registry.ts) rather than stored as their own
@@ -32,8 +25,10 @@ function widgetsAndOrder(): Pick<GlobalSettings, 'widgets' | 'widgetOrder'> {
 	return { widgets, widgetOrder };
 }
 
+// Every widget's own config/data now lives behind its own /api/widget/<id> routes (see
+// widgets/weather/db.ts, widgets/poe2/poll.ts's league cache, etc.) — this settings blob
+// is just the scalar pipeline knobs plus the 4 builtins' enable/order flags.
 function rowToSettings(row: any): GlobalSettings {
-	const poe2Cache = getKv<Poe2LeagueCache>('poe2', 'leagueCache') ?? { leagueId: null, leagueName: null, updatedAt: null };
 	return {
 		mergeStrictness: row.merge_strictness,
 		holdBeforePublishMinutes: row.hold_before_publish_minutes,
@@ -55,22 +50,7 @@ function rowToSettings(row: any): GlobalSettings {
 			storageCapEnabled: !!row.storage_cap_enabled,
 			storageCapValue: row.storage_cap_value,
 			storageCapUnit: row.storage_cap_unit
-		},
-		weather: {
-			locationName: row.weather_location_name,
-			latitude: row.weather_latitude,
-			longitude: row.weather_longitude,
-			unit: row.weather_unit,
-			windUnit: row.weather_wind_unit,
-			pressureUnit: row.weather_pressure_unit,
-			// Unlike retention, this is genuinely absent pre-first-poll (and pre-location-config) — null-safe parse.
-			current: row.weather_current ? JSON.parse(row.weather_current) : null,
-			hourly: JSON.parse(row.weather_hourly),
-			daily: JSON.parse(row.weather_daily),
-			alerts: JSON.parse(row.weather_alerts),
-			updatedAt: row.weather_updated_at
-		},
-		poe2: poe2Cache
+		}
 	};
 }
 
@@ -86,8 +66,6 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		...patch,
 		retention: { ...current.retention, ...(patch.retention ?? {}) },
 		selectedModels: { ...current.selectedModels, ...(patch.selectedModels ?? {}) },
-		weather: { ...current.weather, ...(patch.weather ?? {}) },
-		poe2: { ...current.poe2, ...(patch.poe2 ?? {}) },
 		widgets: { ...current.widgets, ...(patch.widgets ?? {}) }
 	};
 
@@ -98,9 +76,6 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 	}
 	if (patch.widgetOrder) {
 		installedWidgetsDb.reorder(patch.widgetOrder);
-	}
-	if (patch.poe2) {
-		setKv('poe2', 'leagueCache', merged.poe2);
 	}
 
 	// Named params (rather than positional `?`) so this list can be reordered or
@@ -116,11 +91,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			nitter_media_mode=$nitter_media_mode, fxtwitter_base_url=$fxtwitter_base_url, nitter_instance_url=$nitter_instance_url,
 			telegram_media_mode=$telegram_media_mode,
 			published_article_max_age_days=$published_article_max_age_days, raw_item_max_age_days=$raw_item_max_age_days,
-			storage_cap_enabled=$storage_cap_enabled, storage_cap_value=$storage_cap_value, storage_cap_unit=$storage_cap_unit,
-			weather_location_name=$weather_location_name, weather_latitude=$weather_latitude, weather_longitude=$weather_longitude,
-			weather_unit=$weather_unit, weather_wind_unit=$weather_wind_unit, weather_pressure_unit=$weather_pressure_unit,
-			weather_current=$weather_current, weather_hourly=$weather_hourly, weather_daily=$weather_daily,
-			weather_alerts=$weather_alerts, weather_updated_at=$weather_updated_at
+			storage_cap_enabled=$storage_cap_enabled, storage_cap_value=$storage_cap_value, storage_cap_unit=$storage_cap_unit
 		 WHERE id = 1`
 	).run({
 		$merge_strictness: merged.mergeStrictness,
@@ -140,18 +111,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		$raw_item_max_age_days: merged.retention.rawItemMaxAgeDays,
 		$storage_cap_enabled: merged.retention.storageCapEnabled ? 1 : 0,
 		$storage_cap_value: merged.retention.storageCapValue,
-		$storage_cap_unit: merged.retention.storageCapUnit,
-		$weather_location_name: merged.weather.locationName,
-		$weather_latitude: merged.weather.latitude,
-		$weather_longitude: merged.weather.longitude,
-		$weather_unit: merged.weather.unit,
-		$weather_wind_unit: merged.weather.windUnit,
-		$weather_pressure_unit: merged.weather.pressureUnit,
-		$weather_current: merged.weather.current ? JSON.stringify(merged.weather.current) : null,
-		$weather_hourly: JSON.stringify(merged.weather.hourly),
-		$weather_daily: JSON.stringify(merged.weather.daily),
-		$weather_alerts: JSON.stringify(merged.weather.alerts),
-		$weather_updated_at: merged.weather.updatedAt
+		$storage_cap_unit: merged.retention.storageCapUnit
 	});
 	return getSettings();
 }
