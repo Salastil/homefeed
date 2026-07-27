@@ -14,6 +14,7 @@ export interface CategoryPriority {
 	isDefault: boolean;
 	isPrivate: boolean;
 	isSpillover: boolean;
+	disableAi: boolean;
 }
 
 export interface WeatherHourEntry {

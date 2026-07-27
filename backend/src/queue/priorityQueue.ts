@@ -45,6 +45,16 @@ function primaryCategoryRank(item: ContentItem, rankByName: Map<string, number>,
 	return best;
 }
 
+/** True if any of the item's source's categories (same leading-segment match as primaryCategoryRank) has AI disabled. */
+function inAiDisabledCategory(item: ContentItem, disabledNames: Set<string>, sourcesById: Map<string, Source>): boolean {
+	const source = sourcesById.get(item.sourceId);
+	for (const cat of source?.category ?? []) {
+		const leading = cat.split(':')[0].trim().toLowerCase();
+		if (disabledNames.has(leading)) return true;
+	}
+	return false;
+}
+
 /**
  * Shared by both the passthrough (no-AI) and synthesis direct-publish paths — same
  * publish-then-tag-then-log/error shape, differing only in how the success/failure
@@ -114,6 +124,8 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 	// direct-publish partition and each item's category/type lookups — avoids a
 	// separate sourcesDb.getSource() round-trip per item.
 	const sourcesById = new Map(sourcesDb.listSources().map((s) => [s.id, s]));
+	const categories = categoriesDb.listCategories();
+	const rankByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.priorityRank]));
 
 	// YouTube videos, Nitter tweets, and Telegram messages never get LLM-merged with
 	// anything else — each is always its own article, same shape whether the AI service
@@ -121,18 +133,31 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 	const directPublishSourceIds = new Set(
 		[...sourcesById.values()].filter((s) => s.type === 'youtube' || s.type === 'nitter' || s.type === 'telegram').map((s) => s.id)
 	);
-	const [directItems, mergeableItems] = partition(items, (item) => directPublishSourceIds.has(item.sourceId));
+	const [typeDirectItems, remaining] = partition(items, (item) => directPublishSourceIds.has(item.sourceId));
 
-	const publishedDirect = await publishItemsDirect(
-		directItems,
+	// A category with disableAi set (see the Category priority admin pane) opts its
+	// items out of clustering/synthesis entirely — each publishes on its own, using its
+	// own source's text, same as the source-type-driven direct items above.
+	const aiDisabledCategoryNames = new Set(categories.filter((c) => c.disableAi).map((c) => c.name.toLowerCase()));
+	const [categoryDirectItems, mergeableItems] = partition(remaining, (item) =>
+		inAiDisabledCategory(item, aiDisabledCategoryNames, sourcesById)
+	);
+
+	const publishedTypeDirect = await publishItemsDirect(
+		typeDirectItems,
 		settings,
 		activeEvents,
 		(item) => sourcesById.get(item.sourceId)?.type ?? 'unknown',
 		'Direct publish failed'
 	);
 
-	const categories = categoriesDb.listCategories();
-	const rankByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.priorityRank]));
+	const publishedCategoryDirect = await publishItemsDirect(
+		categoryDirectItems,
+		settings,
+		activeEvents,
+		() => 'AI disabled for category',
+		'Direct publish failed'
+	);
 
 	const ranked = mergeableItems
 		.map((item) => ({ item, rank: primaryCategoryRank(item, rankByName, sourcesById) }))
@@ -184,5 +209,5 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 		);
 	}
 
-	return published + publishedDirect;
+	return published + publishedTypeDirect + publishedCategoryDirect;
 }
