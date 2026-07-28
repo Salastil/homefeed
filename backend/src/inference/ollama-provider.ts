@@ -135,4 +135,32 @@ export class OllamaProvider implements InferenceProvider {
 			return false;
 		}
 	}
+
+	/**
+	 * Ollama's /api/show returns a model_info object whose keys are prefixed by the
+	 * model's own architecture name (e.g. "qwen2.context_length", "llama.context_length")
+	 * rather than one fixed field — there's no single stable key across model families.
+	 * Scanning for whichever key ends in ".context_length" avoids hardcoding a list of
+	 * known architectures that will inevitably miss a future/uncommon one. Returns null
+	 * (rather than throwing) on any failure — the admin-facing slider falls back to a
+	 * generous default cap when this can't be determined, rather than blocking the whole
+	 * Models tab on one unreliable, best-effort lookup.
+	 */
+	async getModelContextLength(model: string): Promise<number | null> {
+		try {
+			const res = await fetch(`${this.base()}/api/show`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ model, name: model }),
+				signal: AbortSignal.timeout(5000)
+			});
+			if (!res.ok) return null;
+			const data = (await res.json()) as { model_info?: Record<string, unknown> };
+			const entry = Object.entries(data.model_info ?? {}).find(([key]) => key.endsWith('.context_length'));
+			const value = entry?.[1];
+			return typeof value === 'number' && value > 0 ? value : null;
+		} catch {
+			return null;
+		}
+	}
 }

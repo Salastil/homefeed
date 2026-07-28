@@ -1,6 +1,5 @@
 import type { InferenceProvider } from '../inference/provider.js';
-import type { ContentItem, GlobalSettings, MergedArticle } from '../storage/db/types.js';
-import { DEFAULT_NUM_CTX, DEFAULT_NUM_PREDICT } from '../inference/ollama-provider.js';
+import type { ContentItem, GlobalSettings, MergedArticle, TrackedEvent } from '../storage/db/types.js';
 import { logger } from '../storage/db/logs.js';
 
 const TITLE_DELIMITER = '---TITLE---';
@@ -17,16 +16,20 @@ const TAG_DELIMITER_RE = /-{2,}\s*TAGS\s*-{2,}/i;
 // Ollama truncates prompts that don't fit its context window by keeping a small prefix
 // and dropping everything else in the middle — silently, with no error, and with no
 // regard for which sources end up cut (see ollama-provider.ts for the incident that
-// prompted this). Rather than relying on that, prompts here are sized to fit
-// DEFAULT_NUM_CTX up front: each source/article gets an equal character budget, cut only
-// when the whole prompt would otherwise overflow, so every source stays at least
-// partially represented (and attributable) instead of some being dropped outright.
-// ~4 chars/token is a rough heuristic (no tokenizer available here) — good enough for a
-// safety margin, not meant to be exact.
+// prompted this). Rather than relying on that, prompts here are sized to fit the
+// admin-configured num_ctx/num_predict (Models tab) up front: each source/article gets
+// an equal character budget, cut only when the whole prompt would otherwise overflow, so
+// every source stays at least partially represented (and attributable) instead of some
+// being dropped outright. ~4 chars/token is a rough heuristic (no tokenizer available
+// here) — good enough for a safety margin, not meant to be exact.
 const CHARS_PER_TOKEN = 4;
 const RESERVED_OVERHEAD_TOKENS = 300; // system prompt + per-entry headers/formatting
-const MAX_INPUT_CHARS = (DEFAULT_NUM_CTX - DEFAULT_NUM_PREDICT - RESERVED_OVERHEAD_TOKENS) * CHARS_PER_TOKEN;
 const MIN_ENTRY_CHARS = 300; // floor so a huge cluster/recap doesn't shrink every entry to nothing
+
+/** Character budget for prompt *input* — leaves numPredict's worth of the context window free for the model's own response, per the admin's configured num_ctx/num_predict (GlobalSettings.synthesisNumCtx/synthesisNumPredict). */
+function maxInputChars(numCtx: number, numPredict: number): number {
+	return Math.max(0, (numCtx - numPredict - RESERVED_OVERHEAD_TOKENS) * CHARS_PER_TOKEN);
+}
 
 function capEntryText(text: string, budgetChars: number): string {
 	return text.length > budgetChars ? text.slice(0, budgetChars) + '…' : text;
@@ -56,14 +59,15 @@ function parseTagLabels(raw: string): string[] {
 export async function extractTags(
 	provider: InferenceProvider,
 	model: string,
-	item: Pick<ContentItem, 'title' | 'summary' | 'body'>
+	item: Pick<ContentItem, 'title' | 'summary' | 'body'>,
+	settings: GlobalSettings
 ): Promise<string[]> {
-	const summary = capEntryText(item.body || item.summary, MAX_INPUT_CHARS);
+	const summary = capEntryText(item.body || item.summary, maxInputChars(settings.synthesisNumCtx, TAG_EXTRACTION_NUM_PREDICT));
 	const prompt = `Title: ${item.title}\nSummary: ${summary}`;
 	const raw = await provider.generate(prompt, {
 		model,
 		system: TAG_EXTRACTION_SYSTEM_PROMPT,
-		numCtx: DEFAULT_NUM_CTX,
+		numCtx: settings.synthesisNumCtx,
 		numPredict: TAG_EXTRACTION_NUM_PREDICT,
 		label: `Extracting tags: "${item.title.slice(0, 60)}"`
 	});
@@ -73,11 +77,11 @@ export async function extractTags(
 const RECAP_SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given a chronological list of articles already published about an ongoing tracked event, write your response in exactly three parts, in this order:
 
 1. A short, specific headline for this recap (a single line, ideally under 12 words, no surrounding quotation marks, no trailing period).
-2. On a new line, write exactly "${TITLE_DELIMITER}", then the recap article:
-   - Summarizes what has happened across the period covered, in chronological order
-   - Highlights the most significant developments rather than restating every article
+2. On a new line, write exactly "${TITLE_DELIMITER}", then the recap:
+   - Write a full, comprehensive news article covering the period — not a short summary or a bare list of bullet points. Use as many paragraphs and as much length as the material actually warrants; do not artificially cut it short.
+   - Organize it in chronological order, but group and connect related developments into a coherent narrative rather than restating each source article one at a time
+   - Give real weight and detail to the most significant developments; minor ones can be covered more briefly, but nothing significant should be dropped for the sake of brevity
    - Stays neutral and factual, without editorializing
-   - Is 3-5 short paragraphs
 3. On a new line after the recap, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this recap is about. If nothing salient qualifies, leave the tag line empty.`;
 
 const SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given summaries from multiple news sources describing the same event, write your response in exactly three parts, in this order:
@@ -99,13 +103,28 @@ const STYLE_PRESETS: Record<GlobalSettings['synthesisStylePreset'], string> = {
 	formal: 'Write in a formal, measured register — precise language, no contractions, no colloquialisms.'
 };
 
-/** Admin-configurable tone: a preset plus optional free-text instructions, both from GlobalSettings — the only two knobs that affect HOW the model writes, as opposed to WHAT gets clustered/published. Appended to the base prompt, never replacing its structural rules (attribution, paragraph count, tag format). */
+/** Admin-configurable tone: a preset plus optional free-text instructions, both from GlobalSettings — the only two knobs that affect HOW the model writes, as opposed to WHAT gets clustered/published. Appended to the base prompt, never replacing its structural rules (attribution, paragraph count, tag format). Applies only to regular same-story merges — recaps have their own independent style knob, see recapStyleAddendum below. */
 function styleAddendum(settings: GlobalSettings): string {
 	const preset = STYLE_PRESETS[settings.synthesisStylePreset] ?? '';
 	const custom = settings.synthesisCustomInstructions.trim();
 	const lines = [preset, custom].filter(Boolean);
 	if (lines.length === 0) return '';
 	return `\n\nAdditional style instructions from the site admin (follow these without breaking the rules above):\n${lines.join('\n')}`;
+}
+
+/**
+ * Per-tracked-item recap style — deliberately independent of the global synthesisStylePreset
+ * above (set in the Merge tab), since a recap's tone/scope is a very different kind of
+ * knob: it's set once per tracked item (the "More" section on its own edit panel, next to
+ * its recap cadence), not globally for every merge on the site. Reuses the same preset
+ * strings for consistency, but reads from the event's own fields instead of GlobalSettings.
+ */
+function recapStyleAddendum(event: TrackedEvent): string {
+	const preset = STYLE_PRESETS[event.recapStylePreset] ?? '';
+	const custom = event.recapCustomInstructions.trim();
+	const lines = [preset, custom].filter(Boolean);
+	if (lines.length === 0) return '';
+	return `\n\nAdditional style instructions from the site admin for this recap (follow these without breaking the rules above):\n${lines.join('\n')}`;
 }
 
 export interface SynthesisResult {
@@ -120,8 +139,8 @@ function fallbackTitle(body: string): string {
 	return firstLine.length > 100 ? firstLine.slice(0, 97) + '…' : firstLine;
 }
 
-function buildPrompt(items: ContentItem[], sourceNames: Map<string, string>): string {
-	const budgetPerItem = Math.max(MIN_ENTRY_CHARS, Math.floor(MAX_INPUT_CHARS / items.length));
+function buildPrompt(items: ContentItem[], sourceNames: Map<string, string>, numCtx: number, numPredict: number): string {
+	const budgetPerItem = Math.max(MIN_ENTRY_CHARS, Math.floor(maxInputChars(numCtx, numPredict) / items.length));
 	let truncated = 0;
 	const entries = items.map((item, i) => {
 		// Same fallback publishDirect uses (publish.ts) — body is the full article text
@@ -187,15 +206,16 @@ export async function synthesizeArticle(
 	sourceNames: Map<string, string>,
 	settings: GlobalSettings
 ): Promise<SynthesisResult> {
-	const prompt = buildPrompt(items, sourceNames);
+	const { synthesisNumCtx: numCtx, synthesisNumPredict: numPredict } = settings;
+	const prompt = buildPrompt(items, sourceNames, numCtx, numPredict);
 	const system = SYSTEM_PROMPT_BASE + styleAddendum(settings);
 	const label = `Merging ${items.length} source${items.length === 1 ? '' : 's'}: "${items[0]?.title.slice(0, 60) ?? ''}"`;
-	const raw = await provider.generate(prompt, { model, system, numCtx: DEFAULT_NUM_CTX, numPredict: DEFAULT_NUM_PREDICT, label });
+	const raw = await provider.generate(prompt, { model, system, numCtx, numPredict, label });
 	return assertNonEmpty(parseResult(raw), `"${items[0]?.title.slice(0, 60) ?? ''}"`);
 }
 
-function buildRecapPrompt(eventName: string, articles: MergedArticle[]): string {
-	const budgetPerArticle = Math.max(MIN_ENTRY_CHARS, Math.floor(MAX_INPUT_CHARS / articles.length));
+function buildRecapPrompt(eventName: string, articles: MergedArticle[], numCtx: number, numPredict: number): string {
+	const budgetPerArticle = Math.max(MIN_ENTRY_CHARS, Math.floor(maxInputChars(numCtx, numPredict) / articles.length));
 	let truncated = 0;
 	const entries = articles.map((article, i) => {
 		const body = capEntryText(article.body, budgetPerArticle);
@@ -219,17 +239,18 @@ function buildRecapPrompt(eventName: string, articles: MergedArticle[]): string 
 export async function synthesizeRecap(
 	provider: InferenceProvider,
 	model: string,
-	eventName: string,
+	event: TrackedEvent,
 	articles: MergedArticle[],
 	settings: GlobalSettings
 ): Promise<SynthesisResult> {
-	const prompt = buildRecapPrompt(eventName, articles);
+	const { synthesisNumCtx: numCtx, synthesisNumPredict: numPredict } = settings;
+	const prompt = buildRecapPrompt(event.name, articles, numCtx, numPredict);
 	const raw = await provider.generate(prompt, {
 		model,
-		system: RECAP_SYSTEM_PROMPT_BASE + styleAddendum(settings),
-		numCtx: DEFAULT_NUM_CTX,
-		numPredict: DEFAULT_NUM_PREDICT,
-		label: `Recapping event: "${eventName.slice(0, 60)}"`
+		system: RECAP_SYSTEM_PROMPT_BASE + recapStyleAddendum(event),
+		numCtx,
+		numPredict,
+		label: `Recapping event: "${event.name.slice(0, 60)}"`
 	});
-	return assertNonEmpty(parseResult(raw), `event recap "${eventName.slice(0, 60)}"`);
+	return assertNonEmpty(parseResult(raw), `event recap "${event.name.slice(0, 60)}"`);
 }

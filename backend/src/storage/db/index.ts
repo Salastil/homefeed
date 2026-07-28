@@ -135,6 +135,8 @@ export function migrate() {
 			is_spillover INTEGER NOT NULL DEFAULT 0,
 			retention_override_days INTEGER,
 			last_recap_at TEXT,
+			recap_style_preset TEXT NOT NULL DEFAULT 'default', -- default | casual | formal — this item's own recap tone, independent of the global Merge-tab style (see pipeline/synthesis.ts)
+			recap_custom_instructions TEXT NOT NULL DEFAULT '', -- free-text addendum for this item's recap prompt specifically
 			created_at TEXT NOT NULL
 		);
 
@@ -188,6 +190,8 @@ export function migrate() {
 			telegram_media_mode TEXT NOT NULL DEFAULT 'self-host', -- self-host | proxy (no "direct" — Telegram has no public hotlinkable media URL)
 			synthesis_style_preset TEXT NOT NULL DEFAULT 'default', -- default | casual | formal — see pipeline/synthesis.ts's STYLE_PRESETS
 			synthesis_custom_instructions TEXT NOT NULL DEFAULT '', -- free-text addendum appended to the synthesis system prompt, on top of the preset
+			synthesis_num_ctx INTEGER NOT NULL DEFAULT 8192, -- admin-tunable context window (Models tab) — see inference/ollama-provider.ts's DEFAULT_NUM_CTX
+			synthesis_num_predict INTEGER NOT NULL DEFAULT 700, -- admin-tunable max response length — too low silently truncates output mid-sentence
 			widget_weather_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_stocks_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_bookmarks_enabled INTEGER NOT NULL DEFAULT 1,
@@ -345,6 +349,12 @@ export function migrate() {
 	if (!hasColumn('tracked_events', 'recap_interval_hours')) {
 		db.exec('ALTER TABLE tracked_events ADD COLUMN recap_interval_hours INTEGER');
 	}
+	if (!hasColumn('tracked_events', 'recap_style_preset')) {
+		db.exec("ALTER TABLE tracked_events ADD COLUMN recap_style_preset TEXT NOT NULL DEFAULT 'default'");
+	}
+	if (!hasColumn('tracked_events', 'recap_custom_instructions')) {
+		db.exec("ALTER TABLE tracked_events ADD COLUMN recap_custom_instructions TEXT NOT NULL DEFAULT ''");
+	}
 	if (!hasColumn('merged_articles', 'is_recap')) {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN is_recap INTEGER NOT NULL DEFAULT 0');
 	}
@@ -401,6 +411,12 @@ export function migrate() {
 	}
 	if (!hasColumn('global_settings', 'synthesis_custom_instructions')) {
 		db.exec("ALTER TABLE global_settings ADD COLUMN synthesis_custom_instructions TEXT NOT NULL DEFAULT ''");
+	}
+	if (!hasColumn('global_settings', 'synthesis_num_ctx')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN synthesis_num_ctx INTEGER NOT NULL DEFAULT 8192');
+	}
+	if (!hasColumn('global_settings', 'synthesis_num_predict')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN synthesis_num_predict INTEGER NOT NULL DEFAULT 700');
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

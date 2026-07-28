@@ -327,7 +327,7 @@ export async function publishDirect(
 	let tagIds: string[] = [];
 	if (opts.provider) {
 		try {
-			const tagLabels = await extractTags(opts.provider, settings.selectedModels.synthesis, item);
+			const tagLabels = await extractTags(opts.provider, settings.selectedModels.synthesis, item, settings);
 			tagIds = await resolveTagIds(opts.provider, tagLabels, settings, 'synthesis');
 		} catch (err) {
 			logger.error('synthesis', `Tag extraction failed for "${item.title}": ${(err as Error).message}`);
@@ -475,7 +475,7 @@ export async function publishEventRecap(
 	event: TrackedEvent,
 	constituents: MergedArticle[]
 ): Promise<MergedArticle> {
-	const { title, body, tagLabels } = await synthesizeRecap(provider, settings.selectedModels.synthesis, event.name, constituents, settings);
+	const { title, body, tagLabels } = await synthesizeRecap(provider, settings.selectedModels.synthesis, event, constituents, settings);
 	const tagIds = await resolveTagIds(provider, tagLabels, settings, 'events');
 
 	const category = [...new Set(constituents.flatMap((a) => a.category))];

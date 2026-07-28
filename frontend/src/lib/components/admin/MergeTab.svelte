@@ -204,8 +204,9 @@
 <div class="panel">
 	<span class="panel-title">Writing style</span>
 	<p class="hint">
-		Applies to AI-merged articles and event recaps only — a story with just one source
-		publishes with its original text untouched, no AI involved.
+		Applies to AI-merged articles only — a story with just one source publishes with its
+		original text untouched, no AI involved. Event recaps have their own independent writing
+		style, set per tracked item under Tracked items → Edit → More.
 	</p>
 	<select bind:value={local.synthesisStylePreset} onchange={scheduleSave}>
 		<option value="default">Default (neutral, wire-service tone)</option>

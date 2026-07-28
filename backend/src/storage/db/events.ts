@@ -14,6 +14,8 @@ function rowToEvent(row: any): TrackedEvent {
 		isSpillover: !!row.is_spillover,
 		retentionOverrideDays: row.retention_override_days,
 		lastRecapAt: row.last_recap_at,
+		recapStylePreset: row.recap_style_preset,
+		recapCustomInstructions: row.recap_custom_instructions,
 		createdAt: row.created_at
 	};
 }
@@ -52,8 +54,8 @@ export function createEvent(input: Partial<TrackedEvent>): TrackedEvent {
 	const id = `evt-${randomUUID()}`;
 	const now = new Date().toISOString();
 	db.prepare(
-		`INSERT INTO tracked_events (id, name, description, source_ids, keywords, recap_interval_hours, active, is_spillover, retention_override_days, last_recap_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
+		`INSERT INTO tracked_events (id, name, description, source_ids, keywords, recap_interval_hours, active, is_spillover, retention_override_days, last_recap_at, recap_style_preset, recap_custom_instructions, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`
 	).run(
 		id,
 		input.name ?? 'Untitled event',
@@ -64,6 +66,8 @@ export function createEvent(input: Partial<TrackedEvent>): TrackedEvent {
 		input.active === false ? 0 : 1,
 		input.isSpillover ? 1 : 0,
 		input.retentionOverrideDays ?? null,
+		input.recapStylePreset ?? 'default',
+		input.recapCustomInstructions ?? '',
 		now
 	);
 	return getEvent(id)!;
@@ -74,7 +78,7 @@ export function updateEvent(id: string, patch: Partial<TrackedEvent>): TrackedEv
 	if (!existing) return null;
 	const merged = { ...existing, ...patch };
 	db.prepare(
-		`UPDATE tracked_events SET name=?, description=?, source_ids=?, keywords=?, recap_interval_hours=?, active=?, is_spillover=?, retention_override_days=?, last_recap_at=? WHERE id=?`
+		`UPDATE tracked_events SET name=?, description=?, source_ids=?, keywords=?, recap_interval_hours=?, active=?, is_spillover=?, retention_override_days=?, last_recap_at=?, recap_style_preset=?, recap_custom_instructions=? WHERE id=?`
 	).run(
 		merged.name,
 		merged.description,
@@ -85,6 +89,8 @@ export function updateEvent(id: string, patch: Partial<TrackedEvent>): TrackedEv
 		merged.isSpillover ? 1 : 0,
 		merged.retentionOverrideDays,
 		merged.lastRecapAt,
+		merged.recapStylePreset,
+		merged.recapCustomInstructions,
 		id
 	);
 	return getEvent(id);

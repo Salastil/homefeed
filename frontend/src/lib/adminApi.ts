@@ -14,7 +14,8 @@ import type {
 	AdminBookmark,
 	Poe2BrowseEntry,
 	AdminPoe2Entry,
-	PipelineStats
+	PipelineStats,
+	ModelContextInfo
 } from './adminTypes';
 
 async function request<T>(path: string, options: RequestInit = {}, fetchFn: typeof fetch = fetch): Promise<T> {
@@ -138,6 +139,9 @@ export const getModels = (fetchFn?: typeof fetch) =>
 
 export const getAiStatus = (fetchFn?: typeof fetch) =>
 	request<AiStatus>('/api/admin/ai-status', {}, fetchFn);
+
+export const getModelContext = (model: string, fetchFn?: typeof fetch) =>
+	request<ModelContextInfo>(`/api/admin/model-context?model=${encodeURIComponent(model)}`, {}, fetchFn);
 
 // Telegram account (Connections tab) — API ID/hash and the resulting login session are
 // stored encrypted at rest server-side (see backend telegram/credentials.ts); none of
