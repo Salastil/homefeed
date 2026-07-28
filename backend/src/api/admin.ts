@@ -2,11 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import * as settingsDb from '../storage/db/settings.js';
 import * as sourcesDb from '../storage/db/sources.js';
 import * as eventsDb from '../storage/db/events.js';
+import * as articlesDb from '../storage/db/articles.js';
 import * as categoriesDb from '../storage/db/categories.js';
 import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
 import { clearSourceContent, reissueSourceContent, reissueArticle, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
 import { totalStorageBytes } from '../storage/media/index.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
+import { publishEventRecap } from '../pipeline/publish.js';
 import { pollSourceNow } from '../ingestion/poller.js';
 import { logger, listLogs } from '../storage/db/logs.js';
 import * as backlogStats from '../queue/backlogStats.js';
@@ -185,6 +187,39 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const { id } = req.params as { id: string };
 		eventsDb.deleteEvent(id);
 		return reply.code(204).send();
+	});
+
+	// Forces one tracked item's recap to run right now, ignoring its recapIntervalHours
+	// cadence entirely (even if recaps are turned off for it) — for "I want a wrap-up
+	// right now" rather than waiting out the timer. Still summarizes the same real
+	// window eventsRecap.ts would (everything published since lastRecapAt, or the last
+	// 24h if it's never recapped) rather than some arbitrary admin-chosen range, and
+	// still requires that window to actually contain something — an AI call with zero
+	// source material to summarize would just hallucinate content it wasn't given.
+	app.post('/api/admin/events/:id/recap-now', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		const event = eventsDb.getEvent(id);
+		if (!event) return reply.code(404).send({ error: 'not found' });
+		if (event.sourceIds.length === 0) {
+			return { published: false, reason: 'No sources assigned to this item yet.' };
+		}
+
+		const since = event.lastRecapAt ?? new Date(Date.now() - 24 * 3600_000).toISOString();
+		const constituents = articlesDb.articlesForEventSince(event.id, since);
+		if (constituents.length === 0) {
+			return { published: false, reason: 'Nothing new published under this item since its last recap.' };
+		}
+
+		const settings = settingsDb.getSettings();
+		const provider = new OllamaProvider(settings.aiServiceHost, settings.aiServicePort);
+		try {
+			const article = await publishEventRecap(provider, settings, event, constituents);
+			eventsDb.markRecapped(event.id);
+			logger.info('events', `Manually forced recap for "${event.name}" from ${constituents.length} article(s)`);
+			return { published: true, title: article.title };
+		} catch (err) {
+			return reply.code(502).send({ error: `Recap failed: ${(err as Error).message}` });
+		}
 	});
 
 	// --- Models / AI service (fetched live from the configured Ollama host) ---
