@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { AdminTrackedEvent, AdminSource } from '$lib/adminTypes';
 	import { addEvent, updateEvent, deleteEvent } from '$lib/adminApi';
+	import CollapsibleSection from './CollapsibleSection.svelte';
 
 	let { events: initial, sources }: { events: AdminTrackedEvent[]; sources: AdminSource[] } = $props();
 	let events = $state([...initial]);
@@ -18,7 +19,9 @@
 			keywordsText: '',
 			recapIntervalHours: null as AdminTrackedEvent['recapIntervalHours'],
 			isSpillover: false,
-			retentionOverrideDays: null as number | null
+			retentionOverrideDays: null as number | null,
+			recapStylePreset: 'default' as AdminTrackedEvent['recapStylePreset'],
+			recapCustomInstructions: ''
 		};
 	}
 	let editForm = $state(emptyEditForm());
@@ -58,7 +61,9 @@
 			keywordsText: event.keywords.join(', '),
 			recapIntervalHours: event.recapIntervalHours,
 			isSpillover: event.isSpillover,
-			retentionOverrideDays: event.retentionOverrideDays
+			retentionOverrideDays: event.retentionOverrideDays,
+			recapStylePreset: event.recapStylePreset,
+			recapCustomInstructions: event.recapCustomInstructions
 		};
 	}
 
@@ -86,7 +91,9 @@
 			keywords,
 			recapIntervalHours: editForm.recapIntervalHours,
 			isSpillover: editForm.isSpillover,
-			retentionOverrideDays: editForm.retentionOverrideDays
+			retentionOverrideDays: editForm.retentionOverrideDays,
+			recapStylePreset: editForm.recapStylePreset,
+			recapCustomInstructions: editForm.recapCustomInstructions
 		});
 		events = events.map((e) => (e.id === editingId ? updated : e));
 		editingId = null;
@@ -175,6 +182,30 @@
 						it off for something you're just organizing under its own nav entry (a commit feed,
 						a torrent feed) with nothing that needs summarizing.
 					</p>
+				</div>
+
+				<div class="more-section">
+					<CollapsibleSection title="More">
+						<div class="field-label">Recap writing style</div>
+						<p class="hint">
+							Independent from the global "Writing style" in the Merge tab — that only applies to
+							regular AI-merged articles. This item's own recap uses only what's set here.
+						</p>
+						<select bind:value={editForm.recapStylePreset}>
+							<option value="default">Default (neutral, wire-service tone)</option>
+							<option value="casual">Casual</option>
+							<option value="formal">Formal</option>
+						</select>
+						<label class="field-label" for="recap-custom-instructions" style="margin-top: 10px;">
+							Additional instructions (optional)
+						</label>
+						<textarea
+							id="recap-custom-instructions"
+							rows="3"
+							placeholder={'e.g. "Focus on military developments", "Write as one continuous narrative, not a list"'}
+							bind:value={editForm.recapCustomInstructions}
+						></textarea>
+					</CollapsibleSection>
 				</div>
 
 				<label class="spillover-toggle edit-spillover">
@@ -338,6 +369,17 @@
 	}
 	.cadence-block .hint {
 		margin-top: 6px;
+	}
+	.more-section {
+		margin-top: 12px;
+	}
+	.more-section select,
+	.more-section textarea {
+		width: 100%;
+	}
+	.more-section textarea {
+		resize: vertical;
+		font: inherit;
 	}
 	.edit-spillover {
 		display: flex;

@@ -185,6 +185,10 @@ export interface TrackedEvent {
 	isSpillover: boolean;
 	retentionOverrideDays: number | null;
 	lastRecapAt: string | null;
+	/** Tone preset for this item's own recap, independent of the global Merge-tab synthesis style — see pipeline/synthesis.ts's STYLE_PRESETS. 'default' adds nothing on top of the base recap prompt. */
+	recapStylePreset: 'default' | 'casual' | 'formal';
+	/** Free-text instructions appended to the recap system prompt for this item specifically — e.g. "focus on military developments", "write as a full narrative, not bullet points". Empty string means no addendum. */
+	recapCustomInstructions: string;
 	createdAt: string;
 }
 
@@ -291,6 +295,10 @@ export interface GlobalSettings {
 	synthesisStylePreset: 'default' | 'casual' | 'formal';
 	/** Free-text instructions appended to the synthesis system prompt alongside the style preset — e.g. "keep it under 3 sentences per paragraph". Empty string means no addendum. */
 	synthesisCustomInstructions: string;
+	/** Total context window (prompt + response) requested from Ollama for every synthesis/recap/tag-extraction call — see inference/ollama-provider.ts's DEFAULT_NUM_CTX for why this is ever explicit at all, and the Models tab for the admin-facing slider (bounded by the selected synthesis model's own reported max, when Ollama exposes it). */
+	synthesisNumCtx: number;
+	/** Max tokens the model is allowed to generate per synthesis/recap call — too low silently truncates the output mid-sentence rather than erroring (this is what a "cut off" recap/article means). Recaps in particular need real headroom: they're asked to summarize many source articles into several paragraphs, unlike a same-story merge. */
+	synthesisNumPredict: number;
 	/** Per-widget enable flags — see admin/settings' consolidated "Widgets" tab. Weather/Stocks/PoE2's backend pollers (scheduler.ts) are gated on these too, not just sidebar visibility; Bookmarks has no poller so its flag only affects the sidebar. */
 	widgets: {
 		weather: boolean;

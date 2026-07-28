@@ -157,6 +157,10 @@ export interface AdminSettings {
 	telegramMediaMode: 'self-host' | 'proxy';
 	synthesisStylePreset: 'default' | 'casual' | 'formal';
 	synthesisCustomInstructions: string;
+	/** Total context window (prompt + response) requested from Ollama for every synthesis/recap/tag-extraction call. */
+	synthesisNumCtx: number;
+	/** Max tokens the model may generate per call — too low silently truncates output mid-sentence. */
+	synthesisNumPredict: number;
 	widgets: AdminWidgetsEnabled;
 	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
 	retention: RetentionSettings;
@@ -189,12 +193,21 @@ export interface AdminTrackedEvent {
 	active: boolean;
 	isSpillover: boolean;
 	retentionOverrideDays: number | null;
+	/** This item's own recap tone, independent of the global Merge-tab synthesis style. */
+	recapStylePreset: 'default' | 'casual' | 'formal';
+	/** Free-text instructions appended to this item's recap prompt specifically. */
+	recapCustomInstructions: string;
 }
 
 export interface ModelCatalog {
 	embedding: string[];
 	image: string[];
 	synthesis: string[];
+}
+
+/** Response from GET /api/admin/model-context — the selected model's own reported max context length, or null if Ollama doesn't expose it for this model/version. */
+export interface ModelContextInfo {
+	contextLength: number | null;
 }
 
 export interface AiStatus {

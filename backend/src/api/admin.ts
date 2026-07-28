@@ -208,6 +208,20 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		return { connected, host: settings.aiServiceHost, port: settings.aiServicePort, ramGB: null, gpu: null };
 	});
 
+	// Detects the selected synthesis model's own max context length (when Ollama exposes
+	// it) so the Models tab's num_ctx/num_predict sliders can be bounded by what the
+	// model actually supports, instead of an arbitrary fixed cap. contextLength is null
+	// when undetectable (older Ollama version, unusual model format, unreachable) — the
+	// frontend falls back to a generous default range in that case rather than blocking.
+	app.get('/api/admin/model-context', async (req, reply) => {
+		const { model } = req.query as { model?: string };
+		if (!model) return reply.code(400).send({ error: 'model query param required' });
+		const settings = settingsDb.getSettings();
+		const provider = new OllamaProvider(settings.aiServiceHost, settings.aiServicePort);
+		const contextLength = await provider.getModelContextLength(model);
+		return { contextLength };
+	});
+
 	// --- Telegram account (Connections tab — see telegram/client.ts and credentials.ts.
 	// API ID/hash and the resulting login session are stored encrypted at rest; none of
 	// these routes ever echo them back to the client.) ---
