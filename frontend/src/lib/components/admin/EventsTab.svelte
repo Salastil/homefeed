@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { AdminTrackedEvent, AdminSource } from '$lib/adminTypes';
-	import { addEvent, updateEvent, deleteEvent } from '$lib/adminApi';
+	import { addEvent, updateEvent, deleteEvent, forceRecap } from '$lib/adminApi';
 	import CollapsibleSection from './CollapsibleSection.svelte';
 
 	let { events: initial, sources }: { events: AdminTrackedEvent[]; sources: AdminSource[] } = $props();
@@ -25,6 +25,30 @@
 		};
 	}
 	let editForm = $state(emptyEditForm());
+
+	let recappingId = $state<string | null>(null);
+	let recapMessage = $state<{ id: string; text: string; isError: boolean } | null>(null);
+
+	// Runs this item's recap right now instead of waiting out its cadence timer — still
+	// summarizes only whatever's genuinely new since the last recap (see the backend
+	// route), so it can come back saying there was nothing to recap rather than always
+	// producing one.
+	async function handleForceRecap(id: string) {
+		recappingId = id;
+		recapMessage = null;
+		try {
+			const result = await forceRecap(id);
+			recapMessage = {
+				id,
+				text: result.published ? `Recap published: "${result.title}"` : (result.reason ?? 'Nothing to recap.'),
+				isError: false
+			};
+		} catch (err) {
+			recapMessage = { id, text: (err as Error).message, isError: true };
+		} finally {
+			recappingId = null;
+		}
+	}
 
 	async function handleAdd() {
 		if (!newEvent.name) return;
@@ -182,6 +206,17 @@
 						it off for something you're just organizing under its own nav entry (a commit feed,
 						a torrent feed) with nothing that needs summarizing.
 					</p>
+					<div class="force-recap-row">
+						<button
+							onclick={() => handleForceRecap(event.id)}
+							disabled={recappingId === event.id}
+						>
+							{recappingId === event.id ? 'Recapping…' : 'Force recap now'}
+						</button>
+						{#if recapMessage && recapMessage.id === event.id}
+							<span class="recap-message" class:error={recapMessage.isError}>{recapMessage.text}</span>
+						{/if}
+					</div>
 				</div>
 
 				<div class="more-section">
@@ -369,6 +404,24 @@
 	}
 	.cadence-block .hint {
 		margin-top: 6px;
+	}
+	.force-recap-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-top: 10px;
+		flex-wrap: wrap;
+	}
+	.force-recap-row button {
+		font-size: 12px;
+		padding: 6px 12px;
+	}
+	.recap-message {
+		font-size: 11px;
+		color: var(--text-secondary);
+	}
+	.recap-message.error {
+		color: var(--text-danger);
 	}
 	.more-section {
 		margin-top: 12px;

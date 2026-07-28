@@ -186,6 +186,15 @@ export interface AdminTrackedEvent {
 	recapCustomInstructions: string;
 }
 
+/** Response from POST /api/admin/events/:id/recap-now. */
+export interface ForceRecapResult {
+	published: boolean;
+	/** Set when published is true. */
+	title?: string;
+	/** Set when published is false — why nothing was generated (no sources assigned, nothing new since last recap). */
+	reason?: string;
+}
+
 export interface ModelCatalog {
 	embedding: string[];
 	image: string[];
