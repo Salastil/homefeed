@@ -2,15 +2,19 @@ import type { FastifyInstance } from 'fastify';
 import * as settingsDb from '../storage/db/settings.js';
 import * as sourcesDb from '../storage/db/sources.js';
 import * as eventsDb from '../storage/db/events.js';
+import * as articlesDb from '../storage/db/articles.js';
 import * as categoriesDb from '../storage/db/categories.js';
 import * as stocksDb from '../storage/db/stocks.js';
 import * as bookmarksDb from '../storage/db/bookmarks.js';
 import * as poe2WatchlistDb from '../storage/db/poe2Watchlist.js';
-import { clearSourceContent, reissueSourceContent, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
+import { clearSourceContent, reissueSourceContent, reissueArticle, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
 import { totalStorageBytes } from '../storage/media/index.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
+import { publishEventRecap } from '../pipeline/publish.js';
 import { pollSourceNow } from '../ingestion/poller.js';
 import { logger, listLogs } from '../storage/db/logs.js';
+import * as backlogStats from '../queue/backlogStats.js';
+import * as ollamaStats from '../inference/stats.js';
 import * as telegramClient from '../telegram/client.js';
 import { geocodeLocation } from '../weather/client.js';
 import { pollWeatherNow } from '../weather/poller.js';
@@ -65,9 +69,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
 	// --- Categories (add/remove — reordering/privacy is via PATCH /settings above) ---
 	app.post('/api/admin/categories', async (req, reply) => {
-		const { name, isPrivate, isSpillover } = req.body as { name?: string; isPrivate?: boolean; isSpillover?: boolean };
+		const { name, isPrivate, isSpillover, disableAi } = req.body as {
+			name?: string;
+			isPrivate?: boolean;
+			isSpillover?: boolean;
+			disableAi?: boolean;
+		};
 		if (!name || !name.trim()) return reply.code(400).send({ error: 'name required' });
-		const created = categoriesDb.createCategory(name.trim(), !!isPrivate, !!isSpillover);
+		const created = categoriesDb.createCategory(name.trim(), !!isPrivate, !!isSpillover, !!disableAi);
 		return reply.code(201).send(created);
 	});
 
@@ -144,6 +153,17 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		return reissueSourceContent(id);
 	});
 
+	// Fixes one specific bad article (e.g. a degenerate/empty AI synthesis — see
+	// synthesis.ts's assertNonEmpty) by deleting it and requeuing every item it merged,
+	// regardless of how many different sources contributed — reissueSourceContent above
+	// deliberately won't touch a multi-source article at all.
+	app.post('/api/admin/articles/:id/reissue', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		const result = reissueArticle(id);
+		if (!result) return reply.code(404).send({ error: 'not found' });
+		return result;
+	});
+
 	// --- Tracked events ---
 	app.get('/api/admin/events', async () => eventsDb.listEvents());
 
@@ -165,6 +185,39 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		return reply.code(204).send();
 	});
 
+	// Forces one tracked item's recap to run right now, ignoring its recapIntervalHours
+	// cadence entirely (even if recaps are turned off for it) — for "I want a wrap-up
+	// right now" rather than waiting out the timer. Still summarizes the same real
+	// window eventsRecap.ts would (everything published since lastRecapAt, or the last
+	// 24h if it's never recapped) rather than some arbitrary admin-chosen range, and
+	// still requires that window to actually contain something — an AI call with zero
+	// source material to summarize would just hallucinate content it wasn't given.
+	app.post('/api/admin/events/:id/recap-now', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		const event = eventsDb.getEvent(id);
+		if (!event) return reply.code(404).send({ error: 'not found' });
+		if (event.sourceIds.length === 0) {
+			return { published: false, reason: 'No sources assigned to this item yet.' };
+		}
+
+		const since = event.lastRecapAt ?? new Date(Date.now() - 24 * 3600_000).toISOString();
+		const constituents = articlesDb.articlesForEventSince(event.id, since);
+		if (constituents.length === 0) {
+			return { published: false, reason: 'Nothing new published under this item since its last recap.' };
+		}
+
+		const settings = settingsDb.getSettings();
+		const provider = new OllamaProvider(settings.aiServiceHost, settings.aiServicePort);
+		try {
+			const article = await publishEventRecap(provider, settings, event, constituents);
+			eventsDb.markRecapped(event.id);
+			logger.info('events', `Manually forced recap for "${event.name}" from ${constituents.length} article(s)`);
+			return { published: true, title: article.title };
+		} catch (err) {
+			return reply.code(502).send({ error: `Recap failed: ${(err as Error).message}` });
+		}
+	});
+
 	// --- Models / AI service (fetched live from the configured Ollama host) ---
 	app.get('/api/admin/models', async (_req, reply) => {
 		const settings = settingsDb.getSettings();
@@ -184,6 +237,20 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const provider = new OllamaProvider(settings.aiServiceHost, settings.aiServicePort);
 		const connected = await provider.isReachable();
 		return { connected, host: settings.aiServiceHost, port: settings.aiServicePort, ramGB: null, gpu: null };
+	});
+
+	// Detects the selected synthesis model's own max context length (when Ollama exposes
+	// it) so the Models tab's num_ctx/num_predict sliders can be bounded by what the
+	// model actually supports, instead of an arbitrary fixed cap. contextLength is null
+	// when undetectable (older Ollama version, unusual model format, unreachable) — the
+	// frontend falls back to a generous default range in that case rather than blocking.
+	app.get('/api/admin/model-context', async (req, reply) => {
+		const { model } = req.query as { model?: string };
+		if (!model) return reply.code(400).send({ error: 'model query param required' });
+		const settings = settingsDb.getSettings();
+		const provider = new OllamaProvider(settings.aiServiceHost, settings.aiServicePort);
+		const contextLength = await provider.getModelContextLength(model);
+		return { contextLength };
 	});
 
 	// --- Telegram account (Connections tab — see telegram/client.ts and credentials.ts.
@@ -341,5 +408,38 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 			level: level === 'info' || level === 'warn' || level === 'error' ? level : undefined,
 			limit: limit ? Number(limit) : undefined
 		});
+	});
+
+	// Backlog/throughput dashboard for the Logs tab — backlog counts are recomputed live
+	// from the DB on every request (cheap: no AI calls, see backlogStats.ts), while Ollama
+	// throughput/in-flight status comes from a rolling in-memory sample of recent
+	// generate() calls (see inference/stats.ts) since that can only be observed as calls
+	// actually happen, not recomputed on demand.
+	app.get('/api/admin/pipeline-stats', async () => {
+		const settings = settingsDb.getSettings();
+		const backlog = backlogStats.getBacklogSnapshot(settings);
+		const throughput = ollamaStats.getThroughput();
+		const inFlight = ollamaStats.getInFlight();
+		const { lastDirectCycle, lastSynthesisCycle } = backlogStats.getLastCycles();
+
+		// Estimate is deliberately conservative: only clusters that actually need an LLM
+		// call (2+ items — see backlogStats.ts) count toward it, and it's null (rather than
+		// a misleading guess) until at least one real generate() call has completed, since
+		// there's no token-speed data to estimate from yet.
+		const estimatedMinutesToClear =
+			backlog.clusters.readyNowNeedingSynthesis === 0
+				? 0
+				: throughput.avgGenerateDurationMs !== null
+					? Math.ceil((backlog.clusters.readyNowNeedingSynthesis * throughput.avgGenerateDurationMs) / 60_000)
+					: null;
+
+		return {
+			timestamp: new Date().toISOString(),
+			ollama: { inFlight, ...throughput },
+			backlog,
+			estimatedMinutesToClear,
+			lastDirectCycle,
+			lastSynthesisCycle
+		};
 	});
 }

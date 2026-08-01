@@ -81,6 +81,8 @@ export interface TrackedEventPublic {
 	name: string;
 	active: boolean;
 	recapIntervalHours: number | null;
+	/** Timestamp of the last AI recap, or null if none has run yet — used to compute "next recap" on the /event/[id] page. */
+	lastRecapAt: string | null;
 	isSpillover: boolean;
 }
 

@@ -13,7 +13,10 @@ import type {
 	AdminStockTicker,
 	AdminBookmark,
 	Poe2BrowseEntry,
-	AdminPoe2Entry
+	AdminPoe2Entry,
+	PipelineStats,
+	ModelContextInfo,
+	ForceRecapResult
 } from './adminTypes';
 
 async function request<T>(path: string, options: RequestInit = {}, fetchFn: typeof fetch = fetch): Promise<T> {
@@ -66,10 +69,16 @@ export const updateSettings = (patch: Partial<AdminSettings>, fetchFn?: typeof f
 	request<AdminSettings>('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
 
 // Categories
-export const createCategory = (name: string, isPrivate = false, isSpillover = false, fetchFn?: typeof fetch) =>
+export const createCategory = (
+	name: string,
+	isPrivate = false,
+	isSpillover = false,
+	disableAi = false,
+	fetchFn?: typeof fetch
+) =>
 	request<CategoryPriority>(
 		'/api/admin/categories',
-		{ method: 'POST', body: JSON.stringify({ name, isPrivate, isSpillover }) },
+		{ method: 'POST', body: JSON.stringify({ name, isPrivate, isSpillover, disableAi }) },
 		fetchFn
 	);
 
@@ -97,6 +106,11 @@ export const pollSourceNow = (id: string, fetchFn?: typeof fetch) =>
 export const reissueSourceContent = (id: string, fetchFn?: typeof fetch) =>
 	request<{ articlesDeleted: number; itemsRequeued: number }>(`/api/admin/sources/${id}/reissue`, { method: 'POST' }, fetchFn);
 
+// Fixes one specific bad article regardless of how many sources it merged — unlike
+// reissueSourceContent above, which deliberately won't touch a multi-source article.
+export const reissueArticle = (id: string, fetchFn?: typeof fetch) =>
+	request<{ articlesDeleted: number; itemsRequeued: number }>(`/api/admin/articles/${id}/reissue`, { method: 'POST' }, fetchFn);
+
 // Content clearing — wipe articles/media/a source's raw items so they can be repopulated fresh.
 export const clearSourceContent = (id: string, fetchFn?: typeof fetch) =>
 	request<{ itemsDeleted: number; articlesDeleted: number }>(`/api/admin/content/sources/${id}`, { method: 'DELETE' }, fetchFn);
@@ -120,12 +134,21 @@ export const updateEvent = (id: string, patch: Partial<AdminTrackedEvent>, fetch
 export const deleteEvent = (id: string, fetchFn?: typeof fetch) =>
 	request<void>(`/api/admin/events/${id}`, { method: 'DELETE' }, fetchFn);
 
+// Runs this item's recap immediately, ignoring its recapIntervalHours cadence — still
+// summarizes the same real window (everything since lastRecapAt) and still requires
+// there to actually be something new to summarize (see the backend route).
+export const forceRecap = (id: string, fetchFn?: typeof fetch) =>
+	request<ForceRecapResult>(`/api/admin/events/${id}/recap-now`, { method: 'POST' }, fetchFn);
+
 // Models / AI service
 export const getModels = (fetchFn?: typeof fetch) =>
 	request<ModelCatalog>('/api/admin/models', {}, fetchFn);
 
 export const getAiStatus = (fetchFn?: typeof fetch) =>
 	request<AiStatus>('/api/admin/ai-status', {}, fetchFn);
+
+export const getModelContext = (model: string, fetchFn?: typeof fetch) =>
+	request<ModelContextInfo>(`/api/admin/model-context?model=${encodeURIComponent(model)}`, {}, fetchFn);
 
 // Telegram account (Connections tab) — API ID/hash and the resulting login session are
 // stored encrypted at rest server-side (see backend telegram/credentials.ts); none of
@@ -169,6 +192,8 @@ export const getLogs = (filters: { level?: 'info' | 'warn' | 'error'; limit?: nu
 	const qs = new URLSearchParams(filters as Record<string, string>).toString();
 	return request<LogEntry[]>(`/api/admin/logs${qs ? `?${qs}` : ''}`, {}, fetchFn);
 };
+
+export const getPipelineStats = (fetchFn?: typeof fetch) => request<PipelineStats>('/api/admin/pipeline-stats', {}, fetchFn);
 
 // Weather — config/cache lives on AdminSettings.weather (see updateSettings above); this
 // is just the geocoding lookup used to resolve a typed city name to lat/lon.

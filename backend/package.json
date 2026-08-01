@@ -18,7 +18,8 @@
     "fastify": "^5.10.0",
     "jsdom": "^29.1.1",
     "rss-parser": "^3.13.0",
-    "telegram": "^2.26.22"
+    "telegram": "^2.26.22",
+    "undici": "^7.28.0"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.3",

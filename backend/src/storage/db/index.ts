@@ -135,6 +135,8 @@ export function migrate() {
 			is_spillover INTEGER NOT NULL DEFAULT 0,
 			retention_override_days INTEGER,
 			last_recap_at TEXT,
+			recap_style_preset TEXT NOT NULL DEFAULT 'default', -- default | casual | formal — this item's own recap tone, independent of the global Merge-tab style (see pipeline/synthesis.ts)
+			recap_custom_instructions TEXT NOT NULL DEFAULT '', -- free-text addendum for this item's recap prompt specifically
 			created_at TEXT NOT NULL
 		);
 
@@ -153,7 +155,8 @@ export function migrate() {
 			priority_rank INTEGER NOT NULL,
 			is_default INTEGER NOT NULL DEFAULT 0,
 			is_private INTEGER NOT NULL DEFAULT 0,
-			is_spillover INTEGER NOT NULL DEFAULT 0 -- collapsed into the nav's "More »" overflow page instead of its own tab
+			is_spillover INTEGER NOT NULL DEFAULT 0, -- collapsed into the nav's "More »" overflow page instead of its own tab
+			disable_ai INTEGER NOT NULL DEFAULT 0 -- skip clustering/synthesis for this category's items; publish each one directly
 		);
 
 		CREATE TABLE IF NOT EXISTS logs (
@@ -185,6 +188,10 @@ export function migrate() {
 			fxtwitter_base_url TEXT NOT NULL DEFAULT 'https://api.fxtwitter.com',
 			nitter_instance_url TEXT NOT NULL DEFAULT 'https://nitter.net', -- admin's preferred instance, prefills new Nitter sources (Connections tab)
 			telegram_media_mode TEXT NOT NULL DEFAULT 'self-host', -- self-host | proxy (no "direct" — Telegram has no public hotlinkable media URL)
+			synthesis_style_preset TEXT NOT NULL DEFAULT 'default', -- default | casual | formal — see pipeline/synthesis.ts's STYLE_PRESETS
+			synthesis_custom_instructions TEXT NOT NULL DEFAULT '', -- free-text addendum appended to the synthesis system prompt, on top of the preset
+			synthesis_num_ctx INTEGER NOT NULL DEFAULT 8192, -- admin-tunable context window (Models tab) — see inference/ollama-provider.ts's DEFAULT_NUM_CTX
+			synthesis_num_predict INTEGER NOT NULL DEFAULT 700, -- admin-tunable max response length — too low silently truncates output mid-sentence
 			widget_weather_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_stocks_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_bookmarks_enabled INTEGER NOT NULL DEFAULT 1,
@@ -321,6 +328,9 @@ export function migrate() {
 	if (!hasColumn('categories', 'is_spillover')) {
 		db.exec('ALTER TABLE categories ADD COLUMN is_spillover INTEGER NOT NULL DEFAULT 0');
 	}
+	if (!hasColumn('categories', 'disable_ai')) {
+		db.exec('ALTER TABLE categories ADD COLUMN disable_ai INTEGER NOT NULL DEFAULT 0');
+	}
 	if (!hasColumn('content_items', 'telegram_message')) {
 		db.exec('ALTER TABLE content_items ADD COLUMN telegram_message TEXT');
 	}
@@ -338,6 +348,12 @@ export function migrate() {
 	}
 	if (!hasColumn('tracked_events', 'recap_interval_hours')) {
 		db.exec('ALTER TABLE tracked_events ADD COLUMN recap_interval_hours INTEGER');
+	}
+	if (!hasColumn('tracked_events', 'recap_style_preset')) {
+		db.exec("ALTER TABLE tracked_events ADD COLUMN recap_style_preset TEXT NOT NULL DEFAULT 'default'");
+	}
+	if (!hasColumn('tracked_events', 'recap_custom_instructions')) {
+		db.exec("ALTER TABLE tracked_events ADD COLUMN recap_custom_instructions TEXT NOT NULL DEFAULT ''");
 	}
 	if (!hasColumn('merged_articles', 'is_recap')) {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN is_recap INTEGER NOT NULL DEFAULT 0');
@@ -389,6 +405,18 @@ export function migrate() {
 		defaults.forEach(([label, symbol], i) => {
 			stmt.run(`stk-${symbol.replace(/[^a-z0-9]+/gi, '-')}`, label, symbol, i + 1, new Date().toISOString());
 		});
+	}
+	if (!hasColumn('global_settings', 'synthesis_style_preset')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN synthesis_style_preset TEXT NOT NULL DEFAULT 'default'");
+	}
+	if (!hasColumn('global_settings', 'synthesis_custom_instructions')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN synthesis_custom_instructions TEXT NOT NULL DEFAULT ''");
+	}
+	if (!hasColumn('global_settings', 'synthesis_num_ctx')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN synthesis_num_ctx INTEGER NOT NULL DEFAULT 8192');
+	}
+	if (!hasColumn('global_settings', 'synthesis_num_predict')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN synthesis_num_predict INTEGER NOT NULL DEFAULT 700');
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

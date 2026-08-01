@@ -185,6 +185,10 @@ export interface TrackedEvent {
 	isSpillover: boolean;
 	retentionOverrideDays: number | null;
 	lastRecapAt: string | null;
+	/** Tone preset for this item's own recap, independent of the global Merge-tab synthesis style — see pipeline/synthesis.ts's STYLE_PRESETS. 'default' adds nothing on top of the base recap prompt. */
+	recapStylePreset: 'default' | 'casual' | 'formal';
+	/** Free-text instructions appended to the recap system prompt for this item specifically — e.g. "focus on military developments", "write as a full narrative, not bullet points". Empty string means no addendum. */
+	recapCustomInstructions: string;
 	createdAt: string;
 }
 
@@ -206,6 +210,8 @@ export interface Category {
 	isPrivate: boolean;
 	/** Grouped into the nav's "More »" overflow page instead of getting its own top-level tab — see +layout.svelte and /more. */
 	isSpillover: boolean;
+	/** Skips clustering/AI synthesis for this category's items — each one publishes directly (own article, own source's text), same as YouTube/Nitter/Telegram items always do. See priorityQueue.ts's runSynthesisCycle. */
+	disableAi: boolean;
 }
 
 export interface WeatherHourEntry {
@@ -283,6 +289,14 @@ export interface GlobalSettings {
 	nitterInstanceUrl: string;
 	/** How Telegram message media (attached photos/videos, channel avatars) is served — see pipeline/publish.ts's resolveTelegramMedia. No "direct" option: Telegram has no public hotlinkable media URL, bytes only come from the authenticated MTProto session. */
 	telegramMediaMode: 'self-host' | 'proxy';
+	/** Tone preset applied to every AI-synthesized article/recap (see pipeline/synthesis.ts's STYLE_PRESETS) — 'default' is the original neutral wire-service tone with no addendum. Never applies to single-source items, which always publish verbatim without going through the AI at all. */
+	synthesisStylePreset: 'default' | 'casual' | 'formal';
+	/** Free-text instructions appended to the synthesis system prompt alongside the style preset — e.g. "keep it under 3 sentences per paragraph". Empty string means no addendum. */
+	synthesisCustomInstructions: string;
+	/** Total context window (prompt + response) requested from Ollama for every synthesis/recap/tag-extraction call — see inference/ollama-provider.ts's DEFAULT_NUM_CTX for why this is ever explicit at all, and the Models tab for the admin-facing slider (bounded by the selected synthesis model's own reported max, when Ollama exposes it). */
+	synthesisNumCtx: number;
+	/** Max tokens the model is allowed to generate per synthesis/recap call — too low silently truncates the output mid-sentence rather than erroring (this is what a "cut off" recap/article means). Recaps in particular need real headroom: they're asked to summarize many source articles into several paragraphs, unlike a same-story merge. */
+	synthesisNumPredict: number;
 	/** Per-widget enable flags — see admin/settings' consolidated "Widgets" tab. Weather/Stocks/PoE2's backend pollers (scheduler.ts) are gated on these too, not just sidebar visibility; Bookmarks has no poller so its flag only affects the sidebar. */
 	widgets: {
 		weather: boolean;

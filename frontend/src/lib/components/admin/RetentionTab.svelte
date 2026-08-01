@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { AdminSettings } from '$lib/adminTypes';
-	import { updateSettings, clearAllArticles, clearAllMedia } from '$lib/adminApi';
+	import { updateSettings, clearAllArticles, clearAllMedia, reissueArticle } from '$lib/adminApi';
 	import SaveStatus from './SaveStatus.svelte';
 
 	let { settings }: { settings: AdminSettings } = $props();
@@ -10,6 +10,11 @@
 	let saveTimer: ReturnType<typeof setTimeout>;
 	let clearing = $state<'articles' | 'media' | null>(null);
 	let clearResult = $state<string | null>(null);
+
+	let reissueArticleId = $state('');
+	let reissuing = $state(false);
+	let reissueResult = $state<string | null>(null);
+	let reissueError = $state<string | null>(null);
 
 	let telegramMediaMode = $state(settings.telegramMediaMode);
 	let telegramMediaStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -57,6 +62,23 @@
 			clearResult = `${deleted} media file(s) deleted`;
 		} finally {
 			clearing = null;
+		}
+	}
+
+	async function handleReissueArticle() {
+		const id = reissueArticleId.trim();
+		if (!id) return;
+		reissuing = true;
+		reissueResult = null;
+		reissueError = null;
+		try {
+			const { itemsRequeued } = await reissueArticle(id);
+			reissueResult = `Deleted — ${itemsRequeued} source item(s) requeued for re-publish`;
+			reissueArticleId = '';
+		} catch (err) {
+			reissueError = /\(404\)/.test((err as Error).message) ? 'No article with that ID' : (err as Error).message;
+		} finally {
+			reissuing = false;
 		}
 	}
 
@@ -216,6 +238,39 @@
 	</div>
 </div>
 
+<div class="panel">
+	<span class="panel-title">Reissue an article</span>
+	<p class="hint">
+		Deletes one specific published article and requeues every source item it was built from, so
+		they re-cluster and re-synthesize fresh on the next scheduler tick — for fixing a single bad
+		publish (e.g. a garbled AI merge) without wiping anything else. Unlike a source's own "Clear
+		content" action, this works regardless of how many different sources the article merged
+		together. Find the article ID in its URL or via <code>GET /api/article/:id</code>.
+	</p>
+	<div class="clear-row">
+		<input
+			type="text"
+			placeholder="art-…"
+			bind:value={reissueArticleId}
+			onkeydown={(e) => e.key === 'Enter' && handleReissueArticle()}
+			style="flex: 1; min-width: 220px"
+		/>
+		<button
+			class="danger-btn"
+			onclick={handleReissueArticle}
+			disabled={reissuing || !reissueArticleId.trim()}
+		>
+			{reissuing ? 'Reissuing…' : 'Reissue'}
+		</button>
+		{#if reissueResult}
+			<span class="usage-label">{reissueResult}</span>
+		{/if}
+		{#if reissueError}
+			<span class="error-label">{reissueError}</span>
+		{/if}
+	</div>
+</div>
+
 <style>
 	.panel {
 		background: var(--surface-1);
@@ -275,6 +330,10 @@
 	.usage-label {
 		font-size: 12px;
 		color: var(--text-muted);
+	}
+	.error-label {
+		font-size: 12px;
+		color: var(--text-danger);
 	}
 	.bar {
 		width: 100%;

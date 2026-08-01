@@ -13,6 +13,7 @@
 	let newCategoryName = $state('');
 	let newCategoryPrivate = $state(false);
 	let newCategorySpillover = $state(false);
+	let newCategoryDisableAi = $state(false);
 	let addingCategory = $state(false);
 
 	// Advisory only — the nav starts getting too wide / wrapping past ~10 tabs, so this
@@ -33,7 +34,9 @@
 					followUpMinNewSources: local.followUpMinNewSources,
 					tagDedupThreshold: local.tagDedupThreshold,
 					tagExpiryDays: local.tagExpiryDays,
-					categoryPriority: local.categoryPriority
+					categoryPriority: local.categoryPriority,
+					synthesisStylePreset: local.synthesisStylePreset,
+					synthesisCustomInstructions: local.synthesisCustomInstructions
 				});
 				status = 'saved';
 				setTimeout(() => (status = 'idle'), 1500);
@@ -48,11 +51,12 @@
 		if (!name) return;
 		addingCategory = true;
 		try {
-			const created = await createCategory(name, newCategoryPrivate, newCategorySpillover);
+			const created = await createCategory(name, newCategoryPrivate, newCategorySpillover, newCategoryDisableAi);
 			local.categoryPriority = [...local.categoryPriority, created];
 			newCategoryName = '';
 			newCategoryPrivate = false;
 			newCategorySpillover = false;
+			newCategoryDisableAi = false;
 		} finally {
 			addingCategory = false;
 		}
@@ -65,6 +69,11 @@
 
 	function toggleSpillover(id: string) {
 		local.categoryPriority = local.categoryPriority.map((c) => (c.id === id ? { ...c, isSpillover: !c.isSpillover } : c));
+		scheduleSave();
+	}
+
+	function toggleDisableAi(id: string) {
+		local.categoryPriority = local.categoryPriority.map((c) => (c.id === id ? { ...c, disableAi: !c.disableAi } : c));
 		scheduleSave();
 	}
 
@@ -98,7 +107,9 @@
 		private category (and everything in it) is hidden from the public site until a visitor
 		logs in with the lock icon in the masthead. A "More" category is collapsed into a single
 		"More »" nav tab instead of getting its own, and shows up on that overflow page with its
-		latest few articles.
+		latest few articles. "No AI" skips clustering and synthesis for that category — each item
+		publishes on its own, using its own source's text, instead of being merged/rewritten by the
+		model.
 	</p>
 	{#if primaryCategoryCount > 10}
 		<p class="hint warn">
@@ -119,6 +130,10 @@
 					<label class="private-toggle">
 						<input type="checkbox" checked={cat.isSpillover} onchange={() => toggleSpillover(cat.id)} />
 						More
+					</label>
+					<label class="private-toggle">
+						<input type="checkbox" checked={cat.disableAi} onchange={() => toggleDisableAi(cat.id)} />
+						No AI
 					</label>
 				{/if}
 				<button class="icon-btn" onclick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">▲</button>
@@ -150,6 +165,10 @@
 		<label class="private-toggle">
 			<input type="checkbox" bind:checked={newCategorySpillover} />
 			More
+		</label>
+		<label class="private-toggle">
+			<input type="checkbox" bind:checked={newCategoryDisableAi} />
+			No AI
 		</label>
 		<button onclick={addCategory} disabled={addingCategory || !newCategoryName.trim()}>
 			{addingCategory ? 'Adding…' : '+ Add'}
@@ -183,11 +202,37 @@
 </div>
 
 <div class="panel">
+	<span class="panel-title">Writing style</span>
+	<p class="hint">
+		Applies to AI-merged articles only — a story with just one source publishes with its
+		original text untouched, no AI involved. Event recaps have their own independent writing
+		style, set per tracked item under Tracked items → Edit → More.
+	</p>
+	<select bind:value={local.synthesisStylePreset} onchange={scheduleSave}>
+		<option value="default">Default (neutral, wire-service tone)</option>
+		<option value="casual">Casual</option>
+		<option value="formal">Formal</option>
+	</select>
+	<label class="field-label" for="custom-instructions" style="margin-top: 10px;">
+		Additional instructions (optional)
+	</label>
+	<textarea
+		id="custom-instructions"
+		rows="3"
+		placeholder={'e.g. "Keep paragraphs under 3 sentences", "Never use the word notably"'}
+		bind:value={local.synthesisCustomInstructions}
+		oninput={scheduleSave}
+	></textarea>
+</div>
+
+<div class="panel">
 	<span class="panel-title">Hold before publish</span>
 	<p class="hint">Wait window to gather more sources before finalizing a story.</p>
 	<select bind:value={local.holdBeforePublishMinutes} onchange={scheduleSave}>
 		<option value={0}>Publish immediately</option>
+		<option value={15}>Wait 15 minutes</option>
 		<option value={30}>Wait 30 minutes</option>
+		<option value={60}>Wait 1 hour</option>
 		<option value={120}>Wait 2 hours</option>
 	</select>
 </div>
@@ -308,6 +353,12 @@
 	}
 	select {
 		width: 100%;
+	}
+	textarea {
+		width: 100%;
+		margin-top: 6px;
+		font: inherit;
+		resize: vertical;
 	}
 	.priority-list {
 		display: flex;

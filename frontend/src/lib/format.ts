@@ -1,3 +1,15 @@
+/** Inverse of timeAgo — "in 3h", "in 45m" for a future timestamp; "any moment now" once it's passed. */
+export function timeUntil(iso: string): string {
+	const diffMs = new Date(iso).getTime() - Date.now();
+	if (diffMs <= 0) return 'any moment now';
+	const mins = Math.round(diffMs / 60000);
+	if (mins < 60) return `in ${mins}m`;
+	const hours = Math.round(mins / 60);
+	if (hours < 24) return `in ${hours}h`;
+	const days = Math.round(hours / 24);
+	return `in ${days}d`;
+}
+
 export function timeAgo(iso: string): string {
 	const diffMs = Date.now() - new Date(iso).getTime();
 	const mins = Math.round(diffMs / 60000);

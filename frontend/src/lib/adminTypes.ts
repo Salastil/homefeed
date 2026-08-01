@@ -14,6 +14,7 @@ export interface CategoryPriority {
 	isDefault: boolean;
 	isPrivate: boolean;
 	isSpillover: boolean;
+	disableAi: boolean;
 }
 
 export interface WeatherHourEntry {
@@ -139,6 +140,12 @@ export interface AdminSettings {
 	fxtwitterBaseUrl: string;
 	nitterInstanceUrl: string;
 	telegramMediaMode: 'self-host' | 'proxy';
+	synthesisStylePreset: 'default' | 'casual' | 'formal';
+	synthesisCustomInstructions: string;
+	/** Total context window (prompt + response) requested from Ollama for every synthesis/recap/tag-extraction call. */
+	synthesisNumCtx: number;
+	/** Max tokens the model may generate per call — too low silently truncates output mid-sentence. */
+	synthesisNumPredict: number;
 	widgets: AdminWidgetsEnabled;
 	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
 	retention: RetentionSettings;
@@ -173,12 +180,30 @@ export interface AdminTrackedEvent {
 	active: boolean;
 	isSpillover: boolean;
 	retentionOverrideDays: number | null;
+	/** This item's own recap tone, independent of the global Merge-tab synthesis style. */
+	recapStylePreset: 'default' | 'casual' | 'formal';
+	/** Free-text instructions appended to this item's recap prompt specifically. */
+	recapCustomInstructions: string;
+}
+
+/** Response from POST /api/admin/events/:id/recap-now. */
+export interface ForceRecapResult {
+	published: boolean;
+	/** Set when published is true. */
+	title?: string;
+	/** Set when published is false — why nothing was generated (no sources assigned, nothing new since last recap). */
+	reason?: string;
 }
 
 export interface ModelCatalog {
 	embedding: string[];
 	image: string[];
 	synthesis: string[];
+}
+
+/** Response from GET /api/admin/model-context — the selected model's own reported max context length, or null if Ollama doesn't expose it for this model/version. */
+export interface ModelContextInfo {
+	contextLength: number | null;
 }
 
 export interface AiStatus {
@@ -193,6 +218,33 @@ export interface TelegramStatus {
 	credentialsConfigured: boolean;
 	connected: boolean;
 	phone: string | null;
+}
+
+export interface PipelineStats {
+	timestamp: string;
+	ollama: {
+		inFlight: { label: string; elapsedMs: number } | null;
+		sampleCount: number;
+		avgGenTokensPerSec: number | null;
+		avgPromptTokensPerSec: number | null;
+		avgGenerateDurationMs: number | null;
+	};
+	backlog: {
+		totalUnclusteredItems: number;
+		directEligibleItems: number;
+		awaitingEmbeddingItems: number;
+		clusters: {
+			total: number;
+			readyNow: number;
+			readyNowNeedingSynthesis: number;
+			onHold: number;
+			itemsOnHold: number;
+			earliestHoldRemainingMs: number | null;
+		};
+	};
+	estimatedMinutesToClear: number | null;
+	lastDirectCycle: { at: string; published: number } | null;
+	lastSynthesisCycle: { at: string; published: number } | null;
 }
 
 export interface LogEntry {
