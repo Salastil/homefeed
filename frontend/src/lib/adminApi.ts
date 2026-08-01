@@ -12,6 +12,7 @@ import type {
 	GeocodeResult,
 	AdminStockTicker,
 	AdminBookmark,
+	AdminBookmarksConfig,
 	Poe2BrowseEntry,
 	AdminPoe2Entry,
 	AdminWeatherSettings,
@@ -238,6 +239,16 @@ export const updateBookmark = (id: string, patch: { name?: string; url?: string;
 
 export const deleteBookmark = (id: string, fetchFn?: typeof fetch) =>
 	request<void>(`/api/admin/widget/bookmarks/${id}`, { method: 'DELETE' }, fetchFn);
+
+export const getBookmarksConfig = (fetchFn?: typeof fetch) =>
+	request<AdminBookmarksConfig>('/api/admin/widget/bookmarks/config', {}, fetchFn);
+
+export const updateBookmarksConfig = (columns: 1 | 2 | 3, fetchFn?: typeof fetch) =>
+	request<AdminBookmarksConfig>(
+		'/api/admin/widget/bookmarks/config',
+		{ method: 'PATCH', body: JSON.stringify({ columns }) },
+		fetchFn
+	);
 
 // PoE2 — league is always auto-detected, never admin-set (see widgets/poe2/poll.ts).
 export const browsePoe2Currencies = (fetchFn?: typeof fetch) =>

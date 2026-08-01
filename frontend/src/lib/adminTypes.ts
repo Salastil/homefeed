@@ -95,6 +95,11 @@ export interface AdminBookmark {
 	isPrivate: boolean;
 }
 
+/** Response from GET/PATCH /api/admin/widget/bookmarks/config — how many columns the sidebar/widget layout uses. */
+export interface AdminBookmarksConfig {
+	columns: 1 | 2 | 3;
+}
+
 export interface Poe2BrowseEntry {
 	id: string;
 	name: string;

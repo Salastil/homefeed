@@ -48,6 +48,7 @@
 			settings={data.settings}
 			stockTickers={data.stockTickers}
 			bookmarks={data.bookmarks}
+			bookmarksConfig={data.bookmarksConfig}
 			poe2Watchlist={data.poe2Watchlist}
 			weatherConfig={data.weatherConfig}
 			poe2={data.poe2}

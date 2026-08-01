@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db } from '../../storage/db/index.js';
+import { getKv, setKv } from '../../storage/db/widgetKv.js';
 import type { Bookmark } from '../../storage/db/types.js';
 
 function rowToBookmark(row: any): Bookmark {
@@ -43,4 +44,15 @@ export function updateBookmark(id: string, patch: { name?: string; url?: string;
 
 export function deleteBookmark(id: string) {
 	db.prepare('DELETE FROM widget_bookmarks_items WHERE id = ?').run(id);
+}
+
+// How many columns the sidebar/admin panel lays the bookmark list out in — stored in
+// widget_kv rather than a bespoke table since it's a single scalar, same idiom as weather's
+// config (see widgets/weather/db.ts).
+export function getColumns(): 1 | 2 | 3 {
+	return getKv<{ columns: 1 | 2 | 3 }>('bookmarks', 'config')?.columns ?? 1;
+}
+
+export function setColumns(columns: 1 | 2 | 3) {
+	setKv('bookmarks', 'config', { columns });
 }

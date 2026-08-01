@@ -3,6 +3,7 @@
 		AdminSettings,
 		AdminStockTicker,
 		AdminBookmark,
+		AdminBookmarksConfig,
 		AdminPoe2Entry,
 		AdminWeatherSettings,
 		InstalledWidget,
@@ -20,6 +21,7 @@
 		settings,
 		stockTickers,
 		bookmarks,
+		bookmarksConfig,
 		poe2Watchlist,
 		weatherConfig,
 		poe2,
@@ -28,6 +30,7 @@
 		settings: AdminSettings;
 		stockTickers: AdminStockTicker[];
 		bookmarks: AdminBookmark[];
+		bookmarksConfig: AdminBookmarksConfig;
 		poe2Watchlist: AdminPoe2Entry[];
 		weatherConfig: AdminWeatherSettings;
 		poe2: Poe2Data;
@@ -138,7 +141,7 @@
 		{:else if key === 'stocks'}
 			<StocksTab tickers={stockTickers} />
 		{:else if key === 'bookmarks'}
-			<BookmarksTab {bookmarks} />
+			<BookmarksTab {bookmarks} config={bookmarksConfig} />
 		{:else if key === 'poe2'}
 			<Poe2Tab {poe2} watchlist={poe2Watchlist} />
 		{/if}
