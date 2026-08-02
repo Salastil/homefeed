@@ -61,7 +61,7 @@
 		{:else if key === 'stocks'}
 			<StocksTab tickers={stockTickers} />
 		{:else if key === 'bookmarks'}
-			<BookmarksTab {bookmarks} />
+			<BookmarksTab {bookmarks} columns={settings.bookmarksColumns} />
 		{:else if key === 'poe2'}
 			<Poe2Tab {settings} watchlist={poe2Watchlist} />
 		{/if}

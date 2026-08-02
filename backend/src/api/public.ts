@@ -91,8 +91,8 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 
 	app.get('/api/bookmarks', async (req) => {
 		const bookmarks = bookmarksDb.listBookmarks();
-		if (hasPrivateAccess(req)) return bookmarks;
-		return bookmarks.filter((b) => !b.isPrivate);
+		const items = hasPrivateAccess(req) ? bookmarks : bookmarks.filter((b) => !b.isPrivate);
+		return { items, columns: settingsDb.getSettings().bookmarksColumns };
 	});
 
 	app.get('/api/poe2', async () => {

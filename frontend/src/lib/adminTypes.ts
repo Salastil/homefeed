@@ -148,6 +148,8 @@ export interface AdminSettings {
 	synthesisNumPredict: number;
 	widgets: AdminWidgetsEnabled;
 	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
+	/** How many columns the bookmark list lays out in, both in the sidebar and the admin panel. */
+	bookmarksColumns: 1 | 2 | 3;
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
 	weather: AdminWeatherSettings;

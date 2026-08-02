@@ -27,6 +27,7 @@ function rowToSettings(row: any): GlobalSettings {
 			poe2: !!row.widget_poe2_enabled
 		},
 		widgetOrder: JSON.parse(row.widget_order),
+		bookmarksColumns: row.bookmarks_columns,
 		retention: {
 			publishedArticleMaxAgeDays: row.published_article_max_age_days,
 			rawItemMaxAgeDays: row.raw_item_max_age_days,
@@ -88,7 +89,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			synthesis_num_ctx=$synthesis_num_ctx, synthesis_num_predict=$synthesis_num_predict,
 			widget_weather_enabled=$widget_weather_enabled, widget_stocks_enabled=$widget_stocks_enabled,
 			widget_bookmarks_enabled=$widget_bookmarks_enabled, widget_poe2_enabled=$widget_poe2_enabled,
-			widget_order=$widget_order,
+			widget_order=$widget_order, bookmarks_columns=$bookmarks_columns,
 			published_article_max_age_days=$published_article_max_age_days, raw_item_max_age_days=$raw_item_max_age_days,
 			storage_cap_enabled=$storage_cap_enabled, storage_cap_value=$storage_cap_value, storage_cap_unit=$storage_cap_unit,
 			weather_location_name=$weather_location_name, weather_latitude=$weather_latitude, weather_longitude=$weather_longitude,
@@ -120,6 +121,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		$widget_bookmarks_enabled: merged.widgets.bookmarks ? 1 : 0,
 		$widget_poe2_enabled: merged.widgets.poe2 ? 1 : 0,
 		$widget_order: JSON.stringify(merged.widgetOrder),
+		$bookmarks_columns: merged.bookmarksColumns,
 		$published_article_max_age_days: merged.retention.publishedArticleMaxAgeDays,
 		$raw_item_max_age_days: merged.retention.rawItemMaxAgeDays,
 		$storage_cap_enabled: merged.retention.storageCapEnabled ? 1 : 0,

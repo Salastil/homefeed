@@ -1,13 +1,13 @@
 <script lang="ts">
 	import type { Bookmark } from '$lib/types';
 
-	let { bookmarks }: { bookmarks: Bookmark[] } = $props();
+	let { bookmarks, columns = 1 }: { bookmarks: Bookmark[]; columns?: 1 | 2 | 3 } = $props();
 </script>
 
 <div class="widget">
 	<span class="title">Bookmarks</span>
 	{#if bookmarks.length > 0}
-		<div class="list">
+		<div class="list" class:grid={columns > 1} style:grid-template-columns={columns > 1 ? `repeat(${columns}, 1fr)` : undefined}>
 			{#each bookmarks as bookmark (bookmark.id)}
 				<a class="row" href={bookmark.url} target="_blank" rel="noopener noreferrer">{bookmark.name}</a>
 			{/each}
@@ -33,6 +33,10 @@
 		flex-direction: column;
 		margin-top: 8px;
 	}
+	.list.grid {
+		display: grid;
+		gap: 6px;
+	}
 	.row {
 		font-size: 13px;
 		padding: 6px 0;
@@ -41,6 +45,15 @@
 	}
 	.row:first-child {
 		border-top: none;
+	}
+	.list.grid .row {
+		border-top: none;
+		padding: 6px 8px;
+		background: var(--surface-2);
+		border-radius: var(--radius);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.row:hover {
 		color: var(--text-accent);

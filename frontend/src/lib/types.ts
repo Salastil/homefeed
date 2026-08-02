@@ -159,6 +159,12 @@ export interface Bookmark {
 	isPrivate: boolean;
 }
 
+/** Response from GET /api/bookmarks — items plus the admin-configured sidebar layout width. */
+export interface BookmarksFeed {
+	items: Bookmark[];
+	columns: 1 | 2 | 3;
+}
+
 export interface Poe2WatchlistEntry {
 	id: string;
 	baseName: string;
