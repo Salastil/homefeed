@@ -1,5 +1,5 @@
 import { getBackendUrl } from './config';
-import type { MergedArticle, Tag, TrackedEventPublic, Category, Weather, StockTicker, Bookmark, Poe2Data, WidgetsEnabled } from './types';
+import type { MergedArticle, Tag, TrackedEventPublic, Category, Weather, StockTicker, BookmarksFeed, Poe2Data, WidgetsEnabled } from './types';
 
 async function get<T>(path: string, fetchFn: typeof fetch = fetch): Promise<T> {
 	// credentials: 'include' so the private-access cookie (see lib/privateAccess.ts)
@@ -47,19 +47,19 @@ export function getCategories(fetchFn?: typeof fetch): Promise<Category[]> {
 }
 
 export function getWeather(fetchFn?: typeof fetch): Promise<Weather> {
-	return get<Weather>('/api/weather', fetchFn);
+	return get<Weather>('/api/widget/weather', fetchFn);
 }
 
 export function getStocks(fetchFn?: typeof fetch): Promise<StockTicker[]> {
-	return get<StockTicker[]>('/api/stocks', fetchFn);
+	return get<StockTicker[]>('/api/widget/stocks', fetchFn);
 }
 
-export function getBookmarks(fetchFn?: typeof fetch): Promise<Bookmark[]> {
-	return get<Bookmark[]>('/api/bookmarks', fetchFn);
+export function getBookmarks(fetchFn?: typeof fetch): Promise<BookmarksFeed> {
+	return get<BookmarksFeed>('/api/widget/bookmarks', fetchFn);
 }
 
 export function getPoe2(fetchFn?: typeof fetch): Promise<Poe2Data> {
-	return get<Poe2Data>('/api/poe2', fetchFn);
+	return get<Poe2Data>('/api/widget/poe2', fetchFn);
 }
 
 export function getWidgetsEnabled(fetchFn?: typeof fetch): Promise<WidgetsEnabled> {

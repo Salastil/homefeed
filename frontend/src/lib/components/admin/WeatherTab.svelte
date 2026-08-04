@@ -1,12 +1,12 @@
 <script lang="ts">
-	import type { AdminSettings } from '$lib/adminTypes';
-	import { updateSettings, geocodeLocation } from '$lib/adminApi';
+	import type { AdminWeatherSettings } from '$lib/adminTypes';
+	import { updateWeatherConfig, geocodeLocation } from '$lib/adminApi';
 	import { timeAgo } from '$lib/format';
 	import SaveStatus from './SaveStatus.svelte';
 
-	let { settings }: { settings: AdminSettings } = $props();
+	let { config }: { config: AdminWeatherSettings } = $props();
 
-	let weather = $state({ ...settings.weather });
+	let weather = $state({ ...config });
 	let status = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
 	let saveTimer: ReturnType<typeof setTimeout>;
 
@@ -20,7 +20,14 @@
 		clearTimeout(saveTimer);
 		saveTimer = setTimeout(async () => {
 			try {
-				await updateSettings({ weather });
+				weather = await updateWeatherConfig({
+					locationName: weather.locationName,
+					latitude: weather.latitude,
+					longitude: weather.longitude,
+					unit: weather.unit,
+					windUnit: weather.windUnit,
+					pressureUnit: weather.pressureUnit
+				});
 				status = 'saved';
 				setTimeout(() => (status = 'idle'), 1500);
 			} catch {

@@ -1,11 +1,11 @@
-import * as stocksDb from '../storage/db/stocks.js';
-import { logger } from '../storage/db/logs.js';
+import * as stocksDb from './db.js';
+import { logger } from '../../storage/db/logs.js';
 import { fetchQuotes } from './client.js';
 
-// Called on a schedule (see queue/scheduler.ts) and immediately after the admin adds a
-// ticker (see api/admin.ts) — one request per configured ticker (see client.ts for why
-// there's no batch endpoint here). A symbol Yahoo can't resolve gets its own lastError,
-// it never aborts the rest of the batch.
+// Called on a schedule (see queue/scheduler.ts, via plugin.poll) and immediately after the
+// admin adds a ticker (see plugin.ts's admin routes) — one request per configured ticker
+// (see client.ts for why there's no batch endpoint here). A symbol Yahoo can't resolve
+// gets its own lastError, it never aborts the rest of the batch.
 export async function pollStocksNow(): Promise<void> {
 	const tickers = stocksDb.listStockTickers();
 	if (tickers.length === 0) return;

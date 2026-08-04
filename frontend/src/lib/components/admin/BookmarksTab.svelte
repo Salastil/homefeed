@@ -1,11 +1,19 @@
 <script lang="ts">
-	import type { AdminBookmark } from '$lib/adminTypes';
-	import { addBookmark, updateBookmark, deleteBookmark } from '$lib/adminApi';
+	import type { AdminBookmark, AdminBookmarksConfig } from '$lib/adminTypes';
+	import { addBookmark, updateBookmark, deleteBookmark, updateBookmarksConfig } from '$lib/adminApi';
 
-	let { bookmarks: initial }: { bookmarks: AdminBookmark[] } = $props();
+	let { bookmarks: initial, config }: { bookmarks: AdminBookmark[]; config: AdminBookmarksConfig } = $props();
 	let bookmarks = $state([...initial]);
+	let columns = $state(config.columns);
 	let showAdd = $state(false);
 	let newBookmark = $state({ name: '', url: '', isPrivate: false });
+
+	async function setColumns(n: 1 | 2 | 3) {
+		columns = n;
+		await updateBookmarksConfig(n);
+	}
+
+	const columnOptions: (1 | 2 | 3)[] = [1, 2, 3];
 
 	let editingId = $state<string | null>(null);
 	let editForm = $state({ name: '', url: '' });
@@ -47,6 +55,14 @@
 
 <div class="toolbar">
 	<span class="count">{bookmarks.length} bookmarks</span>
+	<div class="columns-picker">
+		<span class="field-label">Columns</span>
+		<div class="pill-row">
+			{#each columnOptions as n}
+				<button class="pill" class:active={columns === n} onclick={() => setColumns(n)}>{n}</button>
+			{/each}
+		</div>
+	</div>
 	<button class="add-btn" onclick={() => (showAdd = !showAdd)}>+ New bookmark</button>
 </div>
 
@@ -102,11 +118,39 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: 12px;
+		flex-wrap: wrap;
 		margin-bottom: 12px;
 	}
 	.count {
 		font-size: 12px;
 		color: var(--text-muted);
+	}
+	.columns-picker {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.field-label {
+		font-size: 11px;
+		color: var(--text-muted);
+	}
+	.pill-row {
+		display: flex;
+		gap: 6px;
+	}
+	.pill {
+		font-size: 12px;
+		padding: 4px 10px;
+		border-radius: var(--radius);
+		border: 0.5px solid var(--border);
+		background: var(--surface-2);
+		color: var(--text-secondary);
+	}
+	.pill.active {
+		background: var(--pill-bg);
+		color: var(--pill-text);
+		border-color: var(--pill-bg);
 	}
 	.add-btn {
 		font-size: 12px;

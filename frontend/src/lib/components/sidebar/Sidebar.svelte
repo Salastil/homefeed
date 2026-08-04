@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import type { Weather, StockTicker, Bookmark, Poe2Data, WidgetsEnabled } from '$lib/types';
+	import type { Weather, StockTicker, BookmarksFeed, Poe2Data, WidgetsEnabled } from '$lib/types';
 	import WeatherWidget from './WeatherWidget.svelte';
 	import StocksWidget from './StocksWidget.svelte';
 	import BookmarksWidget from './BookmarksWidget.svelte';
 	import Poe2Widget from './Poe2Widget.svelte';
+	import GenericWidgetCard from './GenericWidgetCard.svelte';
+	import DynamicWidgetSlot from './DynamicWidgetSlot.svelte';
 
 	let {
 		weather,
@@ -15,7 +17,7 @@
 	}: {
 		weather: Weather;
 		stocks: StockTicker[];
-		bookmarks: Bookmark[];
+		bookmarks: BookmarksFeed;
 		poe2: Poe2Data;
 		widgetsEnabled: WidgetsEnabled;
 	} = $props();
@@ -98,7 +100,14 @@
 				{:else if key === 'poe2' && widgetsEnabled.poe2}
 					<Poe2Widget {poe2} />
 				{:else if key === 'bookmarks' && widgetsEnabled.bookmarks}
-					<BookmarksWidget {bookmarks} />
+					<BookmarksWidget bookmarks={bookmarks.items} columns={bookmarks.columns} />
+				{/if}
+			{/each}
+			{#each widgetsEnabled.pluggable as w (w.id)}
+				{#if w.frontendEntry}
+					<DynamicWidgetSlot id={w.id} displayName={w.displayName} frontendEntry={w.frontendEntry} />
+				{:else}
+					<GenericWidgetCard id={w.id} displayName={w.displayName} />
 				{/if}
 			{/each}
 		</div>
