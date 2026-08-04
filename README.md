@@ -70,11 +70,56 @@ Timestamps are generated relative to `Date.now()` (see `hoursAgo()` in `data.js`
 
 The frontend never hardcodes `localhost:4000` — see `frontend/src/lib/config.ts`. It reads `VITE_BACKEND_URL` (set in `frontend/.env`) or a value saved via `setBackendUrl()`. Pointing this project at the real backend instead of the mock is a one-line change, not a rewrite — swap the URL in `.env` and everything else keeps working, since both servers implement the same `/api/feed`, `/api/article/:id`, `/api/tags`, `/api/events` contract from `homefeed-data-schema.md`.
 
+## Docker
+
+`docker-compose.yml` builds and runs the real backend and the frontend as two
+separate containers (the mock backend isn't included — it's a dev-only
+convenience, not meant to be deployed).
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Open http://localhost:3000. The backend's admin API key prints to its container
+log on every start (`docker compose logs backend`) — same as running it directly,
+just a fresh one each time the container restarts.
+
+`.env.example` documents every variable `docker-compose.yml` reads; the two that
+matter most:
+
+- **`PUBLIC_ORIGIN`** — the one URL everything treats as "where this site is."
+  Feeds both the backend's `FRONTEND_ORIGIN` (CORS) and the frontend's `ORIGIN`
+  (adapter-node) — see the reverse-proxy section above for why these two must
+  match exactly. Defaults to `http://localhost:3000` for local testing.
+- **`VITE_BACKEND_URL`** — baked into the frontend image at *build* time (same
+  build-time-vs-runtime distinction as the non-Docker deployment below), so
+  changing it needs `docker compose build frontend`, not just a restart or
+  `up`. The frontend container runs with `network_mode: service:backend` (shares
+  the backend container's network namespace rather than getting its own)
+  specifically so `http://localhost:4000` correctly reaches the backend from
+  *both* the visitor's browser and the frontend container's own
+  server-rendered (SSR) requests on a page's first load — no single URL value
+  would otherwise work for both. Don't remove that `network_mode` line without
+  replacing it with something that solves the same problem (a reverse proxy
+  routing by path, as below, is the standard fix).
+
+For a real deployment, put both containers behind a reverse proxy exactly as
+described in the next section (`FRONTEND_PORT`/`BACKEND_PORT`'s published ports
+are what you'd point the proxy at), and set `PUBLIC_ORIGIN`/`VITE_BACKEND_URL` to
+your public domain instead of `localhost`.
+
+The backend's SQLite DB, downloaded media, and uploaded widgets all persist in
+the `backend-data` named volume — `docker compose down` alone doesn't touch it;
+add `-v` if you actually want to wipe it. Once running, point the admin panel's
+AI Service host (Connections tab) at your Ollama instance — if Ollama runs on
+the same machine outside Docker, use `http://host.docker.internal:11434`, not
+`localhost` (which inside the container means the container itself).
+
 ## Deploying behind a reverse proxy (e.g. Nginx Proxy Manager)
 
-Both apps are meant to run as plain, long-lived Node processes on your own host —
-there's no platform-specific adapter or container packaging here, just two servers
-you point a reverse proxy at.
+Both apps can also run as plain, long-lived Node processes on your own host
+without Docker at all — two servers you point a reverse proxy at.
 
 This assumes **one public domain**, with the reverse proxy routing by path:
 everything under `/api/` and `/media/` goes to the backend, everything else goes to

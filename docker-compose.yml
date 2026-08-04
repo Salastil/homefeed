@@ -1,0 +1,72 @@
+services:
+  # Ingestion, clustering, synthesis, and the public/admin API. SQLite DB, downloaded
+  # media, and uploaded widgets all persist in the backend-data volume.
+  backend:
+    build:
+      context: ./backend
+    environment:
+      PORT: "4000"
+      # Must exactly match ORIGIN below — see backend/README.md / root README.md
+      # "Deploying behind a reverse proxy" for why a mismatch breaks every request
+      # with a CORS error.
+      FRONTEND_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      DB_PATH: /app/data/homefeed.db
+      MEDIA_DIR: /app/data/media
+      WIDGETS_INSTALLED_DIR: /app/data/widgets-installed
+      NODE_ENV: production
+      PRIVATE_ACCESS_PASSWORD: ${PRIVATE_ACCESS_PASSWORD:-}
+    volumes:
+      - backend-data:/app/data
+    ports:
+      # Both containers' ports are published here, not on frontend — see the
+      # network_mode note on the frontend service below.
+      - "${BACKEND_PORT:-4000}:4000"
+      - "${FRONTEND_PORT:-3000}:3000"
+    extra_hosts:
+      # Lets the admin point the AI Service host (Connections tab, or PATCH
+      # /api/admin/settings) at Ollama running on the host machine itself, e.g.
+      # http://host.docker.internal:11434 — "localhost" from inside this
+      # container would otherwise mean the container, not the host. Resolves out
+      # of the box on Docker Desktop already; this makes it work on Linux too.
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4000/api/categories').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # The SvelteKit site (adapter-node). Shares the backend container's network
+  # namespace (network_mode: service:backend) rather than getting its own — so
+  # "http://localhost:4000" resolves to the backend both from the visitor's browser
+  # (via the published port above) AND from this container's own Node process when
+  # it makes server-rendered (SSR) calls to the backend on a page's first load.
+  # Without this, no single VITE_BACKEND_URL value works for both. This also means
+  # frontend's own port must be published on backend's ports list above, and
+  # frontend can't declare its own ports/network settings here.
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:4000}
+    network_mode: "service:backend"
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      # Must exactly match FRONTEND_ORIGIN above.
+      ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      ADMIN_PANEL_ENABLED: ${ADMIN_PANEL_ENABLED:-false}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend-data:
