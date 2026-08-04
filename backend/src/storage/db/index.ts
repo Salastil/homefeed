@@ -18,6 +18,25 @@ db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 
 export function migrate() {
+	const tableExists = (name: string) =>
+		!!db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(name);
+
+	// Renames oldName to newName, but only if newName isn't already taken — a DB that's
+	// been through an interrupted migration, or an earlier build of the widget system
+	// that created the widget_<id>_-named table directly (e.g. via plugin.migrate()'s
+	// CREATE TABLE IF NOT EXISTS running before this rename ever got a chance to), can
+	// end up with both names present. In that case the widget_<id>_-named table is the
+	// one actually in use (every read/write goes through it), so the old-named leftover
+	// is just dropped rather than failing outright on the name collision.
+	const renameTableIfSafe = (oldName: string, newName: string) => {
+		if (!tableExists(oldName)) return;
+		if (tableExists(newName)) {
+			db.exec(`DROP TABLE "${oldName}";`);
+			return;
+		}
+		db.exec(`ALTER TABLE "${oldName}" RENAME TO "${newName}";`);
+	};
+
 	// Admin auth moved from username/password + sessions to a per-launch API key (see
 	// api/apiKey.ts, api/auth.ts) — these tables, and any stored password hash or live
 	// session in them, have no further purpose and are dropped rather than left as
@@ -38,25 +57,19 @@ export function migrate() {
 	// a plain rename (metadata-only in SQLite, no row copy) rather than grandfathering
 	// the old names in via an exceptions list, since it's cheap and PoE2 is meant to be
 	// the reference implementation of the convention it establishes.
-	const hasOldPoe2Table = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='poe2_watchlist'`).get();
-	if (hasOldPoe2Table) {
-		db.exec('ALTER TABLE poe2_watchlist RENAME TO widget_poe2_watchlist;');
-		db.exec('ALTER TABLE poe2_rate_history RENAME TO widget_poe2_rate_history;');
-		db.exec('DROP INDEX IF EXISTS idx_poe2_rate_history_watchlist;');
-	}
+	renameTableIfSafe('poe2_watchlist', 'widget_poe2_watchlist');
+	renameTableIfSafe('poe2_rate_history', 'widget_poe2_rate_history');
+	db.exec('DROP INDEX IF EXISTS idx_poe2_rate_history_watchlist;');
 
 	// Stocks and Bookmarks moved into the pluggable-widget system too (backend/src/widgets/
 	// stocks/, widgets/bookmarks/) — same plain-rename treatment as PoE2 above, now owned by
 	// each widget's own plugin.migrate() instead of this file's CREATE TABLE block.
-	const hasOldStockTickersTable = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='stock_tickers'`).get();
-	if (hasOldStockTickersTable) {
-		db.exec('ALTER TABLE stock_tickers RENAME TO widget_stocks_tickers;');
-	}
+	renameTableIfSafe('stock_tickers', 'widget_stocks_tickers');
 	// "bookmarks" is generic enough to collide with something else entirely — check for the
 	// old bookmarks shape specifically (its distinctive is_private column) before renaming.
 	const oldBookmarksCols = db.prepare(`PRAGMA table_info(bookmarks)`).all() as { name: string }[];
 	if (oldBookmarksCols.some((c) => c.name === 'is_private')) {
-		db.exec('ALTER TABLE bookmarks RENAME TO widget_bookmarks_items;');
+		renameTableIfSafe('bookmarks', 'widget_bookmarks_items');
 	}
 
 	db.exec(`
