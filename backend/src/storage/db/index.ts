@@ -234,6 +234,7 @@ export function migrate() {
 			widget_weather_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_stocks_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_bookmarks_enabled INTEGER NOT NULL DEFAULT 1,
+			bookmarks_columns INTEGER NOT NULL DEFAULT 1, -- 1 | 2 | 3 — sidebar/admin bookmark list layout width
 			widget_poe2_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_order TEXT NOT NULL DEFAULT '["weather","stocks","poe2","bookmarks"]', -- JSON array, admin-sortable via the Widgets tab
 			weather_location_name TEXT,
@@ -414,6 +415,9 @@ export function migrate() {
 	}
 	if (!hasColumn('global_settings', 'synthesis_num_predict')) {
 		db.exec('ALTER TABLE global_settings ADD COLUMN synthesis_num_predict INTEGER NOT NULL DEFAULT 700');
+	}
+	if (!hasColumn('global_settings', 'bookmarks_columns')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN bookmarks_columns INTEGER NOT NULL DEFAULT 1');
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —
