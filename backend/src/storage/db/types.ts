@@ -308,8 +308,6 @@ export interface GlobalSettings {
 	};
 	/** Sidebar widget display order, admin-sortable via the Widgets tab's up/down arrows — mirrored exactly by Sidebar.svelte. */
 	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
-	/** How many columns the bookmark list lays out in, both in the sidebar and the admin panel. */
-	bookmarksColumns: 1 | 2 | 3;
 	retention: {
 		publishedArticleMaxAgeDays: number | null;
 		rawItemMaxAgeDays: number | null;
