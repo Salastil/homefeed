@@ -116,6 +116,20 @@ AI Service host (Connections tab) at your Ollama instance — if Ollama runs on
 the same machine outside Docker, use `http://host.docker.internal:11434`, not
 `localhost` (which inside the container means the container itself).
 
+### Registry and CI (Gitea)
+
+Both services also carry an `image:` name pointed at this project's Gitea
+container registry (`git.salastil.com/salastil/homefeed-{backend,frontend}`),
+so `docker compose build` tags them correctly and `docker compose push`/`pull`
+work directly against it — override `REGISTRY`/`IMAGE_TAG` in `.env` for a
+different registry or a specific tag (see `.env.example`).
+
+`.gitea/workflows/docker-build.yml` builds and pushes both images on every
+push to `master` or `development` — `latest` on `master`, the branch name and
+commit SHA otherwise. It reads `VITE_BACKEND_URL` from the repo's Actions
+variables (Settings → Actions → Variables) for the frontend build, since that
+needs to be the real public URL, not `localhost`.
+
 ## Deploying behind a reverse proxy (e.g. Nginx Proxy Manager)
 
 Both apps can also run as plain, long-lived Node processes on your own host

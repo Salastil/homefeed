@@ -2,6 +2,11 @@ services:
   # Ingestion, clustering, synthesis, and the public/admin API. SQLite DB, downloaded
   # media, and uploaded widgets all persist in the backend-data volume.
   backend:
+    # Also the name `docker compose build`/`push`/`pull` use — Gitea's built-in
+    # container registry lives on the same host as the git server. Override
+    # REGISTRY/IMAGE_TAG in .env for a different registry or tag (e.g. a commit
+    # SHA in CI) without editing this file.
+    image: ${REGISTRY:-git.salastil.com/salastil}/homefeed-backend:${IMAGE_TAG:-latest}
     build:
       context: ./backend
     environment:
@@ -52,6 +57,7 @@ services:
   # frontend's own port must be published on backend's ports list above, and
   # frontend can't declare its own ports/network settings here.
   frontend:
+    image: ${REGISTRY:-git.salastil.com/salastil}/homefeed-frontend:${IMAGE_TAG:-latest}
     build:
       context: ./frontend
       args:
