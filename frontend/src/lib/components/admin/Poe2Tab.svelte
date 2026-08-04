@@ -1,9 +1,10 @@
 <script lang="ts">
-	import type { AdminSettings, AdminPoe2Entry, Poe2BrowseEntry } from '$lib/adminTypes';
+	import type { AdminPoe2Entry, Poe2BrowseEntry } from '$lib/adminTypes';
+	import type { Poe2Data } from '$lib/types';
 	import { browsePoe2Currencies, addPoe2WatchlistEntry, removePoe2WatchlistEntry } from '$lib/adminApi';
 	import { formatPoeValue, invertChangePercent } from '$lib/format';
 
-	let { settings, watchlist: initial }: { settings: AdminSettings; watchlist: AdminPoe2Entry[] } = $props();
+	let { poe2, watchlist: initial }: { poe2: Poe2Data; watchlist: AdminPoe2Entry[] } = $props();
 	let watchlist = $state([...initial]);
 
 	let showAdd = $state(false);
@@ -79,8 +80,8 @@
 	<button class="add-btn" onclick={openAdd}>+ Add pair</button>
 </div>
 <p class="hint" style="margin: -6px 0 12px;">
-	{#if settings.poe2.leagueName}
-		Tracking {settings.poe2.leagueName} · change is over the last 24h.
+	{#if poe2.leagueName}
+		Tracking {poe2.leagueName} · change is over the last 24h.
 	{:else}
 		League not detected yet — check back after the next poll (every hour).
 	{/if}

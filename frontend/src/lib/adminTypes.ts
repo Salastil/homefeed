@@ -95,6 +95,11 @@ export interface AdminBookmark {
 	isPrivate: boolean;
 }
 
+/** Response from GET/PATCH /api/admin/widget/bookmarks/config — how many columns the sidebar/widget layout uses. */
+export interface AdminBookmarksConfig {
+	columns: 1 | 2 | 3;
+}
+
 export interface Poe2BrowseEntry {
 	id: string;
 	name: string;
@@ -113,17 +118,32 @@ export interface AdminPoe2Entry {
 	lastError: string | null;
 }
 
-export interface AdminPoe2Settings {
-	leagueId: string | null;
-	leagueName: string | null;
-	updatedAt: string | null;
-}
-
 export interface AdminWidgetsEnabled {
 	weather: boolean;
 	stocks: boolean;
 	bookmarks: boolean;
 	poe2: boolean;
+}
+
+/** A row from the installed_widgets registry — see backend/src/storage/db/installedWidgets.ts. */
+export interface InstalledWidget {
+	id: string;
+	displayName: string;
+	source: 'builtin' | 'uploaded';
+	enabled: boolean;
+	priorityRank: number;
+	version: string;
+	frontendEntry: string | null;
+	installedAt: string;
+}
+
+/** Body for POST /api/admin/widgets — see backend/src/widgets/manifest.ts. */
+export interface WidgetUploadManifest {
+	id: string;
+	displayName: string;
+	version: string;
+	entry: string;
+	frontendEntry?: string;
 }
 
 export interface AdminSettings {
@@ -152,8 +172,6 @@ export interface AdminSettings {
 	bookmarksColumns: 1 | 2 | 3;
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
-	weather: AdminWeatherSettings;
-	poe2: AdminPoe2Settings;
 }
 
 export interface AdminSource {

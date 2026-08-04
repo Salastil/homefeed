@@ -159,7 +159,7 @@ export interface Bookmark {
 	isPrivate: boolean;
 }
 
-/** Response from GET /api/bookmarks — items plus the admin-configured sidebar layout width. */
+/** Response from GET /api/widget/bookmarks — items plus the admin-configured sidebar layout width. */
 export interface BookmarksFeed {
 	items: Bookmark[];
 	columns: 1 | 2 | 3;
@@ -181,6 +181,22 @@ export interface Poe2Data {
 	entries: Poe2WatchlistEntry[];
 }
 
+/** An uploaded (non-core) widget the sidebar renders generically — see GenericWidgetCard.svelte / DynamicWidgetSlot.svelte. */
+export interface PluggableWidgetSummary {
+	id: string;
+	displayName: string;
+	/** Relative path under /widget-assets/<id>/ to a custom mount() bundle — null means render the generic report card instead. */
+	frontendEntry: string | null;
+}
+
+/** Generic live-data shape a widget publishes via its own poll — see GET /api/widget/:id/report. */
+export interface WidgetReport {
+	title: string;
+	headline?: { value: string; delta?: string } | null;
+	rows?: { label: string; value: string }[];
+	updatedAt: string | null;
+}
+
 /** Per-widget sidebar visibility + display order, admin-set from the consolidated "Widgets" tab. */
 export interface WidgetsEnabled {
 	weather: boolean;
@@ -188,4 +204,6 @@ export interface WidgetsEnabled {
 	bookmarks: boolean;
 	poe2: boolean;
 	order: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
+	/** Enabled uploaded widgets, in their own priority order — rendered after the 4 built-ins (see Sidebar.svelte). */
+	pluggable: PluggableWidgetSummary[];
 }

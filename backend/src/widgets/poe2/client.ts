@@ -1,5 +1,5 @@
 // poe.ninja's public PoE2 economy API — free, no account or API key required. This is the
-// only file that talks to it; poller.ts orchestrates when/how results get saved, same
+// only file that talks to it; poll.ts orchestrates when/how results get saved, same
 // separation as backend/src/telegram/ and backend/src/weather/ keep between the raw client
 // and their callers.
 //
@@ -13,7 +13,7 @@
 // change, which poe.ninja's overview doesn't expose directly. Every line's `primaryValue` is
 // expressed in the same (unspecified, and irrelevant) reference currency, so any pair's rate
 // is just baseValue / quoteValue with the reference cancelling out — see fetchCurrencyValues
-// below and poe2/poller.ts, which self-computes change from its own polling history instead.
+// below and poll.ts, which self-computes change from its own polling history instead.
 const BASE_URL = 'https://poe.ninja';
 
 export interface LeagueInfo {
@@ -57,8 +57,9 @@ async function fetchCurrencyOverview(leagueId: string): Promise<RawCurrencyOverv
 }
 
 // Fetches the whole traded-currency list for the admin's search-and-pick UI (see
-// api/admin.ts's GET /api/admin/poe2/browse) — only currencies that actually have a `lines`
-// entry (i.e. are currently traded), not every currency poe.ninja has ever known about.
+// widgets/poe2/plugin.ts's GET /api/admin/poe2/browse) — only currencies that actually have
+// a `lines` entry (i.e. are currently traded), not every currency poe.ninja has ever known
+// about.
 export async function browseCurrencies(leagueId: string): Promise<CurrencyBrowseEntry[]> {
 	const { lines, items } = await fetchCurrencyOverview(leagueId);
 	const nameById = new Map(items.map((item) => [item.id, item.name]));

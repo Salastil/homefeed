@@ -12,8 +12,12 @@ import type {
 	GeocodeResult,
 	AdminStockTicker,
 	AdminBookmark,
+	AdminBookmarksConfig,
 	Poe2BrowseEntry,
 	AdminPoe2Entry,
+	AdminWeatherSettings,
+	InstalledWidget,
+	WidgetUploadManifest,
 	PipelineStats,
 	ModelContextInfo,
 	ForceRecapResult
@@ -195,47 +199,63 @@ export const getLogs = (filters: { level?: 'info' | 'warn' | 'error'; limit?: nu
 
 export const getPipelineStats = (fetchFn?: typeof fetch) => request<PipelineStats>('/api/admin/pipeline-stats', {}, fetchFn);
 
-// Weather — config/cache lives on AdminSettings.weather (see updateSettings above); this
-// is just the geocoding lookup used to resolve a typed city name to lat/lon.
+// Weather — config/cache now live behind the widget's own dedicated admin route (see
+// backend/src/widgets/weather/plugin.ts) rather than riding along on AdminSettings.
+export const getWeatherConfig = (fetchFn?: typeof fetch) =>
+	request<AdminWeatherSettings>('/api/admin/widget/weather', {}, fetchFn);
+
+export const updateWeatherConfig = (patch: Partial<AdminWeatherSettings>, fetchFn?: typeof fetch) =>
+	request<AdminWeatherSettings>('/api/admin/widget/weather', { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
+
 export const geocodeLocation = (query: string, fetchFn?: typeof fetch) =>
-	request<GeocodeResult[]>(`/api/admin/weather/geocode?query=${encodeURIComponent(query)}`, {}, fetchFn);
+	request<GeocodeResult[]>(`/api/admin/widget/weather/geocode?query=${encodeURIComponent(query)}`, {}, fetchFn);
 
 // Stocks
 export const getStockTickers = (fetchFn?: typeof fetch) =>
-	request<AdminStockTicker[]>('/api/admin/stocks', {}, fetchFn);
+	request<AdminStockTicker[]>('/api/admin/widget/stocks', {}, fetchFn);
 
 export const addStockTicker = (label: string, symbol: string, fetchFn?: typeof fetch) =>
-	request<AdminStockTicker>('/api/admin/stocks', { method: 'POST', body: JSON.stringify({ label, symbol }) }, fetchFn);
+	request<AdminStockTicker>('/api/admin/widget/stocks', { method: 'POST', body: JSON.stringify({ label, symbol }) }, fetchFn);
 
 export const updateStockTicker = (id: string, patch: { label?: string; symbol?: string }, fetchFn?: typeof fetch) =>
-	request<AdminStockTicker>(`/api/admin/stocks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
+	request<AdminStockTicker>(`/api/admin/widget/stocks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
 
 export const deleteStockTicker = (id: string, fetchFn?: typeof fetch) =>
-	request<void>(`/api/admin/stocks/${id}`, { method: 'DELETE' }, fetchFn);
+	request<void>(`/api/admin/widget/stocks/${id}`, { method: 'DELETE' }, fetchFn);
 
 // Bookmarks
 export const getAdminBookmarks = (fetchFn?: typeof fetch) =>
-	request<AdminBookmark[]>('/api/admin/bookmarks', {}, fetchFn);
+	request<AdminBookmark[]>('/api/admin/widget/bookmarks', {}, fetchFn);
 
 export const addBookmark = (name: string, url: string, isPrivate = false, fetchFn?: typeof fetch) =>
 	request<AdminBookmark>(
-		'/api/admin/bookmarks',
+		'/api/admin/widget/bookmarks',
 		{ method: 'POST', body: JSON.stringify({ name, url, isPrivate }) },
 		fetchFn
 	);
 
 export const updateBookmark = (id: string, patch: { name?: string; url?: string; isPrivate?: boolean }, fetchFn?: typeof fetch) =>
-	request<AdminBookmark>(`/api/admin/bookmarks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
+	request<AdminBookmark>(`/api/admin/widget/bookmarks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
 
 export const deleteBookmark = (id: string, fetchFn?: typeof fetch) =>
-	request<void>(`/api/admin/bookmarks/${id}`, { method: 'DELETE' }, fetchFn);
+	request<void>(`/api/admin/widget/bookmarks/${id}`, { method: 'DELETE' }, fetchFn);
 
-// PoE2 — league is always auto-detected, never admin-set (see poe2/poller.ts).
+export const getBookmarksConfig = (fetchFn?: typeof fetch) =>
+	request<AdminBookmarksConfig>('/api/admin/widget/bookmarks/config', {}, fetchFn);
+
+export const updateBookmarksConfig = (columns: 1 | 2 | 3, fetchFn?: typeof fetch) =>
+	request<AdminBookmarksConfig>(
+		'/api/admin/widget/bookmarks/config',
+		{ method: 'PATCH', body: JSON.stringify({ columns }) },
+		fetchFn
+	);
+
+// PoE2 — league is always auto-detected, never admin-set (see widgets/poe2/poll.ts).
 export const browsePoe2Currencies = (fetchFn?: typeof fetch) =>
-	request<Poe2BrowseEntry[]>('/api/admin/poe2/browse', {}, fetchFn);
+	request<Poe2BrowseEntry[]>('/api/admin/widget/poe2/browse', {}, fetchFn);
 
 export const getPoe2Watchlist = (fetchFn?: typeof fetch) =>
-	request<AdminPoe2Entry[]>('/api/admin/poe2/watchlist', {}, fetchFn);
+	request<AdminPoe2Entry[]>('/api/admin/widget/poe2/watchlist', {}, fetchFn);
 
 export const addPoe2WatchlistEntry = (
 	base: { currencyId: string; name: string },
@@ -243,10 +263,24 @@ export const addPoe2WatchlistEntry = (
 	fetchFn?: typeof fetch
 ) =>
 	request<AdminPoe2Entry>(
-		'/api/admin/poe2/watchlist',
+		'/api/admin/widget/poe2/watchlist',
 		{ method: 'POST', body: JSON.stringify({ base, quote }) },
 		fetchFn
 	);
 
 export const removePoe2WatchlistEntry = (id: string, fetchFn?: typeof fetch) =>
-	request<void>(`/api/admin/poe2/watchlist/${id}`, { method: 'DELETE' }, fetchFn);
+	request<void>(`/api/admin/widget/poe2/watchlist/${id}`, { method: 'DELETE' }, fetchFn);
+
+// Pluggable widgets (upload/list/enable/delete) — see backend/src/widgets/install.ts,
+// uninstall.ts. Built-in widgets (source: 'builtin') 400 on deleteWidget.
+export const listWidgets = (fetchFn?: typeof fetch) =>
+	request<InstalledWidget[]>('/api/admin/widgets', {}, fetchFn);
+
+export const installWidget = (manifest: WidgetUploadManifest, files: Record<string, string>, fetchFn?: typeof fetch) =>
+	request<{ id: string }>('/api/admin/widgets', { method: 'POST', body: JSON.stringify({ manifest, files }) }, fetchFn);
+
+export const setWidgetEnabled = (id: string, enabled: boolean, fetchFn?: typeof fetch) =>
+	request<InstalledWidget>(`/api/admin/widgets/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }, fetchFn);
+
+export const deleteWidget = (id: string, fetchFn?: typeof fetch) =>
+	request<void>(`/api/admin/widgets/${id}`, { method: 'DELETE' }, fetchFn);

@@ -4,9 +4,7 @@ import * as sourcesDb from '../storage/db/sources.js';
 import * as eventsDb from '../storage/db/events.js';
 import * as articlesDb from '../storage/db/articles.js';
 import * as categoriesDb from '../storage/db/categories.js';
-import * as stocksDb from '../storage/db/stocks.js';
-import * as bookmarksDb from '../storage/db/bookmarks.js';
-import * as poe2WatchlistDb from '../storage/db/poe2Watchlist.js';
+import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
 import { clearSourceContent, reissueSourceContent, reissueArticle, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
 import { totalStorageBytes } from '../storage/media/index.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
@@ -16,11 +14,22 @@ import { logger, listLogs } from '../storage/db/logs.js';
 import * as backlogStats from '../queue/backlogStats.js';
 import * as ollamaStats from '../inference/stats.js';
 import * as telegramClient from '../telegram/client.js';
-import { geocodeLocation } from '../weather/client.js';
-import { pollWeatherNow } from '../weather/poller.js';
-import { pollStocksNow } from '../stocks/poller.js';
-import { browseCurrencies, fetchCurrentLeague } from '../poe2/client.js';
-import { pollPoe2Now } from '../poe2/poller.js';
+import { loadedWidgets } from '../widgets/registry.js';
+import { installUploadedWidget } from '../widgets/install.js';
+import { uninstallWidget } from '../widgets/uninstall.js';
+import { swapLiveServer } from '../server.js';
+import type { GlobalSettings } from '../storage/db/types.js';
+
+// Rebuilds and swaps in the live Fastify instance to pick up a widget's newly
+// (de)registered routes — MUST run after the triggering request has already sent its
+// response, never awaited inline in that handler, since the swap closes the very
+// instance serving it (see widgets/install.ts's and uninstall.ts's doc comments for
+// why — this dropped the response entirely when tried inline during testing).
+function scheduleServerSwap(context: string) {
+	setImmediate(() => {
+		swapLiveServer().catch((err) => logger.error('server', `Route swap after ${context} failed: ${(err as Error).message}`));
+	});
+}
 
 // Not part of GlobalSettings itself (nothing to persist) — computed fresh on every
 // settings read/write so the Retention tab's "currently using" line and usage bar
@@ -44,24 +53,19 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		}
 		const before = settingsDb.getSettings();
 		const settings = withStorageUsed(settingsDb.updateSettings(body));
-		if (body.weather) {
-			// Poll immediately rather than waiting for the next scheduler tick (up to 45
-			// minutes) — the admin just changed the location/unit and expects to see it reflected.
-			pollWeatherNow().catch((err) => logger.error('weather', `Immediate poll failed: ${err.message}`));
-		}
 		if (body.widgets) {
 			// Re-enabling a widget (see the Widgets tab) should show fresh data right away
-			// instead of waiting out its normal cadence (up to 45m/15m/1h) — scheduler.ts
-			// skips polling entirely while a widget is disabled, so there's nothing recent
-			// to fall back on otherwise.
-			if (body.widgets.weather && !before.widgets.weather) {
-				pollWeatherNow().catch((err) => logger.error('weather', `Immediate poll failed: ${err.message}`));
-			}
-			if (body.widgets.stocks && !before.widgets.stocks) {
-				pollStocksNow().catch((err) => logger.error('stocks', `Immediate poll failed: ${err.message}`));
-			}
-			if (body.widgets.poe2 && !before.widgets.poe2) {
-				pollPoe2Now().catch((err) => logger.error('poe2', `Immediate poll failed: ${err.message}`));
+			// instead of waiting out its normal cadence — scheduler.ts skips polling
+			// entirely while a widget is disabled, so there's nothing recent to fall back
+			// on otherwise. Generic over every loaded widget with a poll hook, rather than
+			// one hardcoded branch per widget.
+			for (const id of Object.keys(body.widgets) as (keyof GlobalSettings['widgets'])[]) {
+				if (body.widgets[id] && !before.widgets[id]) {
+					loadedWidgets
+						.get(id)
+						?.poll?.run()
+						.catch((err) => logger.error(id, `Immediate poll failed: ${err.message}`));
+				}
 			}
 		}
 		return { ...settings, categoryPriority: categoriesDb.listCategories() };
@@ -298,107 +302,50 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		return reply.code(200).send(telegramClient.getStatus());
 	});
 
-	// --- Weather (config lives in global_settings — see PATCH /api/admin/settings above) ---
-	app.get('/api/admin/weather/geocode', async (req, reply) => {
-		const { query } = req.query as { query?: string };
-		if (!query || !query.trim()) return reply.code(400).send({ error: 'query required' });
-		try {
-			return await geocodeLocation(query.trim());
-		} catch (err) {
-			return reply.code(502).send({ error: `Geocoding service unreachable: ${(err as Error).message}` });
-		}
+	// Per-widget routes (weather geocode, stocks CRUD, bookmarks CRUD, poe2 browse/
+	// watchlist) are registered by each widget's own plugin — see widgets/registry.ts's
+	// generic registerAdminRoutes loop in index.ts. What's left here is the
+	// upload/delete lifecycle for pluggable widgets themselves.
+
+	// --- Pluggable widgets (upload/list/delete — see widgets/install.ts, uninstall.ts) ---
+	app.get('/api/admin/widgets', async () => installedWidgetsDb.listInstalled());
+
+	app.post('/api/admin/widgets', async (req, reply) => {
+		const { manifest, files } = req.body as { manifest?: unknown; files?: unknown };
+		const result = await installUploadedWidget(manifest, files);
+		if (!result.ok) return reply.code(400).send({ error: result.error });
+		reply.code(201).send({ id: result.id });
+		if (result.needsServerSwap) scheduleServerSwap(`installing "${result.id}"`);
 	});
 
-	// --- Stocks ---
-	app.get('/api/admin/stocks', async () => stocksDb.listStockTickers());
-
-	app.post('/api/admin/stocks', async (req, reply) => {
-		const { label, symbol } = req.body as { label?: string; symbol?: string };
-		if (!label || !label.trim() || !symbol || !symbol.trim()) {
-			return reply.code(400).send({ error: 'label and symbol are required' });
-		}
-		const created = stocksDb.createStockTicker(label.trim(), symbol.trim());
-		// Poll immediately rather than waiting for the next tick (up to 15 minutes) — cheap,
-		// and refreshes every existing ticker's price too.
-		pollStocksNow().catch((err) => logger.error('stocks', `Immediate poll failed: ${err.message}`));
-		return reply.code(201).send(created);
-	});
-
-	app.patch('/api/admin/stocks/:id', async (req, reply) => {
+	app.patch('/api/admin/widgets/:id', async (req, reply) => {
 		const { id } = req.params as { id: string };
-		const updated = stocksDb.updateStockTicker(id, req.body as any);
-		if (!updated) return reply.code(404).send({ error: 'not found' });
-		return updated;
-	});
-
-	app.delete('/api/admin/stocks/:id', async (req, reply) => {
-		const { id } = req.params as { id: string };
-		stocksDb.deleteStockTicker(id);
-		return reply.code(204).send();
-	});
-
-	// --- Bookmarks ---
-	app.get('/api/admin/bookmarks', async () => bookmarksDb.listBookmarks());
-
-	app.post('/api/admin/bookmarks', async (req, reply) => {
-		const { name, url, isPrivate } = req.body as { name?: string; url?: string; isPrivate?: boolean };
-		if (!name || !name.trim() || !url || !url.trim()) {
-			return reply.code(400).send({ error: 'name and url are required' });
+		const { enabled } = req.body as { enabled?: boolean };
+		const widget = installedWidgetsDb.getInstalled(id);
+		if (!widget) return reply.code(404).send({ error: 'not found' });
+		if (typeof enabled === 'boolean') {
+			installedWidgetsDb.setEnabled(id, enabled);
+			// Re-enabling should show fresh data right away rather than waiting out the
+			// widget's own poll interval — same "immediate poll on enable" behavior the
+			// 4 built-ins get via PATCH /api/admin/settings above.
+			if (enabled && !widget.enabled) {
+				loadedWidgets
+					.get(id)
+					?.poll?.run()
+					.catch((err) => logger.error(id, `Immediate poll failed: ${err.message}`));
+			}
 		}
-		const created = bookmarksDb.createBookmark(name.trim(), url.trim(), !!isPrivate);
-		return reply.code(201).send(created);
+		return installedWidgetsDb.getInstalled(id);
 	});
 
-	app.patch('/api/admin/bookmarks/:id', async (req, reply) => {
+	app.delete('/api/admin/widgets/:id', async (req, reply) => {
 		const { id } = req.params as { id: string };
-		const updated = bookmarksDb.updateBookmark(id, req.body as any);
-		if (!updated) return reply.code(404).send({ error: 'not found' });
-		return updated;
-	});
-
-	app.delete('/api/admin/bookmarks/:id', async (req, reply) => {
-		const { id } = req.params as { id: string };
-		bookmarksDb.deleteBookmark(id);
-		return reply.code(204).send();
-	});
-
-	// --- PoE2 (league is always auto-detected, never admin-set — see poe2/poller.ts) ---
-	app.get('/api/admin/poe2/browse', async (_req, reply) => {
-		try {
-			const league = await fetchCurrentLeague();
-			return await browseCurrencies(league.id);
-		} catch (err) {
-			return reply.code(502).send({ error: `poe.ninja unreachable: ${(err as Error).message}` });
-		}
-	});
-
-	app.get('/api/admin/poe2/watchlist', async () => poe2WatchlistDb.listWatchlist());
-
-	app.post('/api/admin/poe2/watchlist', async (req, reply) => {
-		const { base, quote } = req.body as {
-			base?: { currencyId?: string; name?: string };
-			quote?: { currencyId?: string; name?: string };
-		};
-		if (!base?.currencyId || !base?.name || !quote?.currencyId || !quote?.name) {
-			return reply.code(400).send({ error: 'base and quote currencies (currencyId, name) are required' });
-		}
-		if (base.currencyId === quote.currencyId) {
-			return reply.code(400).send({ error: 'Base and quote currencies must be different' });
-		}
-		const created = poe2WatchlistDb.addWatchlistEntry(
-			{ currencyId: base.currencyId, name: base.name },
-			{ currencyId: quote.currencyId, name: quote.name }
-		);
-		// Poll immediately rather than waiting for the next tick (up to 1 hour) — cheap,
-		// and refreshes every existing entry's rate too.
-		pollPoe2Now().catch((err) => logger.error('poe2', `Immediate poll failed: ${err.message}`));
-		return reply.code(201).send(created);
-	});
-
-	app.delete('/api/admin/poe2/watchlist/:id', async (req, reply) => {
-		const { id } = req.params as { id: string };
-		poe2WatchlistDb.removeWatchlistEntry(id);
-		return reply.code(204).send();
+		const widget = installedWidgetsDb.getInstalled(id);
+		if (!widget) return reply.code(404).send({ error: 'not found' });
+		if (widget.source === 'builtin') return reply.code(400).send({ error: 'built-in widgets cannot be deleted' });
+		const hadRoutes = await uninstallWidget(id);
+		reply.code(204).send();
+		if (hadRoutes) scheduleServerSwap(`deleting "${id}"`);
 	});
 
 	// --- Logs ---

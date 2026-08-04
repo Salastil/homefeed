@@ -1,16 +1,16 @@
 <script lang="ts">
-	import type { AdminBookmark } from '$lib/adminTypes';
-	import { addBookmark, updateBookmark, deleteBookmark, updateSettings } from '$lib/adminApi';
+	import type { AdminBookmark, AdminBookmarksConfig } from '$lib/adminTypes';
+	import { addBookmark, updateBookmark, deleteBookmark, updateBookmarksConfig } from '$lib/adminApi';
 
-	let { bookmarks: initial, columns: initialColumns }: { bookmarks: AdminBookmark[]; columns: 1 | 2 | 3 } = $props();
+	let { bookmarks: initial, config }: { bookmarks: AdminBookmark[]; config: AdminBookmarksConfig } = $props();
 	let bookmarks = $state([...initial]);
-	let columns = $state(initialColumns);
+	let columns = $state(config.columns);
 	let showAdd = $state(false);
 	let newBookmark = $state({ name: '', url: '', isPrivate: false });
 
 	async function setColumns(n: 1 | 2 | 3) {
 		columns = n;
-		await updateSettings({ bookmarksColumns: n });
+		await updateBookmarksConfig(n);
 	}
 
 	const columnOptions: (1 | 2 | 3)[] = [1, 2, 3];

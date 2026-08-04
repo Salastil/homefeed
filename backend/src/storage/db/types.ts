@@ -214,21 +214,6 @@ export interface Category {
 	disableAi: boolean;
 }
 
-export interface WeatherHourEntry {
-	time: string;
-	temp: number;
-	conditionText: string;
-	icon: string;
-}
-
-export interface WeatherDayEntry {
-	date: string;
-	tempMax: number;
-	tempMin: number;
-	conditionText: string;
-	icon: string;
-}
-
 export interface StockTicker {
 	id: string;
 	label: string;
@@ -260,6 +245,23 @@ export interface Poe2WatchlistEntry {
 	lastPolledAt: string | null;
 	lastError: string | null;
 	createdAt: string;
+}
+
+/** A row in `installed_widgets` — the registry of both built-in and uploaded sidebar widgets (see widgets/registry.ts). */
+export interface InstalledWidget {
+	id: string;
+	displayName: string;
+	source: 'builtin' | 'uploaded';
+	/** Builtin: the module's identifying path segment (e.g. 'weather', 'widgets/poe2'). Uploaded: the on-disk install directory, e.g. './data/widgets-installed/<id>'. */
+	codePath: string;
+	enabled: boolean;
+	priorityRank: number;
+	version: string;
+	/** Self-reported by the plugin (WidgetPlugin.ownedTables) at install/load time — used by the uninstall safety-net sweep. */
+	ownedTables: string[];
+	/** Relative path (within the widget's install dir) to an optional pre-built browser JS bundle, served from /widget-assets/<id>/* and dynamic-import()ed by the sidebar's DynamicWidgetSlot. Null for a widget with no custom frontend (falls back to the generic report card). */
+	frontendEntry: string | null;
+	installedAt: string;
 }
 
 export interface Bookmark {
@@ -315,56 +317,4 @@ export interface GlobalSettings {
 		storageCapValue: number;
 		storageCapUnit: 'MB' | 'GB';
 	};
-	/** Sidebar "Weather" widget config + cache — see weather/poller.ts. Singleton, since there's only ever one configured location. */
-	weather: {
-		locationName: string | null;
-		latitude: number | null;
-		longitude: number | null;
-		unit: 'celsius' | 'fahrenheit';
-		windUnit: 'mph' | 'kph';
-		pressureUnit: 'inHg' | 'hPa';
-		current: {
-			temp: number;
-			/** Apparent temperature (Open-Meteo's own heat-index/wind-chill blend) — "Feels like". */
-			feelsLike: number;
-			conditionText: string;
-			icon: string;
-			/** Percent, 0-100. */
-			humidity: number;
-			/** Percent, 0-100 — the current hour's forecast precipitation probability (there's no true instantaneous "chance of rain" measurement). */
-			precipitationChance: number;
-			/** Already in the admin's configured windUnit. */
-			windSpeed: number;
-			/** 8-point compass abbreviation, e.g. "NW". */
-			windDirection: string;
-			/** Already in the admin's configured pressureUnit. */
-			pressure: number;
-			sunrise: string;
-			sunset: string;
-		} | null;
-		hourly: WeatherHourEntry[];
-		daily: WeatherDayEntry[];
-		/** Active NWS alerts (flash flood, hurricane, blizzard, etc.) for the configured location — US-only, empty elsewhere. See weather/client.ts's fetchActiveAlerts. */
-		alerts: WeatherAlert[];
-		updatedAt: string | null;
-	};
-	/**
-	 * Sidebar "PoE2" widget cache — see poe2/poller.ts. No admin-set config (unlike weather):
-	 * the league is always auto-detected as the current challenge league, so this is purely
-	 * a cache of what the last poll learned. Watchlist entries themselves live in the
-	 * poe2_watchlist table, not here — same split as stock_tickers vs. this settings row.
-	 */
-	poe2: {
-		leagueId: string | null;
-		leagueName: string | null;
-		updatedAt: string | null;
-	};
-}
-
-export interface WeatherAlert {
-	id: string;
-	event: string;
-	headline: string;
-	severity: string;
-	expires: string;
 }

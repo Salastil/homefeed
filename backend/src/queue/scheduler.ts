@@ -4,18 +4,15 @@ import { runEventRecaps } from './eventsRecap.js';
 import { runRetentionSweep } from './retention.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import * as settingsDb from '../storage/db/settings.js';
+import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
 import { logger } from '../storage/db/logs.js';
-import { pollWeatherNow } from '../weather/poller.js';
-import { pollStocksNow } from '../stocks/poller.js';
-import { pollPoe2Now } from '../poe2/poller.js';
+import { loadedWidgets } from '../widgets/registry.js';
+import type { WidgetPlugin } from '../widgets/types.js';
 
 const POLL_TICK_MS = 60_000; // checks which sources are due every minute; each source's own interval governs actual fetch frequency
 const DIRECT_PUBLISH_TICK_MS = 60_000;
 const SYNTHESIS_TICK_MS = 60_000;
 const RETENTION_TICK_MS = 60 * 60_000; // hourly
-const WEATHER_TICK_MS = 45 * 60_000;
-const STOCKS_TICK_MS = 15 * 60_000; // per admin spec — stock prices move faster than weather
-const POE2_TICK_MS = 60 * 60_000; // poe.ninja's own overview data doesn't refresh faster than hourly, so polling more often than this just re-fetches the same numbers
 
 /**
  * Runs fn on every tick, but skips a tick outright if the previous one is still in
@@ -44,6 +41,40 @@ function everyTickSkippingOverlap(ms: number, fn: () => Promise<void>) {
 			running = false;
 		});
 	}, ms);
+}
+
+// Per-widget setInterval handles, keyed by widget id — lets a single widget's polling be
+// started/stopped independently (on live upload/delete, or an enable toggle) without
+// touching any other widget's interval. Exported so widgets/install.ts and
+// widgets/uninstall.ts can drive it directly.
+export const widgetIntervals = new Map<string, NodeJS.Timeout>();
+
+// Starts (or re-starts) polling for one widget — an immediate poll if it's currently
+// enabled (unlike RSS sources, whose "due" check makes a brand-new source eligible on the
+// very next 1-minute tick, a widget has no such shortcut; without this the sidebar would
+// sit empty for up to a full poll interval after every restart or fresh install), then a
+// recurring interval that re-checks the enabled flag on every tick — so disabling a widget
+// stops the actual external polling, not just hides it in the sidebar.
+export function startWidgetPolling(plugin: WidgetPlugin) {
+	if (!plugin.poll) return;
+	stopWidgetPolling(plugin.id);
+
+	if (installedWidgetsDb.getInstalled(plugin.id)?.enabled) {
+		plugin.poll.run().catch((err) => logger.error(plugin.id, `Initial poll failed: ${(err as Error).message}`));
+	}
+	const handle = setInterval(() => {
+		if (!installedWidgetsDb.getInstalled(plugin.id)?.enabled) return;
+		plugin.poll!.run().catch((err) => logger.error(plugin.id, `Poll tick failed: ${(err as Error).message}`));
+	}, plugin.poll.intervalMs);
+	widgetIntervals.set(plugin.id, handle);
+}
+
+export function stopWidgetPolling(id: string) {
+	const handle = widgetIntervals.get(id);
+	if (handle) {
+		clearInterval(handle);
+		widgetIntervals.delete(id);
+	}
 }
 
 export function startScheduler() {
@@ -115,40 +146,12 @@ export function startScheduler() {
 		}
 	});
 
-	// Immediate first call for all three — unlike RSS sources (whose "due" check makes a
-	// brand-new source eligible on the very next 1-minute tick), weather/stocks/poe2 have
-	// no such shortcut; without this the sidebar is empty for up to 45/15/60 minutes after
-	// every restart. Each is also gated on its Widgets-tab enabled flag (see
-	// admin/settings' consolidated Widgets tab) — disabling a widget stops these external
-	// calls entirely rather than just hiding the sidebar box, so there's no pointless
-	// polling for something nobody's looking at. Re-enabling it triggers an immediate
-	// poll instead (see admin.ts's PATCH /api/admin/settings), same as this initial call.
-	if (settingsDb.getSettings().widgets.weather) {
-		pollWeatherNow().catch((err) => logger.error('weather', `Initial poll failed: ${err.message}`));
+	for (const plugin of loadedWidgets.values()) {
+		startWidgetPolling(plugin);
 	}
-	setInterval(() => {
-		if (!settingsDb.getSettings().widgets.weather) return;
-		pollWeatherNow().catch((err) => logger.error('weather', `Poll tick failed: ${err.message}`));
-	}, WEATHER_TICK_MS);
-
-	if (settingsDb.getSettings().widgets.stocks) {
-		pollStocksNow().catch((err) => logger.error('stocks', `Initial poll failed: ${err.message}`));
-	}
-	setInterval(() => {
-		if (!settingsDb.getSettings().widgets.stocks) return;
-		pollStocksNow().catch((err) => logger.error('stocks', `Poll tick failed: ${err.message}`));
-	}, STOCKS_TICK_MS);
-
-	if (settingsDb.getSettings().widgets.poe2) {
-		pollPoe2Now().catch((err) => logger.error('poe2', `Initial poll failed: ${err.message}`));
-	}
-	setInterval(() => {
-		if (!settingsDb.getSettings().widgets.poe2) return;
-		pollPoe2Now().catch((err) => logger.error('poe2', `Poll tick failed: ${err.message}`));
-	}, POE2_TICK_MS);
 
 	logger.info(
 		'scheduler',
-		'Started: poll every 1m, direct-publish every 1m, synthesis every 1m, retention every 1h, weather every 45m, stocks every 15m, poe2 every 1h'
+		`Started: poll every 1m, direct-publish every 1m, synthesis every 1m, retention every 1h, ${loadedWidgets.size} widget(s) polling on their own intervals`
 	);
 }
