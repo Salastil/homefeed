@@ -190,6 +190,11 @@
 		display: block;
 		background: var(--surface-1);
 	}
+	/* Video/gif use contain rather than cover — see TweetCard.svelte for the reasoning
+	   (cover crops portrait clips, and that crop persists into native fullscreen too). */
+	video.media-el {
+		object-fit: contain;
+	}
 	.time {
 		font-size: 11px;
 		color: var(--text-muted);
