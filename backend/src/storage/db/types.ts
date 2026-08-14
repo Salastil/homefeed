@@ -280,9 +280,13 @@ export interface GlobalSettings {
 	tagExpiryDays: number;
 	followUpMinHoursSinceLast: number;
 	followUpMinNewSources: number;
-	aiServiceHost: string;
-	aiServicePort: number;
-	selectedModels: { embedding: string; image: string; synthesis: string };
+	/** Inference server used for embedding/clustering calls — independent of the synthesis connection below, so each can point at a different Ollama install. */
+	embeddingServiceHost: string;
+	embeddingServicePort: number;
+	/** Inference server used for article synthesis/recap/tag-extraction calls. */
+	synthesisServiceHost: string;
+	synthesisServicePort: number;
+	selectedModels: { embedding: string; synthesis: string };
 	/** How tweet media (attached photos, avatars) is served — see pipeline/publish.ts's resolveTweetMedia. */
 	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
 	/** Base URL of the fxtwitter-compatible enrichment API — defaults to the public instance, overridable for a self-hosted FixTweet mirror. */
@@ -299,6 +303,8 @@ export interface GlobalSettings {
 	synthesisNumCtx: number;
 	/** Max tokens the model is allowed to generate per synthesis/recap call — too low silently truncates the output mid-sentence rather than erroring (this is what a "cut off" recap/article means). Recaps in particular need real headroom: they're asked to summarize many source articles into several paragraphs, unlike a same-story merge. */
 	synthesisNumPredict: number;
+	/** Sends think:false on every synthesis/recap generate() call — reasoning models (Qwen3, DeepSeek-R1, etc.) otherwise spend part of their response budget on a hidden <think> pass before writing anything, which is pure overhead for a rewrite/merge task (no logic/math to reason through) and directly eats into real generation time. Ignored harmlessly if the selected synthesis model doesn't support reasoning at all. Left as an explicit opt-in rather than always-on since it depends on which model is selected — see the Models tab. */
+	synthesisDisableThinking: boolean;
 	/** Per-widget enable flags — see admin/settings' consolidated "Widgets" tab. Weather/Stocks/PoE2's backend pollers (scheduler.ts) are gated on these too, not just sidebar visibility; Bookmarks has no poller so its flag only affects the sidebar. */
 	widgets: {
 		weather: boolean;

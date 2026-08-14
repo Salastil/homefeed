@@ -207,6 +207,31 @@ export function migrate() {
 		);
 		CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
 
+		-- Per-synthesis-call benchmark history (Logs tab) — deliberately separate from the
+		-- logs table above: that one is a pruned, message-only rolling log; this is
+		-- structured numeric data (tokens/sec, duration) meant to accumulate so different
+		-- models/hardware can be compared over time, so it's never pruned automatically.
+		-- article_id is NOT a real foreign key (same convention as merged_articles.sources
+		-- being a copied JSON blob, not a live reference) — a benchmark row should survive
+		-- its article being deleted by retention, so article_title is denormalized here too.
+		CREATE TABLE IF NOT EXISTS synthesis_runs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			timestamp TEXT NOT NULL,
+			kind TEXT NOT NULL, -- 'merge' | 'recap'
+			article_id TEXT,
+			article_title TEXT NOT NULL,
+			source_count INTEGER NOT NULL,
+			model TEXT NOT NULL,
+			num_ctx INTEGER NOT NULL,
+			num_predict INTEGER NOT NULL,
+			prompt_tokens INTEGER,
+			prompt_tokens_per_sec REAL,
+			gen_tokens INTEGER,
+			gen_tokens_per_sec REAL,
+			total_duration_ms INTEGER NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_synthesis_runs_timestamp ON synthesis_runs(timestamp);
+
 		CREATE TABLE IF NOT EXISTS global_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1), -- singleton row
 			merge_strictness INTEGER NOT NULL DEFAULT 3,
@@ -305,7 +330,7 @@ export function migrate() {
 	const existing = db.prepare('SELECT id FROM global_settings WHERE id = 1').get();
 	if (!existing) {
 		db.prepare(
-			`INSERT INTO global_settings (id, selected_models) VALUES (1, '{"embedding":"nomic-embed-text","image":"","synthesis":"qwen2.5:7b-instruct-q4_K_M"}')`
+			`INSERT INTO global_settings (id, selected_models) VALUES (1, '{"embedding":"nomic-embed-text","synthesis":"qwen2.5:7b-instruct-q4_K_M"}')`
 		).run();
 	}
 
@@ -418,6 +443,22 @@ export function migrate() {
 	}
 	if (!hasColumn('global_settings', 'bookmarks_columns')) {
 		db.exec('ALTER TABLE global_settings ADD COLUMN bookmarks_columns INTEGER NOT NULL DEFAULT 1');
+	}
+	if (!hasColumn('global_settings', 'embedding_service_host')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN embedding_service_host TEXT NOT NULL DEFAULT 'http://localhost'");
+		db.exec('ALTER TABLE global_settings ADD COLUMN embedding_service_port INTEGER NOT NULL DEFAULT 11434');
+		db.exec("ALTER TABLE global_settings ADD COLUMN synthesis_service_host TEXT NOT NULL DEFAULT 'http://localhost'");
+		db.exec('ALTER TABLE global_settings ADD COLUMN synthesis_service_port INTEGER NOT NULL DEFAULT 11434');
+		// One-time carry-forward so an existing install's already-configured shared connection
+		// isn't silently lost on upgrade — ai_service_host/ai_service_port stay in place,
+		// unread from here on (this file's established convention: never drop a column).
+		db.exec(`UPDATE global_settings SET
+			embedding_service_host = ai_service_host, embedding_service_port = ai_service_port,
+			synthesis_service_host = ai_service_host, synthesis_service_port = ai_service_port
+			WHERE id = 1`);
+	}
+	if (!hasColumn('global_settings', 'synthesis_disable_thinking')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN synthesis_disable_thinking INTEGER NOT NULL DEFAULT 0');
 	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —

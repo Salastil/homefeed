@@ -1,4 +1,4 @@
-import type { InferenceProvider } from '../inference/provider.js';
+import type { AiProviders, InferenceProvider } from '../inference/provider.js';
 import * as contentItemsDb from '../storage/db/contentItems.js';
 import * as sourcesDb from '../storage/db/sources.js';
 import * as categoriesDb from '../storage/db/categories.js';
@@ -59,10 +59,11 @@ function inAiDisabledCategory(item: ContentItem, disabledNames: Set<string>, sou
 /**
  * Shared by both the passthrough (no-AI) and synthesis direct-publish paths — same
  * publish-then-tag-then-log/error shape, differing only in how the success/failure
- * message describes why the item skipped merging. `provider`, when given, still gets
- * these articles tagged (via publishDirect's lightweight extraction) without rewriting
- * anything — omit it entirely for items whose category has AI turned off, or when
- * Ollama isn't reachable at all (see call sites).
+ * message describes why the item skipped merging. `embeddingProvider`, when given, still
+ * gets these articles tagged (matched against existing tags by embedding similarity — see
+ * publish.ts's resolveTagsByEmbedding) without rewriting anything — omit it entirely for
+ * items whose category has AI turned off, or when embedding isn't reachable at all (see
+ * call sites).
  */
 async function publishItemsDirect(
 	items: ContentItem[],
@@ -70,13 +71,13 @@ async function publishItemsDirect(
 	activeEvents: TrackedEvent[],
 	describeSuccess: (item: ContentItem) => string,
 	failureLabel: string,
-	provider?: InferenceProvider
+	embeddingProvider?: InferenceProvider
 ): Promise<number> {
 	let published = 0;
 	for (const item of items) {
 		try {
 			const eventId = claimedEventId(item, activeEvents) ?? undefined;
-			const article = await publishDirect(item, settings, { eventId, provider });
+			const article = await publishDirect(item, settings, { eventId, embeddingProvider });
 			contentItemsDb.assignCluster([item.id], article.id);
 			published++;
 			logger.info('synthesis', `Published "${article.title}" directly (${describeSuccess(item)})`);
@@ -123,13 +124,15 @@ export async function runPassthroughCycle(settings: GlobalSettings): Promise<num
  * ollama-provider.ts), and runSynthesisCycle's own reentrancy guard used to make them
  * do exactly that: stuck for however long the current cycle's clustering/synthesis
  * portion took, since both used to run under one guarded function. Runs regardless of
- * Ollama's reachability — merging/rewriting never happens here either way. `provider`
- * is optional and only used for tagging (see publishItemsDirect): scheduler.ts passes
- * one only when Ollama is actually reachable, and even then only type-direct items
- * (YouTube/Nitter/Telegram — direct-published purely because of format) get tagged,
- * never category-direct items (AI turned off for that category entirely, on purpose).
+ * embedding's reachability — merging/rewriting never happens here either way, and
+ * tagging here only ever needs the embedding connection (see publishDirect/
+ * resolveTagsByEmbedding), not synthesis. `embeddingProvider` is optional and only used
+ * for tagging (see publishItemsDirect): scheduler.ts passes one only when embedding is
+ * actually reachable, and even then only type-direct items (YouTube/Nitter/Telegram —
+ * direct-published purely because of format) get tagged, never category-direct items
+ * (AI turned off for that category entirely, on purpose).
  */
-export async function runDirectPublishCycle(settings: GlobalSettings, provider?: InferenceProvider): Promise<number> {
+export async function runDirectPublishCycle(settings: GlobalSettings, embeddingProvider?: InferenceProvider): Promise<number> {
 	const activeEvents = eventsDb.listActiveEvents();
 	const items = contentItemsDb.unclusteredItemsExcludingSources([]);
 	if (items.length === 0) {
@@ -154,7 +157,7 @@ export async function runDirectPublishCycle(settings: GlobalSettings, provider?:
 		activeEvents,
 		(item) => sourcesById.get(item.sourceId)?.type ?? 'unknown',
 		'Direct publish failed',
-		provider
+		embeddingProvider
 	);
 
 	const publishedCategoryDirect = await publishItemsDirect(
@@ -179,7 +182,7 @@ export async function runDirectPublishCycle(settings: GlobalSettings, provider?:
  * individually or merged with same-story coverage — just tagged with the event's id so
  * they're browsable under it and eligible for eventsRecap.ts's periodic AI wrap-up.
  */
-export async function runSynthesisCycle(provider: InferenceProvider, settings: GlobalSettings): Promise<number> {
+export async function runSynthesisCycle(providers: AiProviders, settings: GlobalSettings): Promise<number> {
 	const activeEvents = eventsDb.listActiveEvents();
 	const items = contentItemsDb.unclusteredItemsExcludingSources([]);
 	if (items.length === 0) {
@@ -211,7 +214,7 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 		.sort((a, b) => a.rank - b.rank)
 		.map((r) => r.item);
 
-	const embedded = await embedPendingItems(provider, settings.selectedModels.embedding, ranked);
+	const embedded = await embedPendingItems(providers.embedding, settings.selectedModels.embedding, ranked);
 	const clusters = clusterItems(embedded, settings.mergeStrictness);
 
 	const holdMs = settings.holdBeforePublishMinutes * 60_000;
@@ -239,8 +242,8 @@ export async function runSynthesisCycle(provider: InferenceProvider, settings: G
 			// actual synthesis to justify the risk.
 			const article =
 				cluster.items.length === 1
-					? await publishDirect(cluster.items[0], settings, { eventId, provider })
-					: await publishCluster(provider, settings, cluster, { eventId });
+					? await publishDirect(cluster.items[0], settings, { eventId, embeddingProvider: providers.embedding })
+					: await publishCluster(providers, settings, cluster, { eventId });
 			contentItemsDb.assignCluster(
 				cluster.items.map((i) => i.id),
 				cluster.id

@@ -24,8 +24,7 @@ The console prints an admin API key on every startup (a fresh one each time) —
 it into the admin login page. See `backend/README.md` for details.
 
 See `backend/README.md` for what's fully implemented vs. stubbed (Telegram adapter,
-image-selection heuristic vs. vision model, etc.), and how it behaves when Ollama
-isn't reachable.
+etc.), and how it behaves when Ollama isn't reachable.
 
 ## Running the mock backend instead (frontend-only work, no Ollama needed)
 
@@ -55,7 +54,7 @@ Open http://localhost:5173.
 - **Admin panel** (`/admin/settings`) — disabled by default; set `ADMIN_PANEL_ENABLED=true` in `frontend/.env` to turn on the cog icon and the `/admin/*` pages (see `frontend/.env.example`). Six tabs, all wired to the mock backend's `/api/admin/*` routes:
   - **Merge** — strictness slider, poll interval, hold-before-publish, follow-up thresholds, category priority (reorderable), tag dedup threshold, tag expiry
   - **Sources** — list, add, enable/disable, delete RSS/API/Telegram feeds
-  - **Models** — AI service status, per-task model selection (embedding/image/synthesis), fetched from the mock's simulated Ollama catalog
+  - **Models** — independent inference-server connection (host/port, test/save) and model selection for embedding/clustering and article synthesis, fetched from the mock's simulated Ollama catalog
   - **Retention** — published-article and raw-item age presets, storage cap with FIFO note and usage bar
   - **Tracked events** — list, create, toggle active/paused, delete
   - **Connections** — the asymmetric pair: frontend→backend URL (saved to *this browser* via `localStorage`, not a backend setting) and backend→AI-service host/port (a real backend setting, saved via `/api/admin/settings`)
