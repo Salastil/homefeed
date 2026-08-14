@@ -296,3 +296,29 @@ export const setWidgetEnabled = (id: string, enabled: boolean, fetchFn?: typeof 
 
 export const deleteWidget = (id: string, fetchFn?: typeof fetch) =>
 	request<void>(`/api/admin/widgets/${id}`, { method: 'DELETE' }, fetchFn);
+
+// Config export/import (see backend/src/api/backup.ts for what's included/excluded) —
+// bespoke fetch calls rather than request<T>(), since these bodies are binary/multipart,
+// not JSON. Both still need the X-Api-Key header attached manually: a plain <a href>
+// download wouldn't carry it (it's a custom header, not a cookie), and FormData needs no
+// Content-Type override (the browser sets its own multipart boundary automatically).
+export async function exportBackup(fetchFn: typeof fetch = fetch): Promise<Blob> {
+	const apiKey = getApiKey();
+	const headers: Record<string, string> = {};
+	if (apiKey) headers['X-Api-Key'] = apiKey;
+	const res = await fetchFn(`${getBackendUrl()}/api/admin/backup/export`, { headers });
+	if (!res.ok) throw new Error(`Export failed (${res.status})`);
+	return res.blob();
+}
+
+export async function importBackup(file: File, fetchFn: typeof fetch = fetch): Promise<{ ok: true; warnings: string[] }> {
+	const apiKey = getApiKey();
+	const headers: Record<string, string> = {};
+	if (apiKey) headers['X-Api-Key'] = apiKey;
+	const body = new FormData();
+	body.append('file', file);
+	const res = await fetchFn(`${getBackendUrl()}/api/admin/backup/import`, { method: 'POST', headers, body });
+	const data = await res.json();
+	if (!res.ok) throw new Error(data.error || `Import failed (${res.status})`);
+	return data;
+}

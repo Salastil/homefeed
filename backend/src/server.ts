@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import fs from 'node:fs';
 import path from 'node:path';
 import { registerAuth } from './api/auth.js';
@@ -39,6 +40,11 @@ async function buildApp(): Promise<FastifyInstance> {
 	});
 
 	await app.register(cookie);
+
+	// Only real consumer today is POST /api/admin/backup/import (config zip upload) —
+	// export-configuration zips are config-only (no media), so this generous a limit is
+	// still nowhere near what actual article media handling would need.
+	await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 
 	// Overrides Fastify's default JSON body parser, which throws "Body cannot be empty
 	// when content-type is set to 'application/json'" for any bodyless request (DELETE,
