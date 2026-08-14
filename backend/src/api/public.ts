@@ -7,22 +7,35 @@ import * as settingsDb from '../storage/db/settings.js';
 import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
 import { getKv } from '../storage/db/widgetKv.js';
 import type { WidgetReport } from '../widgets/report.js';
+import type { MergedArticle } from '../storage/db/types.js';
 import { hasPrivateAccess } from './privateAccess.js';
+
+// The DB keeps article.video.url as the real upstream URL (video-proxy.ts needs it to
+// know what to fetch) — this rewrites it to the proxy route for any API response, so
+// the visitor's browser never hotlinks the source's CDN directly. YouTube is excluded:
+// it's rendered as a youtube.com iframe embed, not hotlinked media, so there's nothing
+// to proxy.
+function presentArticle(article: MergedArticle): MergedArticle {
+	if (!article.video || article.video.provider === 'youtube') return article;
+	return { ...article, video: { ...article.video, url: `/media/video-proxy?articleId=${article.id}` } };
+}
 
 export async function registerPublicRoutes(app: FastifyInstance) {
 	app.get('/api/feed', async (req) => {
 		const { category, geo, eventId, tag, before, limit } = req.query as Record<string, string | undefined>;
-		return articlesDb.queryFeed(
-			{
-				category,
-				geo,
-				eventId,
-				tag,
-				before,
-				limit: limit ? Number(limit) : undefined
-			},
-			hasPrivateAccess(req)
-		);
+		return articlesDb
+			.queryFeed(
+				{
+					category,
+					geo,
+					eventId,
+					tag,
+					before,
+					limit: limit ? Number(limit) : undefined
+				},
+				hasPrivateAccess(req)
+			)
+			.map(presentArticle);
 	});
 
 	app.get('/api/article/:id', async (req, reply) => {
@@ -38,7 +51,7 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 				return reply.code(404).send({ error: 'not found' });
 			}
 		}
-		return article;
+		return presentArticle(article);
 	});
 
 	app.get('/api/tags', async () => {

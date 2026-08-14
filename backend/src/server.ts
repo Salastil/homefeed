@@ -8,6 +8,7 @@ import { registerPublicRoutes } from './api/public.js';
 import { registerAdminRoutes } from './api/admin.js';
 import { registerMediaProxy } from './api/mediaProxy.js';
 import { registerTelegramMediaProxy } from './api/telegramMediaProxy.js';
+import { registerVideoProxy } from './api/videoProxy.js';
 import { registerPrivateAccess } from './api/privateAccess.js';
 import { loadedWidgets } from './widgets/registry.js';
 import { logger } from './storage/db/logs.js';
@@ -111,6 +112,7 @@ async function buildApp(): Promise<FastifyInstance> {
 	// one at the same depth).
 	await registerMediaProxy(app);
 	await registerTelegramMediaProxy(app);
+	await registerVideoProxy(app);
 
 	app.get('/health', async () => ({ ok: true }));
 

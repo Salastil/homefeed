@@ -82,10 +82,13 @@
 		<!-- Direct-file video (e.g. an RSS enclosure) rather than an iframe provider —
 		     play it in place of the hero image instead of the dead "video embed" box
 		     this used to fall through to. contain (not cover) so a vertical clip isn't
-		     cropped, same reasoning as the feed cards. -->
+		     cropped, same reasoning as the feed cards. The backend already rewrote
+		     video.url to its own /media/video-proxy route (so the source's CDN never
+		     sees the visitor directly) — resolveMediaUrl just points that relative path
+		     at the configured backend, same as the poster image below. -->
 		<div class="video-native">
 			<video controls preload="metadata" poster={a.heroImage ? resolveMediaUrl(a.heroImage.url) : undefined}>
-				<source src={a.video.url} type="video/mp4" />
+				<source src={resolveMediaUrl(a.video.url)} type="video/mp4" />
 			</video>
 		</div>
 
