@@ -15,9 +15,8 @@ function printApiKeyBanner() {
 	console.log(`\n${line}`);
 	console.log('  Homefeed admin API key (required for every /api/admin/* request)');
 	console.log(`  ${ADMIN_API_KEY}`);
-	console.log('  This key is generated fresh on every process restart — it will not be');
-	console.log('  the same next time. Installing/deleting a widget does NOT restart the');
-	console.log('  process (see server.ts) and does not change this key.');
+	console.log('  Generated once and persisted to backend/.env — it stays the same across');
+	console.log('  restarts. Delete the ADMIN_API_KEY line from .env to force a new one.');
 	console.log(`${line}\n`);
 }
 

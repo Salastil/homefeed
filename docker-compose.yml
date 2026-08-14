@@ -20,6 +20,11 @@ services:
       WIDGETS_INSTALLED_DIR: /app/data/widgets-installed
       NODE_ENV: production
       PRIVATE_ACCESS_PASSWORD: ${PRIVATE_ACCESS_PASSWORD:-}
+      # Optional — the backend persists a generated key to backend/.env on bare-metal
+      # deploys, but a container has no writable .env of its own (CWD is /app, not the
+      # backend-data volume), so it'd otherwise regenerate on every recreate. Set this
+      # once (any random string) to pin a stable key instead.
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
     volumes:
       - backend-data:/app/data
     ports:

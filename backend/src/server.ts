@@ -128,11 +128,11 @@ async function buildApp(): Promise<FastifyInstance> {
  * the route set (see widgets/install.ts, uninstall.ts).
  *
  * Deliberately reuses everything else already live in this process — the DB connection,
- * the in-memory widget registry, the scheduler's setInterval loops, the Telegram client's
- * session, and the admin API key all stay untouched. Only the HTTP server + its router are
- * rebuilt, which is what makes this meaningfully better than a full process restart: none
- * of that state is lost, and in particular the admin API key (regenerated only on true
- * process start) stays valid, so installing a widget never logs the admin out.
+ * the in-memory widget registry, the scheduler's setInterval loops, and the Telegram
+ * client's session all stay untouched. Only the HTTP server + its router are rebuilt,
+ * which is what makes this meaningfully better than a full process restart: none of
+ * that in-memory state is lost (the admin API key survives either way now — see
+ * apiKey.ts — but the DB connection/scheduler/Telegram session don't).
  *
  * Split into two steps rather than one, because of a real deadlock/dropped-response bug
  * hit in testing: the install/delete admin routes that trigger a reload are themselves

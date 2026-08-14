@@ -27,6 +27,12 @@ services:
       WIDGETS_INSTALLED_DIR: /app/data/widgets-installed
       NODE_ENV: production
       PRIVATE_ACCESS_PASSWORD: ${PRIVATE_ACCESS_PASSWORD:-}
+      # Optional — without this, the container regenerates the admin key on every
+      # recreate (no writable backend/.env inside it). Set to any random string to
+      # pin a stable one. If this stack's .env substitution doesn't reliably apply
+      # (as PUBLIC_ORIGIN's didn't — see FRONTEND_ORIGIN/ORIGIN above), set it as a
+      # literal value directly in Compose Manager's own environment editor instead.
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
     volumes:
       - backend-data:/app/data
     ports:
