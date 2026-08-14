@@ -1,5 +1,5 @@
 import { Agent } from 'undici';
-import type { InferenceProvider } from './provider.js';
+import type { InferenceProvider, GenerateStats } from './provider.js';
 import * as stats from './stats.js';
 
 /**
@@ -52,8 +52,8 @@ export class OllamaProvider implements InferenceProvider {
 
 	async generate(
 		prompt: string,
-		opts: { model?: string; system?: string; numCtx?: number; numPredict?: number; label?: string } = {}
-	): Promise<string> {
+		opts: { model?: string; system?: string; numCtx?: number; numPredict?: number; label?: string; think?: boolean } = {}
+	): Promise<{ text: string; stats: GenerateStats }> {
 		const startedAt = Date.now();
 		stats.recordGenerateStart(opts.label ?? 'synthesis');
 		try {
@@ -65,6 +65,7 @@ export class OllamaProvider implements InferenceProvider {
 					prompt,
 					system: opts.system,
 					stream: false,
+					...(opts.think !== undefined ? { think: opts.think } : {}),
 					options: {
 						num_ctx: opts.numCtx ?? DEFAULT_NUM_CTX,
 						num_predict: opts.numPredict ?? DEFAULT_NUM_PREDICT
@@ -87,13 +88,20 @@ export class OllamaProvider implements InferenceProvider {
 			// (eval_duration/1e9) gives generation tokens/sec, and total_duration/1e6 gives
 			// wall-clock milliseconds (falling back to a local measurement if a given Ollama
 			// version's response ever omits it).
-			stats.recordGenerateEnd({
-				genTokensPerSec: data.eval_count && data.eval_duration ? data.eval_count / (data.eval_duration / 1e9) : null,
+			const generateStats: GenerateStats = {
+				promptTokens: data.prompt_eval_count ?? null,
 				promptTokensPerSec:
 					data.prompt_eval_count && data.prompt_eval_duration ? data.prompt_eval_count / (data.prompt_eval_duration / 1e9) : null,
+				genTokens: data.eval_count ?? null,
+				genTokensPerSec: data.eval_count && data.eval_duration ? data.eval_count / (data.eval_duration / 1e9) : null,
 				totalDurationMs: data.total_duration ? data.total_duration / 1e6 : Date.now() - startedAt
+			};
+			stats.recordGenerateEnd({
+				genTokensPerSec: generateStats.genTokensPerSec,
+				promptTokensPerSec: generateStats.promptTokensPerSec,
+				totalDurationMs: generateStats.totalDurationMs
 			});
-			return data.response;
+			return { text: data.response, stats: generateStats };
 		} catch (err) {
 			stats.recordGenerateEnd(null);
 			throw err;

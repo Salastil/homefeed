@@ -8,11 +8,12 @@ let settings = {
 	tagExpiryDays: 21,
 	followUpMinHoursSinceLast: 6,
 	followUpMinNewSources: 2,
-	aiServiceHost: "http://10.0.0.14",
-	aiServicePort: 11434,
+	embeddingServiceHost: "http://10.0.0.14",
+	embeddingServicePort: 11434,
+	synthesisServiceHost: "http://10.0.0.14",
+	synthesisServicePort: 11434,
 	selectedModels: {
 		embedding: "nomic-embed-text-v1.5",
-		image: "clip-vit-b32",
 		synthesis: "qwen2.5:7b-instruct-q4_K_M"
 	},
 	retention: {
@@ -106,7 +107,6 @@ let events = [
 // Simulated Ollama-backed model catalog, per task
 const models = {
 	embedding: ["nomic-embed-text-v1.5", "all-MiniLM-L6-v2"],
-	image: ["clip-vit-b32", "siglip-base"],
 	synthesis: ["qwen2.5:7b-instruct-q4_K_M", "phi3.5:3.8b-mini-instruct-q4", "llama3.1:8b-instruct-q4"]
 };
 

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { InferenceProvider } from '../inference/provider.js';
+import type { InferenceProvider, AiProviders } from '../inference/provider.js';
 import type { Cluster } from './clustering.js';
-import { synthesizeArticle, synthesizeRecap, extractTags } from './synthesis.js';
+import { synthesizeArticle, synthesizeRecap } from './synthesis.js';
 import { selectBestImage, faviconUrlFor } from './image-selection.js';
 import { downloadAndStore, promoteToPublished, storeMediaBuffer } from '../storage/media/index.js';
 import { downloadMessageMedia, downloadChannelAvatar } from '../telegram/client.js';
@@ -9,6 +9,7 @@ import { logger } from '../storage/db/logs.js';
 import * as articles from '../storage/db/articles.js';
 import * as tags from '../storage/db/tags.js';
 import * as sources from '../storage/db/sources.js';
+import * as synthesisRuns from '../storage/db/synthesisRuns.js';
 import type {
 	GlobalSettings,
 	MergedArticle,
@@ -36,7 +37,7 @@ function anyPushesToTopStories(items: ContentItem[]): boolean {
 	return items.some((item) => sources.getSource(item.sourceId)?.pushToTopStories ?? false);
 }
 
-/** Embeds each label and resolves/dedupes it against existing tags — shared by every publish path that has tagLabels in hand (from a full synthesis call or the lightweight extractTags), so the dedup behavior stays identical regardless of how the labels were produced. */
+/** Embeds each label and resolves/dedupes it against existing tags — shared by every synthesized/merged publish path (a full synthesizeArticle/synthesizeRecap call), so the dedup behavior stays identical regardless of which one produced the labels. Can originate a brand-new tag (via resolveOrCreateTag) since the label text itself comes from the synthesis model actually naming a topic. */
 async function resolveTagIds(
 	provider: InferenceProvider,
 	tagLabels: string[],
@@ -52,7 +53,54 @@ async function resolveTagIds(
 			logger.error(logSource, `Tag embedding failed for "${label}": ${(err as Error).message}`);
 		}
 	}
-	return tagIds;
+	// resolveOrCreateTag dedupes each individual label against existing tags, but two
+	// DIFFERENT proposed labels (e.g. "ETF" and "ETF Acquisition") can both resolve to
+	// the SAME existing tag — seen in production as a literal duplicate id in the
+	// published article's tags array. Dedupe the final id list, not just each lookup.
+	return [...new Set(tagIds)];
+}
+
+const MAX_EMBEDDING_MATCHED_TAGS = 4;
+
+/**
+ * Deliberately its own, separate threshold from settings.tagDedupThreshold — that one is
+ * calibrated for comparing two SHORT LABELS against each other (an LLM-generated
+ * candidate vs. an existing tag's label), which sit much closer together in embedding
+ * space than a full article's title+summary does against a short label — comparing
+ * unlike "shapes" of text naturally yields lower cosine similarity even for a clearly
+ * correct match. Empirically checked against the actual production Ollama/nomic-embed-text
+ * setup this shipped with: a true match (an article about Trump against an existing
+ * "Donald Trump" tag) scored ~0.52, while the *closest* false match found for a
+ * genuinely unrelated article (a bakery story against an unrelated "Bordeaux" tag, pure
+ * noise) scored ~0.47 — 0.5 sits in that gap. This is a heuristic, not a guarantee: it
+ * may need retuning against a given install's own tag corpus/embedding model over time.
+ */
+const TAG_MATCH_MIN_SIMILARITY = 0.5;
+
+/**
+ * Tags a non-synthesized article (a single-source item publishing verbatim, or a
+ * format-based direct publish like YouTube/Nitter/Telegram) purely via embedding
+ * similarity against tags that already exist — no synthesis-model call at all, so no
+ * LLM cost/latency, and no reasoning-model pitfall (a hidden <think> pass silently
+ * eating a short response's whole token budget — what the old standalone
+ * extractTags/generate() approach hit in production). Only ever assigns EXISTING tags,
+ * never creates new ones: without a text-generation step, there's no way to originate a
+ * new tag label here — a brand-new topic first has to be named by an actual synthesis
+ * call (a merge or event recap, see resolveTagIds above) before anything can match it.
+ */
+async function resolveTagsByEmbedding(
+	embeddingProvider: InferenceProvider,
+	item: Pick<ContentItem, 'title' | 'summary' | 'body'>,
+	settings: GlobalSettings
+): Promise<string[]> {
+	const text = `${item.title}\n${item.body || item.summary}`.slice(0, 2000);
+	const embedding = await embeddingProvider.embed(text, { model: settings.selectedModels.embedding });
+	const matches = tags
+		.scoreTagsBySimilarity(embedding)
+		.filter((m) => m.score >= TAG_MATCH_MIN_SIMILARITY)
+		.slice(0, MAX_EMBEDDING_MATCHED_TAGS);
+	for (const match of matches) tags.touchTag(match.tag.id);
+	return matches.map((match) => match.tag.id);
 }
 
 /**
@@ -240,17 +288,19 @@ async function resolveQuotedTweet(
 /**
  * Publishes a single item as-is — the title/body are never rewritten or merged (see
  * priorityQueue.ts for why: single-source clusters, YouTube/Nitter/Telegram items, and
- * AI-disabled categories all route here specifically to avoid that risk). When a
- * provider is given (AI is actually reachable and this item isn't in an AI-disabled
- * category), it still gets tags via a lightweight standalone extraction call — every
- * published article should be taggable/discoverable via /tag/[slug], not just the
- * AI-merged ones. Passing no provider (Ollama unreachable, or the item's category has
- * AI turned off entirely) skips tagging too — same as the old "no tags yet" behavior.
+ * AI-disabled categories all route here specifically to avoid that risk). When an
+ * embedding provider is given (embedding is actually reachable and this item isn't in an
+ * AI-disabled category), it still gets tagged — matched against already-existing tags by
+ * embedding similarity (see resolveTagsByEmbedding) rather than a synthesis-model call,
+ * so tagging here doesn't depend on the synthesis connection at all. Every published
+ * article should be taggable/discoverable via /tag/[slug], not just the AI-merged ones.
+ * Passing no embeddingProvider (unreachable, or the item's category has AI turned off
+ * entirely) skips tagging too — same as the old "no tags yet" behavior.
  */
 export async function publishDirect(
 	item: ContentItem,
 	settings: GlobalSettings,
-	opts: { eventId?: string; provider?: InferenceProvider } = {}
+	opts: { eventId?: string; embeddingProvider?: InferenceProvider } = {}
 ): Promise<MergedArticle> {
 	const category = uniqueCategories([item]);
 	const storedMediaIds: string[] = [];
@@ -325,12 +375,11 @@ export async function publishDirect(
 	}
 
 	let tagIds: string[] = [];
-	if (opts.provider) {
+	if (opts.embeddingProvider) {
 		try {
-			const tagLabels = await extractTags(opts.provider, settings.selectedModels.synthesis, item, settings);
-			tagIds = await resolveTagIds(opts.provider, tagLabels, settings, 'synthesis');
+			tagIds = await resolveTagsByEmbedding(opts.embeddingProvider, item, settings);
 		} catch (err) {
-			logger.error('synthesis', `Tag extraction failed for "${item.title}": ${(err as Error).message}`);
+			logger.error('synthesis', `Tag matching failed for "${item.title}": ${(err as Error).message}`);
 		}
 	}
 
@@ -377,7 +426,7 @@ export async function publishDirect(
  * facts) for no synthesis benefit. See priorityQueue.ts's runSynthesisCycle.
  */
 export async function publishCluster(
-	provider: InferenceProvider,
+	providers: AiProviders,
 	settings: GlobalSettings,
 	cluster: Cluster,
 	opts: { eventId?: string } = {}
@@ -385,9 +434,15 @@ export async function publishCluster(
 	const items = cluster.items;
 
 	const sourceNames = new Map(items.map((item) => [item.sourceId, sources.getSource(item.sourceId)?.name ?? 'Unknown source']));
-	const { title, body, tagLabels } = await synthesizeArticle(provider, settings.selectedModels.synthesis, items, sourceNames, settings);
+	const { title, body, tagLabels, stats: generateStats } = await synthesizeArticle(
+		providers.synthesis,
+		settings.selectedModels.synthesis,
+		items,
+		sourceNames,
+		settings
+	);
 
-	const tagIds = await resolveTagIds(provider, tagLabels, settings, 'synthesis');
+	const tagIds = await resolveTagIds(providers.embedding, tagLabels, settings, 'synthesis');
 
 	const { heroImage, storedMediaId } = await resolveHeroImage(items, items[0]?.link ?? '');
 	const videoItem = items.find((i) => i.videos.length > 0);
@@ -458,6 +513,21 @@ export async function publishCluster(
 		promoteToPublished(storedMediaId, article.id);
 	}
 
+	synthesisRuns.recordSynthesisRun({
+		kind: 'merge',
+		articleId: article.id,
+		articleTitle: article.title,
+		sourceCount: items.length,
+		model: settings.selectedModels.synthesis,
+		numCtx: settings.synthesisNumCtx,
+		numPredict: settings.synthesisNumPredict,
+		promptTokens: generateStats.promptTokens,
+		promptTokensPerSec: generateStats.promptTokensPerSec,
+		genTokens: generateStats.genTokens,
+		genTokensPerSec: generateStats.genTokensPerSec,
+		totalDurationMs: generateStats.totalDurationMs
+	});
+
 	return article;
 }
 
@@ -470,19 +540,25 @@ export async function publishCluster(
  * over from the constituent articles rather than re-resolved from raw content items.
  */
 export async function publishEventRecap(
-	provider: InferenceProvider,
+	providers: AiProviders,
 	settings: GlobalSettings,
 	event: TrackedEvent,
 	constituents: MergedArticle[]
 ): Promise<MergedArticle> {
-	const { title, body, tagLabels } = await synthesizeRecap(provider, settings.selectedModels.synthesis, event, constituents, settings);
-	const tagIds = await resolveTagIds(provider, tagLabels, settings, 'events');
+	const { title, body, tagLabels, stats: generateStats } = await synthesizeRecap(
+		providers.synthesis,
+		settings.selectedModels.synthesis,
+		event,
+		constituents,
+		settings
+	);
+	const tagIds = await resolveTagIds(providers.embedding, tagLabels, settings, 'events');
 
 	const category = [...new Set(constituents.flatMap((a) => a.category))];
 	const heroImage = constituents.find((a) => a.heroImage)?.heroImage ?? null;
 	const now = new Date().toISOString();
 
-	return articles.insertArticle({
+	const article = articles.insertArticle({
 		title: title || `${event.name}: recap`,
 		body,
 		heroImage,
@@ -504,4 +580,21 @@ export async function publishEventRecap(
 		topStories: constituents.some((a) => a.topStories),
 		isRecap: true
 	});
+
+	synthesisRuns.recordSynthesisRun({
+		kind: 'recap',
+		articleId: article.id,
+		articleTitle: article.title,
+		sourceCount: constituents.length,
+		model: settings.selectedModels.synthesis,
+		numCtx: settings.synthesisNumCtx,
+		numPredict: settings.synthesisNumPredict,
+		promptTokens: generateStats.promptTokens,
+		promptTokensPerSec: generateStats.promptTokensPerSec,
+		genTokens: generateStats.genTokens,
+		genTokensPerSec: generateStats.genTokensPerSec,
+		totalDurationMs: generateStats.totalDurationMs
+	});
+
+	return article;
 }

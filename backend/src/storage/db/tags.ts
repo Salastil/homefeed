@@ -84,6 +84,24 @@ export function resolveOrCreateTag(label: string, embedding: number[], dedupThre
 	return { id, label, aliases: [], slug, embedding, firstSeenAt: now, lastSeenAt: now, articleCount: 1, status: 'active' };
 }
 
+export interface TagMatch {
+	tag: Tag;
+	score: number;
+}
+
+/** Every active tag scored against `embedding` by cosine similarity, best match first — see publish.ts's embedding-only tagging path for non-synthesized articles. */
+export function scoreTagsBySimilarity(embedding: number[]): TagMatch[] {
+	return listActiveTags()
+		.map((tag) => ({ tag, score: cosineSimilarity(embedding, tag.embedding) }))
+		.sort((a, b) => b.score - a.score);
+}
+
+/** Bumps lastSeenAt/articleCount on a tag matched directly by embedding similarity rather than through resolveOrCreateTag (which does this itself on a match). */
+export function touchTag(tagId: string) {
+	const now = new Date().toISOString();
+	db.prepare('UPDATE tags SET last_seen_at = ?, article_count = article_count + 1 WHERE id = ?').run(now, tagId);
+}
+
 /** Scheduled sweep: flips tags with no new articles in `expiryDays` to expired. */
 export function expireStaleTags(expiryDays: number): number {
 	const cutoff = new Date(Date.now() - expiryDays * 86_400_000).toISOString();

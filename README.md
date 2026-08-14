@@ -24,8 +24,7 @@ The console prints an admin API key on every startup (a fresh one each time) —
 it into the admin login page. See `backend/README.md` for details.
 
 See `backend/README.md` for what's fully implemented vs. stubbed (Telegram adapter,
-image-selection heuristic vs. vision model, etc.), and how it behaves when Ollama
-isn't reachable.
+etc.), and how it behaves when Ollama isn't reachable.
 
 ## Running the mock backend instead (frontend-only work, no Ollama needed)
 
@@ -55,7 +54,7 @@ Open http://localhost:5173.
 - **Admin panel** (`/admin/settings`) — disabled by default; set `ADMIN_PANEL_ENABLED=true` in `frontend/.env` to turn on the cog icon and the `/admin/*` pages (see `frontend/.env.example`). Six tabs, all wired to the mock backend's `/api/admin/*` routes:
   - **Merge** — strictness slider, poll interval, hold-before-publish, follow-up thresholds, category priority (reorderable), tag dedup threshold, tag expiry
   - **Sources** — list, add, enable/disable, delete RSS/API/Telegram feeds
-  - **Models** — AI service status, per-task model selection (embedding/image/synthesis), fetched from the mock's simulated Ollama catalog
+  - **Models** — independent inference-server connection (host/port, test/save) and model selection for embedding/clustering and article synthesis, fetched from the mock's simulated Ollama catalog
   - **Retention** — published-article and raw-item age presets, storage cap with FIFO note and usage bar
   - **Tracked events** — list, create, toggle active/paused, delete
   - **Connections** — the asymmetric pair: frontend→backend URL (saved to *this browser* via `localStorage`, not a backend setting) and backend→AI-service host/port (a real backend setting, saved via `/api/admin/settings`)
@@ -70,11 +69,70 @@ Timestamps are generated relative to `Date.now()` (see `hoursAgo()` in `data.js`
 
 The frontend never hardcodes `localhost:4000` — see `frontend/src/lib/config.ts`. It reads `VITE_BACKEND_URL` (set in `frontend/.env`) or a value saved via `setBackendUrl()`. Pointing this project at the real backend instead of the mock is a one-line change, not a rewrite — swap the URL in `.env` and everything else keeps working, since both servers implement the same `/api/feed`, `/api/article/:id`, `/api/tags`, `/api/events` contract from `homefeed-data-schema.md`.
 
+## Docker
+
+`docker-compose.yml` builds and runs the real backend and the frontend as two
+separate containers (the mock backend isn't included — it's a dev-only
+convenience, not meant to be deployed).
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Open http://localhost:3000. The backend's admin API key prints to its container
+log on every start (`docker compose logs backend`) — same as running it directly,
+just a fresh one each time the container restarts.
+
+`.env.example` documents every variable `docker-compose.yml` reads; the two that
+matter most:
+
+- **`PUBLIC_ORIGIN`** — the one URL everything treats as "where this site is."
+  Feeds both the backend's `FRONTEND_ORIGIN` (CORS) and the frontend's `ORIGIN`
+  (adapter-node) — see the reverse-proxy section above for why these two must
+  match exactly. Defaults to `http://localhost:3000` for local testing.
+- **`VITE_BACKEND_URL`** — baked into the frontend image at *build* time (same
+  build-time-vs-runtime distinction as the non-Docker deployment below), so
+  changing it needs `docker compose build frontend`, not just a restart or
+  `up`. The frontend container runs with `network_mode: service:backend` (shares
+  the backend container's network namespace rather than getting its own)
+  specifically so `http://localhost:4000` correctly reaches the backend from
+  *both* the visitor's browser and the frontend container's own
+  server-rendered (SSR) requests on a page's first load — no single URL value
+  would otherwise work for both. Don't remove that `network_mode` line without
+  replacing it with something that solves the same problem (a reverse proxy
+  routing by path, as below, is the standard fix).
+
+For a real deployment, put both containers behind a reverse proxy exactly as
+described in the next section (`FRONTEND_PORT`/`BACKEND_PORT`'s published ports
+are what you'd point the proxy at), and set `PUBLIC_ORIGIN`/`VITE_BACKEND_URL` to
+your public domain instead of `localhost`.
+
+The backend's SQLite DB, downloaded media, and uploaded widgets all persist in
+the `backend-data` named volume — `docker compose down` alone doesn't touch it;
+add `-v` if you actually want to wipe it. Once running, point the admin panel's
+AI Service host (Connections tab) at your Ollama instance — if Ollama runs on
+the same machine outside Docker, use `http://host.docker.internal:11434`, not
+`localhost` (which inside the container means the container itself).
+
+### Registry and CI (Gitea)
+
+Both services also carry an `image:` name pointed at this project's Gitea
+container registry (`git.salastil.com/salastil/homefeed-{backend,frontend}`),
+so `docker compose build` tags them correctly and `docker compose push`/`pull`
+work directly against it — override `REGISTRY`/`IMAGE_TAG` in `.env` for a
+different registry or a specific tag (see `.env.example`).
+
+`.gitea/workflows/docker-build.yml` builds and pushes both images on every
+push to `master` or `development` — `latest` on `master`, the branch name and
+commit SHA otherwise. It reads `VITE_BACKEND_URL` from the repo's Actions
+variables (Settings → Actions → Variables) for the frontend build, since that
+needs to be the real public URL, not `localhost`.
+
 ## Deploying behind a reverse proxy (e.g. Nginx Proxy Manager)
 
-Both apps are meant to run as plain, long-lived Node processes on your own host —
-there's no platform-specific adapter or container packaging here, just two servers
-you point a reverse proxy at.
+Both apps can also run as plain, long-lived Node processes on your own host
+without Docker at all — two servers you point a reverse proxy at.
 
 This assumes **one public domain**, with the reverse proxy routing by path:
 everything under `/api/` and `/media/` goes to the backend, everything else goes to

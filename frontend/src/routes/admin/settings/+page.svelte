@@ -55,7 +55,7 @@
 			installedWidgets={data.installedWidgets}
 		/>
 	{:else if active === 'connections'}
-		<ConnectionsTab settings={data.settings} aiStatus={data.aiStatus} telegramStatus={data.telegramStatus} />
+		<ConnectionsTab settings={data.settings} telegramStatus={data.telegramStatus} />
 	{:else if active === 'logs'}
 		<LogsTab logs={data.logs} />
 	{/if}

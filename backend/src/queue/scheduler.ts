@@ -78,9 +78,13 @@ export function stopWidgetPolling(id: string) {
 }
 
 export function startScheduler() {
-	const provider = () => {
+	const embeddingProvider = () => {
 		const s = settingsDb.getSettings();
-		return new OllamaProvider(s.aiServiceHost, s.aiServicePort);
+		return new OllamaProvider(s.embeddingServiceHost, s.embeddingServicePort);
+	};
+	const synthesisProvider = () => {
+		const s = settingsDb.getSettings();
+		return new OllamaProvider(s.synthesisServiceHost, s.synthesisServicePort);
 	};
 
 	everyTickSkippingOverlap(POLL_TICK_MS, async () => {
@@ -95,14 +99,16 @@ export function startScheduler() {
 	everyTickSkippingOverlap(DIRECT_PUBLISH_TICK_MS, async () => {
 		try {
 			const settings = settingsDb.getSettings();
-			const p = provider();
-			// This tick runs regardless of Ollama's reachability (nothing here rewrites or
-			// merges), but tagging direct-published items (see runDirectPublishCycle/
-			// publishDirect) does need a working AI service — only offer the provider
-			// through when it's actually reachable, so an unconfigured Ollama doesn't spam
-			// the log with a failed tag-extraction attempt on every single item, every tick.
-			const reachable = await p.isReachable();
-			const published = await runDirectPublishCycle(settings, reachable ? p : undefined);
+			const embedding = embeddingProvider();
+			// This tick runs regardless of reachability (nothing here rewrites or merges),
+			// but tagging direct-published items (see runDirectPublishCycle/publishDirect)
+			// does need a working embedding connection — it matches against already-existing
+			// tags by similarity, no synthesis-model call involved at all — so only offer the
+			// provider through when embedding specifically is reachable, so an unconfigured
+			// connection doesn't spam the log with a failed tag-matching attempt on every
+			// single item, every tick. Synthesis's reachability is irrelevant here.
+			const reachable = await embedding.isReachable();
+			const published = await runDirectPublishCycle(settings, reachable ? embedding : undefined);
 			if (published > 0) {
 				logger.info('scheduler', `Direct-publish tick: published ${published} article(s)`);
 			}
@@ -114,12 +120,17 @@ export function startScheduler() {
 	everyTickSkippingOverlap(SYNTHESIS_TICK_MS, async () => {
 		try {
 			const settings = settingsDb.getSettings();
-			const p = provider();
+			const embedding = embeddingProvider();
+			const synthesis = synthesisProvider();
 
-			if (!(await p.isReachable())) {
-				// Ollama isn't set up yet — publish what we can directly rather than
-				// leaving the site empty. Tracked-event recaps genuinely need the AI
-				// (summarizing many messages isn't something to fake), so those still wait.
+			const [embeddingReachable, synthesisReachable] = await Promise.all([embedding.isReachable(), synthesis.isReachable()]);
+			if (!embeddingReachable || !synthesisReachable) {
+				// Either connection isn't set up yet — publish what we can directly rather
+				// than leaving the site empty. Every merge/tag path here needs both
+				// connections (embedding for clustering/tagging, synthesis for the article
+				// text itself), so "one down" is treated the same as "both down". Tracked-event
+				// recaps genuinely need the AI (summarizing many messages isn't something to
+				// fake), so those still wait.
 				const published = await runPassthroughCycle(settings);
 				if (published > 0) {
 					logger.warn('scheduler', `AI service unreachable — published ${published} article(s) directly (no rewriting/merging)`);
@@ -127,8 +138,9 @@ export function startScheduler() {
 				return;
 			}
 
-			const published = await runSynthesisCycle(p, settings);
-			const recapped = await runEventRecaps(p, settings);
+			const providers = { embedding, synthesis };
+			const published = await runSynthesisCycle(providers, settings);
+			const recapped = await runEventRecaps(providers, settings);
 			if (published > 0 || recapped > 0) {
 				logger.info('scheduler', `Synthesis tick: published ${published} article(s), ${recapped} event recap(s)`);
 			}

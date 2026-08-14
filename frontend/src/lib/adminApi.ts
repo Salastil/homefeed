@@ -7,6 +7,7 @@ import type {
 	CategoryPriority,
 	ModelCatalog,
 	AiStatus,
+	AiStatusBySlot,
 	TelegramStatus,
 	LogEntry,
 	GeocodeResult,
@@ -19,6 +20,7 @@ import type {
 	InstalledWidget,
 	WidgetUploadManifest,
 	PipelineStats,
+	SynthesisRun,
 	ModelContextInfo,
 	ForceRecapResult
 } from './adminTypes';
@@ -149,7 +151,12 @@ export const getModels = (fetchFn?: typeof fetch) =>
 	request<ModelCatalog>('/api/admin/models', {}, fetchFn);
 
 export const getAiStatus = (fetchFn?: typeof fetch) =>
-	request<AiStatus>('/api/admin/ai-status', {}, fetchFn);
+	request<AiStatusBySlot>('/api/admin/ai-status', {}, fetchFn);
+
+// Tests whatever host/port is currently on screen, independent of what's saved —
+// see the backend route's comment for why this is a separate endpoint from getAiStatus.
+export const testAiConnection = (host: string, port: number, fetchFn?: typeof fetch) =>
+	request<AiStatus>(`/api/admin/ai-status/test?host=${encodeURIComponent(host)}&port=${encodeURIComponent(port)}`, {}, fetchFn);
 
 export const getModelContext = (model: string, fetchFn?: typeof fetch) =>
 	request<ModelContextInfo>(`/api/admin/model-context?model=${encodeURIComponent(model)}`, {}, fetchFn);
@@ -198,6 +205,11 @@ export const getLogs = (filters: { level?: 'info' | 'warn' | 'error'; limit?: nu
 };
 
 export const getPipelineStats = (fetchFn?: typeof fetch) => request<PipelineStats>('/api/admin/pipeline-stats', {}, fetchFn);
+
+export const getSynthesisRuns = (filters: { limit?: number } = {}, fetchFn?: typeof fetch) => {
+	const qs = new URLSearchParams(filters as Record<string, string>).toString();
+	return request<SynthesisRun[]>(`/api/admin/synthesis-runs${qs ? `?${qs}` : ''}`, {}, fetchFn);
+};
 
 // Weather — config/cache now live behind the widget's own dedicated admin route (see
 // backend/src/widgets/weather/plugin.ts) rather than riding along on AdminSettings.

@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import type { LogEntry, PipelineStats } from '$lib/adminTypes';
-	import { getLogs, getPipelineStats } from '$lib/adminApi';
+	import type { LogEntry, PipelineStats, SynthesisRun } from '$lib/adminTypes';
+	import { getLogs, getPipelineStats, getSynthesisRuns } from '$lib/adminApi';
 
 	let { logs: initial }: { logs: LogEntry[] } = $props();
 	let logs = $state([...initial]);
 	let stats = $state<PipelineStats | null>(null);
+	let synthesisRuns = $state<SynthesisRun[]>([]);
 	let filter = $state<'all' | 'info' | 'warn' | 'error'>('all');
 	let autoRefresh = $state(true);
 	let loading = $state(false);
@@ -14,12 +15,14 @@
 	async function refresh() {
 		loading = true;
 		try {
-			const [nextLogs, nextStats] = await Promise.all([
+			const [nextLogs, nextStats, nextRuns] = await Promise.all([
 				getLogs(filter === 'all' ? {} : { level: filter }),
-				getPipelineStats().catch(() => stats) // stats endpoint failing shouldn't block the log list
+				getPipelineStats().catch(() => stats), // stats endpoint failing shouldn't block the log list
+				getSynthesisRuns().catch(() => synthesisRuns)
 			]);
 			logs = nextLogs;
 			stats = nextStats;
+			synthesisRuns = nextRuns;
 		} finally {
 			loading = false;
 		}
@@ -134,6 +137,52 @@
 	</div>
 {/if}
 
+<div class="section-head">
+	<span class="section-title">Synthesis history</span>
+	<span class="section-sub">
+		{synthesisRuns.length} recent run{synthesisRuns.length === 1 ? '' : 's'} — every AI merge/recap that produced a published article, for comparing models/hardware over time
+	</span>
+</div>
+<div class="runs-table-wrap">
+	<table class="runs-table">
+		<thead>
+			<tr>
+				<th>Time</th>
+				<th>Type</th>
+				<th>Article</th>
+				<th class="num">Sources</th>
+				<th>Model</th>
+				<th class="num">Prompt tok/s</th>
+				<th class="num">Gen tok/s</th>
+				<th class="num">Duration</th>
+			</tr>
+		</thead>
+		<tbody>
+			{#if synthesisRuns.length === 0}
+				<tr><td colspan="8" class="empty-cell">No synthesis runs recorded yet.</td></tr>
+			{/if}
+			{#each synthesisRuns as run (run.id)}
+				<tr>
+					<td class="time">{formatTime(run.timestamp)}</td>
+					<td>{run.kind === 'merge' ? 'Merge' : 'Recap'}</td>
+					<td class="article-cell">
+						{#if run.articleId}
+							<a href={`/article/${run.articleId}`} target="_blank" rel="noreferrer">{run.articleTitle}</a>
+						{:else}
+							{run.articleTitle}
+						{/if}
+					</td>
+					<td class="num">{run.sourceCount}</td>
+					<td class="model-cell">{run.model}</td>
+					<td class="num">{run.promptTokensPerSec !== null ? run.promptTokensPerSec.toFixed(1) : '—'}</td>
+					<td class="num">{run.genTokensPerSec !== null ? run.genTokensPerSec.toFixed(1) : '—'}</td>
+					<td class="num">{formatDuration(run.totalDurationMs)}</td>
+				</tr>
+			{/each}
+		</tbody>
+	</table>
+</div>
+
 <div class="toolbar">
 	<div class="filters">
 		<button class="pill" class:active={filter === 'all'} onclick={() => setFilter('all')}>All</button>
@@ -200,6 +249,78 @@
 		font-size: 11px;
 		color: var(--text-secondary);
 		line-height: 1.4;
+	}
+
+	.section-head {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin-bottom: 8px;
+	}
+	.section-title {
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--text-primary);
+	}
+	.section-sub {
+		font-size: 11px;
+		color: var(--text-muted);
+	}
+	.runs-table-wrap {
+		background: var(--surface-1);
+		border-radius: 12px;
+		/* Header (~38.5px) + 10 rows (~28px each) + headroom for the horizontal scrollbar
+		   the wide table triggers — tuned so exactly 10 rows are fully visible before
+		   this starts scrolling instead of growing indefinitely. */
+		max-height: 340px;
+		overflow: auto;
+		margin-bottom: 20px;
+	}
+	.runs-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 12px;
+	}
+	.runs-table th {
+		position: sticky;
+		top: 0;
+		background: var(--surface-1);
+		text-align: left;
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.02em;
+		color: var(--text-muted);
+		padding: 8px 10px;
+		border-bottom: 0.5px solid var(--border);
+	}
+	.runs-table td {
+		padding: 6px 10px;
+		border-bottom: 0.5px solid var(--border);
+		color: var(--text-primary);
+		white-space: nowrap;
+	}
+	.runs-table tr:last-child td {
+		border-bottom: none;
+	}
+	.runs-table th.num,
+	.runs-table td.num {
+		text-align: right;
+	}
+	.runs-table .time {
+		color: var(--text-muted);
+	}
+	.runs-table .model-cell {
+		color: var(--text-accent);
+	}
+	.runs-table .article-cell {
+		white-space: normal;
+		max-width: 320px;
+	}
+	.runs-table .empty-cell {
+		padding: 20px;
+		text-align: center;
+		color: var(--text-muted);
+		white-space: normal;
 	}
 
 	.toolbar {

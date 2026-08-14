@@ -77,6 +77,7 @@ async function withFullArticle(item: FetchedItem): Promise<FetchedItem> {
 		title: full.title || item.title,
 		summary: full.summary || item.summary,
 		body: full.body || item.body,
-		images: full.images.length > 0 ? full.images : item.images
+		images: full.images.length > 0 ? full.images : item.images,
+		videos: full.videos.length > 0 ? full.videos : item.videos
 	};
 }

@@ -1,4 +1,4 @@
-import type { InferenceProvider } from '../inference/provider.js';
+import type { AiProviders } from '../inference/provider.js';
 import * as eventsDb from '../storage/db/events.js';
 import * as articlesDb from '../storage/db/articles.js';
 import { publishEventRecap } from '../pipeline/publish.js';
@@ -21,7 +21,7 @@ function isDue(event: ReturnType<typeof eventsDb.listActiveEvents>[number]): boo
  * publish immediately via the normal pipeline, see priorityQueue.ts), not a replacement
  * for them.
  */
-export async function runEventRecaps(provider: InferenceProvider, settings: GlobalSettings): Promise<number> {
+export async function runEventRecaps(providers: AiProviders, settings: GlobalSettings): Promise<number> {
 	const events = eventsDb.listActiveEvents();
 	let published = 0;
 
@@ -33,7 +33,7 @@ export async function runEventRecaps(provider: InferenceProvider, settings: Glob
 		if (constituents.length === 0) continue;
 
 		try {
-			const article = await publishEventRecap(provider, settings, event, constituents);
+			const article = await publishEventRecap(providers, settings, event, constituents);
 			eventsDb.markRecapped(event.id);
 			published++;
 			logger.info('events', `Published recap for "${event.name}" from ${constituents.length} article(s)`);

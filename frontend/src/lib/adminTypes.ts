@@ -153,9 +153,11 @@ export interface AdminSettings {
 	tagExpiryDays: number;
 	followUpMinHoursSinceLast: number;
 	followUpMinNewSources: number;
-	aiServiceHost: string;
-	aiServicePort: number;
-	selectedModels: { embedding: string; image: string; synthesis: string };
+	embeddingServiceHost: string;
+	embeddingServicePort: number;
+	synthesisServiceHost: string;
+	synthesisServicePort: number;
+	selectedModels: { embedding: string; synthesis: string };
 	nitterMediaMode: 'self-host' | 'proxy' | 'direct';
 	fxtwitterBaseUrl: string;
 	nitterInstanceUrl: string;
@@ -166,6 +168,8 @@ export interface AdminSettings {
 	synthesisNumCtx: number;
 	/** Max tokens the model may generate per call — too low silently truncates output mid-sentence. */
 	synthesisNumPredict: number;
+	/** Sends think:false to the synthesis model — see ModelsTab's checkbox copy for what this does and why. */
+	synthesisDisableThinking: boolean;
 	widgets: AdminWidgetsEnabled;
 	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
 	/** How many columns the bookmark list lays out in, both in the sidebar and the admin panel. */
@@ -217,7 +221,6 @@ export interface ForceRecapResult {
 
 export interface ModelCatalog {
 	embedding: string[];
-	image: string[];
 	synthesis: string[];
 }
 
@@ -230,8 +233,13 @@ export interface AiStatus {
 	connected: boolean;
 	host: string;
 	port: number;
-	ramGB: number;
-	gpu: string;
+	ramGB: number | null;
+	gpu: string | null;
+}
+
+export interface AiStatusBySlot {
+	embedding: AiStatus;
+	synthesis: AiStatus;
 }
 
 export interface TelegramStatus {
@@ -273,4 +281,22 @@ export interface LogEntry {
 	level: 'info' | 'warn' | 'error';
 	source: string;
 	message: string;
+}
+
+/** One completed synthesis (merge or event recap) call — persisted benchmark history, not a rolling sample (see backend's storage/db/synthesisRuns.ts). */
+export interface SynthesisRun {
+	id: number;
+	timestamp: string;
+	kind: 'merge' | 'recap';
+	articleId: string | null;
+	articleTitle: string;
+	sourceCount: number;
+	model: string;
+	numCtx: number;
+	numPredict: number;
+	promptTokens: number | null;
+	promptTokensPerSec: number | null;
+	genTokens: number | null;
+	genTokensPerSec: number | null;
+	totalDurationMs: number;
 }

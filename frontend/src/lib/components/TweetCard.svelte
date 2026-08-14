@@ -212,6 +212,12 @@
 		display: block;
 		background: var(--surface-1);
 	}
+	/* Video/gif use contain rather than cover — cover crops a portrait clip down to a
+	   sliver in these landscape-shaped grid cells, and since object-fit carries into the
+	   browser's native fullscreen view too, that crop persisted even when "maximized". */
+	video.media-el {
+		object-fit: contain;
+	}
 	/* Nested inside the same outer frame — deliberately lighter-weight than the card
 	   itself (no independent hover border, tighter radius, tinted background instead of
 	   its own border-forward "card" look) so it reads as inset content, not a second card. */

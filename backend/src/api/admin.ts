@@ -11,6 +11,7 @@ import { OllamaProvider } from '../inference/ollama-provider.js';
 import { publishEventRecap } from '../pipeline/publish.js';
 import { pollSourceNow } from '../ingestion/poller.js';
 import { logger, listLogs } from '../storage/db/logs.js';
+import { listSynthesisRuns } from '../storage/db/synthesisRuns.js';
 import * as backlogStats from '../queue/backlogStats.js';
 import * as ollamaStats from '../inference/stats.js';
 import * as telegramClient from '../telegram/client.js';
@@ -211,9 +212,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		}
 
 		const settings = settingsDb.getSettings();
-		const provider = new OllamaProvider(settings.aiServiceHost, settings.aiServicePort);
+		const providers = {
+			embedding: new OllamaProvider(settings.embeddingServiceHost, settings.embeddingServicePort),
+			synthesis: new OllamaProvider(settings.synthesisServiceHost, settings.synthesisServicePort)
+		};
 		try {
-			const article = await publishEventRecap(provider, settings, event, constituents);
+			const article = await publishEventRecap(providers, settings, event, constituents);
 			eventsDb.markRecapped(event.id);
 			logger.info('events', `Manually forced recap for "${event.name}" from ${constituents.length} article(s)`);
 			return { published: true, title: article.title };
@@ -222,25 +226,63 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		}
 	});
 
-	// --- Models / AI service (fetched live from the configured Ollama host) ---
-	app.get('/api/admin/models', async (_req, reply) => {
+	// --- Models / AI service (fetched live from the two independently-configured Ollama
+	// hosts — embedding/clustering and synthesis each have their own connection now, so
+	// listing/status checks run against both rather than one shared provider). ---
+	app.get('/api/admin/models', async () => {
 		const settings = settingsDb.getSettings();
-		const provider = new OllamaProvider(settings.aiServiceHost, settings.aiServicePort);
-		try {
-			const models = await provider.listModels();
-			// Ollama doesn't distinguish task type, so the catalog surfaces the full list
-			// for each dropdown — the admin picks which installed model to use for what.
-			return { embedding: models, image: models, synthesis: models };
-		} catch (err) {
-			return reply.code(502).send({ error: `AI service unreachable: ${(err as Error).message}` });
-		}
+		const embeddingProvider = new OllamaProvider(settings.embeddingServiceHost, settings.embeddingServicePort);
+		const synthesisProvider = new OllamaProvider(settings.synthesisServiceHost, settings.synthesisServicePort);
+		// allSettled rather than all — one connection being unreachable shouldn't blank
+		// out the other slot's (working) model list.
+		const [embeddingResult, synthesisResult] = await Promise.allSettled([
+			embeddingProvider.listModels(),
+			synthesisProvider.listModels()
+		]);
+		return {
+			embedding: embeddingResult.status === 'fulfilled' ? embeddingResult.value : [],
+			synthesis: synthesisResult.status === 'fulfilled' ? synthesisResult.value : []
+		};
 	});
 
 	app.get('/api/admin/ai-status', async () => {
 		const settings = settingsDb.getSettings();
-		const provider = new OllamaProvider(settings.aiServiceHost, settings.aiServicePort);
+		const embeddingProvider = new OllamaProvider(settings.embeddingServiceHost, settings.embeddingServicePort);
+		const synthesisProvider = new OllamaProvider(settings.synthesisServiceHost, settings.synthesisServicePort);
+		const [embeddingConnected, synthesisConnected] = await Promise.all([
+			embeddingProvider.isReachable(),
+			synthesisProvider.isReachable()
+		]);
+		return {
+			embedding: {
+				connected: embeddingConnected,
+				host: settings.embeddingServiceHost,
+				port: settings.embeddingServicePort,
+				ramGB: null,
+				gpu: null
+			},
+			synthesis: {
+				connected: synthesisConnected,
+				host: settings.synthesisServiceHost,
+				port: settings.synthesisServicePort,
+				ramGB: null,
+				gpu: null
+			}
+		};
+	});
+
+	// Ad-hoc reachability check for whatever host/port is currently typed into a Models-tab
+	// connection panel — deliberately independent of the saved setting (unlike
+	// /api/admin/ai-status above), so clicking "Test" checks the value on screen right now,
+	// not whatever was last saved. Nothing here is persisted.
+	app.get('/api/admin/ai-status/test', async (req, reply) => {
+		const { host, port } = req.query as { host?: string; port?: string };
+		if (!host || !port) return reply.code(400).send({ error: 'host and port query params required' });
+		const portNum = Number(port);
+		if (!Number.isFinite(portNum)) return reply.code(400).send({ error: 'port must be a number' });
+		const provider = new OllamaProvider(host, portNum);
 		const connected = await provider.isReachable();
-		return { connected, host: settings.aiServiceHost, port: settings.aiServicePort, ramGB: null, gpu: null };
+		return { connected, host, port: portNum, ramGB: null, gpu: null };
 	});
 
 	// Detects the selected synthesis model's own max context length (when Ollama exposes
@@ -252,7 +294,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const { model } = req.query as { model?: string };
 		if (!model) return reply.code(400).send({ error: 'model query param required' });
 		const settings = settingsDb.getSettings();
-		const provider = new OllamaProvider(settings.aiServiceHost, settings.aiServicePort);
+		const provider = new OllamaProvider(settings.synthesisServiceHost, settings.synthesisServicePort);
 		const contextLength = await provider.getModelContextLength(model);
 		return { contextLength };
 	});
@@ -388,5 +430,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 			lastDirectCycle,
 			lastSynthesisCycle
 		};
+	});
+
+	// Persisted per-article synthesis benchmark history (tokens/sec, duration, model) —
+	// see storage/db/synthesisRuns.ts for why this is a separate table from `logs`.
+	app.get('/api/admin/synthesis-runs', async (req) => {
+		const { limit } = req.query as { limit?: string };
+		return listSynthesisRuns({ limit: limit ? Number(limit) : undefined });
 	});
 }

@@ -11,11 +11,11 @@
 // hostname string check).
 
 import type { FastifyInstance } from 'fastify';
-import dns from 'node:dns/promises';
 import { Readable } from 'node:stream';
 import * as sourcesDb from '../storage/db/sources.js';
 import { getSettings } from '../storage/db/settings.js';
 import { logger } from '../storage/db/logs.js';
+import { isPublicHost } from './ssrfGuard.js';
 
 const USER_AGENT = 'Mozilla/5.0 (compatible; HomefeedBot/1.0; self-hosted RSS reader)';
 const FETCH_TIMEOUT_MS = 15_000;
@@ -45,27 +45,6 @@ function isAllowedHost(hostname: string): boolean {
 	return nitterHosts.includes(lower);
 }
 
-function isPrivateOrReservedIp(ip: string, family: number): boolean {
-	if (family === 4) {
-		const [a, b] = ip.split('.').map(Number);
-		if (a === 10 || a === 127 || a === 0) return true;
-		if (a === 169 && b === 254) return true;
-		if (a === 172 && b >= 16 && b <= 31) return true;
-		if (a === 192 && b === 168) return true;
-		if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT range
-		return false;
-	}
-	const lower = ip.toLowerCase();
-	if (lower === '::1') return true;
-	if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // unique local fc00::/7
-	if (lower.startsWith('fe80')) return true; // link-local
-	if (lower.startsWith('::ffff:')) {
-		const v4 = lower.split(':').pop();
-		if (v4?.includes('.')) return isPrivateOrReservedIp(v4, 4);
-	}
-	return false;
-}
-
 export async function registerMediaProxy(app: FastifyInstance) {
 	app.get('/media/proxy', async (req, reply) => {
 		const { url } = req.query as { url?: string };
@@ -87,14 +66,8 @@ export async function registerMediaProxy(app: FastifyInstance) {
 			return reply.code(403).send({ error: 'host not allowed' });
 		}
 
-		let addresses: { address: string; family: number }[];
-		try {
-			addresses = await dns.lookup(parsed.hostname, { all: true });
-		} catch {
-			return reply.code(502).send({ error: 'DNS resolution failed' });
-		}
-		if (addresses.some((a) => isPrivateOrReservedIp(a.address, a.family))) {
-			logger.warn('media-proxy', `Blocked proxy request resolving to a private/reserved address: ${parsed.hostname}`);
+		if (!(await isPublicHost(parsed.hostname))) {
+			logger.warn('media-proxy', `Blocked proxy request resolving to a private/reserved/unresolvable address: ${parsed.hostname}`);
 			return reply.code(403).send({ error: 'host not allowed' });
 		}
 

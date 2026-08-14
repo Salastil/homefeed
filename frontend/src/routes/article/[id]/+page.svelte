@@ -76,6 +76,32 @@
 		{#each a.body.split('\n\n') as paragraph}
 			<p>{paragraph}</p>
 		{/each}
+	{:else if a.video?.url}
+		<h1>{a.title}</h1>
+
+		<!-- Direct-file video (e.g. an RSS enclosure) rather than an iframe provider —
+		     play it in place of the hero image instead of the dead "video embed" box
+		     this used to fall through to. contain (not cover) so a vertical clip isn't
+		     cropped, same reasoning as the feed cards. The backend already rewrote
+		     video.url to its own /media/video-proxy route (so the source's CDN never
+		     sees the visitor directly) — resolveMediaUrl just points that relative path
+		     at the configured backend, same as the poster image below. -->
+		<div class="video-native">
+			<video controls preload="metadata" poster={a.heroImage ? resolveMediaUrl(a.heroImage.url) : undefined}>
+				<source src={resolveMediaUrl(a.video.url)} type="video/mp4" />
+			</video>
+		</div>
+
+		<div class="dates">
+			<span>Published {timeAgo(a.publishedAt)} &middot; {exactTime(a.publishedAt)}</span>
+			{#if a.updatedAt !== a.publishedAt}
+				<span>&middot; Updated {timeAgo(a.updatedAt)} &middot; {exactTime(a.updatedAt)}</span>
+			{/if}
+		</div>
+
+		{#each a.body.split('\n\n') as paragraph}
+			<p>{paragraph}</p>
+		{/each}
 	{:else}
 		<h1>{a.title}</h1>
 
@@ -96,10 +122,6 @@
 		{#each a.body.split('\n\n') as paragraph}
 			<p>{paragraph}</p>
 		{/each}
-
-		{#if a.video}
-			<div class="video-embed">▶ video embed &middot; via {a.video.provider}</div>
-		{/if}
 	{/if}
 
 	{#if data.tagLabels.length}
@@ -184,18 +206,21 @@
 		color: var(--text-primary);
 		margin: 0 0 16px;
 	}
-	.video-embed {
+	.video-native {
 		width: 100%;
+		max-height: 480px;
 		border-radius: 12px;
-		background: var(--surface-1);
-		height: 200px;
+		overflow: hidden;
+		background: #000;
+		margin-bottom: 20px;
 		display: flex;
-		align-items: center;
 		justify-content: center;
-		gap: 8px;
-		color: var(--text-muted);
-		font-size: 12px;
-		margin-bottom: 24px;
+	}
+	.video-native video {
+		width: 100%;
+		max-height: 480px;
+		object-fit: contain;
+		display: block;
 	}
 	.video-frame {
 		position: relative;

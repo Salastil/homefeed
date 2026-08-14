@@ -16,9 +16,9 @@ import {
 	listWidgets
 } from '$lib/adminApi';
 import { getPoe2 } from '$lib/api';
-import type { ModelCatalog, AiStatus, TelegramStatus } from '$lib/adminTypes';
+import type { ModelCatalog, AiStatusBySlot, TelegramStatus } from '$lib/adminTypes';
 
-const EMPTY_MODELS: ModelCatalog = { embedding: [], image: [], synthesis: [] };
+const EMPTY_MODELS: ModelCatalog = { embedding: [], synthesis: [] };
 
 export const load: PageLoad = async ({ fetch }) => {
 	try {
@@ -51,7 +51,10 @@ export const load: PageLoad = async ({ fetch }) => {
 		// The AI service (Ollama) may not be running yet — that shouldn't take down the
 		// whole settings page, just leave the Models/Connections tabs showing "unreachable".
 		let models: ModelCatalog = EMPTY_MODELS;
-		let aiStatus: AiStatus = { connected: false, host: settings.aiServiceHost, port: settings.aiServicePort, ramGB: 0, gpu: 'unknown' };
+		let aiStatus: AiStatusBySlot = {
+			embedding: { connected: false, host: settings.embeddingServiceHost, port: settings.embeddingServicePort, ramGB: null, gpu: null },
+			synthesis: { connected: false, host: settings.synthesisServiceHost, port: settings.synthesisServicePort, ramGB: null, gpu: null }
+		};
 		try {
 			[models, aiStatus] = await Promise.all([getModels(fetch), getAiStatus(fetch)]);
 		} catch {

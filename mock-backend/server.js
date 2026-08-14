@@ -136,14 +136,11 @@ app.get("/api/admin/logs", (req, res) => {
 });
 
 app.get("/api/admin/ai-status", (req, res) => {
-  // Simulates pinging the configured Ollama host
-  const { aiServiceHost, aiServicePort } = admin.getSettings();
+  // Simulates pinging both independently-configured Ollama hosts
+  const { embeddingServiceHost, embeddingServicePort, synthesisServiceHost, synthesisServicePort } = admin.getSettings();
   res.json({
-    connected: true,
-    host: aiServiceHost,
-    port: aiServicePort,
-    ramGB: 48,
-    gpu: "none reported"
+    embedding: { connected: true, host: embeddingServiceHost, port: embeddingServicePort, ramGB: 48, gpu: "none reported" },
+    synthesis: { connected: true, host: synthesisServiceHost, port: synthesisServicePort, ramGB: 48, gpu: "none reported" }
   });
 });
 

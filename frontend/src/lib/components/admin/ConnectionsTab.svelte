@@ -1,9 +1,8 @@
 <script lang="ts">
-	import type { AdminSettings, AiStatus, TelegramStatus } from '$lib/adminTypes';
+	import type { AdminSettings, TelegramStatus } from '$lib/adminTypes';
 	import { getBackendUrl, setBackendUrl } from '$lib/config';
 	import {
 		updateSettings,
-		getAiStatus,
 		saveTelegramCredentials,
 		startTelegramLogin,
 		verifyTelegramCode,
@@ -14,44 +13,16 @@
 
 	let {
 		settings,
-		aiStatus: initialStatus,
 		telegramStatus: initialTelegramStatus
-	}: { settings: AdminSettings; aiStatus: AiStatus; telegramStatus: TelegramStatus } = $props();
+	}: { settings: AdminSettings; telegramStatus: TelegramStatus } = $props();
 
 	let backendUrl = $state(getBackendUrl());
 	let backendSaved = $state(false);
-
-	let aiHost = $state(settings.aiServiceHost);
-	let aiPort = $state(settings.aiServicePort);
-	let aiStatus = $state(initialStatus);
-	let testing = $state(false);
-	let status = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
 	function saveBackendUrl() {
 		setBackendUrl(backendUrl);
 		backendSaved = true;
 		setTimeout(() => (backendSaved = false), 1500);
-	}
-
-	async function saveAiService() {
-		status = 'saving';
-		try {
-			await updateSettings({ aiServiceHost: aiHost, aiServicePort: aiPort });
-			aiStatus = await getAiStatus();
-			status = 'saved';
-			setTimeout(() => (status = 'idle'), 1500);
-		} catch {
-			status = 'error';
-		}
-	}
-
-	async function testConnection() {
-		testing = true;
-		try {
-			aiStatus = await getAiStatus();
-		} finally {
-			testing = false;
-		}
 	}
 
 	// --- Nitter ---
@@ -195,30 +166,6 @@
 	<div class="row">
 		<input type="text" bind:value={backendUrl} placeholder="https://backend.homefeed.local:8443" />
 		<button onclick={saveBackendUrl}>Save</button>
-	</div>
-</div>
-
-<div class="panel">
-	<div class="head">
-		<span class="panel-title">AI service connection</span>
-		<SaveStatus {status} />
-	</div>
-	<p class="hint">
-		Address of your self-hosted inference server (e.g. Ollama). This is a backend setting,
-		shared across everyone using this admin panel.
-	</p>
-	<div class="row">
-		<input type="text" bind:value={aiHost} placeholder="http://10.0.0.14" style="flex: 1" />
-		<input type="text" bind:value={aiPort} placeholder="11434" style="width: 90px" />
-		<button onclick={testConnection} disabled={testing}>{testing ? 'Testing…' : 'Test'}</button>
-		<button class="primary" onclick={saveAiService}>Save</button>
-	</div>
-	<div class="status-row">
-		{#if aiStatus.connected}
-			<span class="connected">✓ Connected · {aiStatus.ramGB}GB RAM · GPU: {aiStatus.gpu}</span>
-		{:else}
-			<span class="disconnected">✕ Unreachable</span>
-		{/if}
 	</div>
 </div>
 

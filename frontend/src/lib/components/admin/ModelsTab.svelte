@@ -1,14 +1,13 @@
 <script lang="ts">
-	import type { AdminSettings, ModelCatalog, AiStatus } from '$lib/adminTypes';
-	import { updateSettings, getAiStatus, getModelContext } from '$lib/adminApi';
+	import type { AdminSettings, ModelCatalog, AiStatusBySlot } from '$lib/adminTypes';
+	import { updateSettings, getAiStatus, testAiConnection, getModelContext } from '$lib/adminApi';
 	import SaveStatus from './SaveStatus.svelte';
 
-	let { settings, models, aiStatus: initialStatus }: { settings: AdminSettings; models: ModelCatalog; aiStatus: AiStatus } =
+	let { settings, models, aiStatus: initialStatus }: { settings: AdminSettings; models: ModelCatalog; aiStatus: AiStatusBySlot } =
 		$props();
 
 	let selected = $state({ ...settings.selectedModels });
 	let aiStatus = $state(initialStatus);
-	let testing = $state(false);
 	let status = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
 	async function save() {
@@ -22,12 +21,74 @@
 		}
 	}
 
-	async function testConnection() {
-		testing = true;
+	// Embedding/clustering and article synthesis each get their own independent
+	// inference-server connection — same host/port/Test/Save shape ConnectionsTab used
+	// for the single shared connection this replaces, just duplicated per slot.
+	let embeddingHost = $state(settings.embeddingServiceHost);
+	let embeddingPort = $state(settings.embeddingServicePort);
+	let embeddingTesting = $state(false);
+	let embeddingConnStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+	let synthesisHost = $state(settings.synthesisServiceHost);
+	let synthesisPort = $state(settings.synthesisServicePort);
+	let synthesisTesting = $state(false);
+	let synthesisConnStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+	let disableThinking = $state(settings.synthesisDisableThinking);
+	let thinkingStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+	async function saveDisableThinking() {
+		thinkingStatus = 'saving';
 		try {
+			await updateSettings({ synthesisDisableThinking: disableThinking });
+			thinkingStatus = 'saved';
+			setTimeout(() => (thinkingStatus = 'idle'), 1500);
+		} catch {
+			thinkingStatus = 'error';
+		}
+	}
+
+	async function saveEmbeddingConnection() {
+		embeddingConnStatus = 'saving';
+		try {
+			await updateSettings({ embeddingServiceHost: embeddingHost, embeddingServicePort: embeddingPort });
 			aiStatus = await getAiStatus();
+			embeddingConnStatus = 'saved';
+			setTimeout(() => (embeddingConnStatus = 'idle'), 1500);
+		} catch {
+			embeddingConnStatus = 'error';
+		}
+	}
+
+	async function testEmbeddingConnection() {
+		embeddingTesting = true;
+		try {
+			// Tests whatever's currently typed in the fields, not the last-saved value —
+			// only updates this panel's own status, leaving the synthesis panel alone.
+			aiStatus = { ...aiStatus, embedding: await testAiConnection(embeddingHost, embeddingPort) };
 		} finally {
-			testing = false;
+			embeddingTesting = false;
+		}
+	}
+
+	async function saveSynthesisConnection() {
+		synthesisConnStatus = 'saving';
+		try {
+			await updateSettings({ synthesisServiceHost: synthesisHost, synthesisServicePort: synthesisPort });
+			aiStatus = await getAiStatus();
+			synthesisConnStatus = 'saved';
+			setTimeout(() => (synthesisConnStatus = 'idle'), 1500);
+		} catch {
+			synthesisConnStatus = 'error';
+		}
+	}
+
+	async function testSynthesisConnection() {
+		synthesisTesting = true;
+		try {
+			aiStatus = { ...aiStatus, synthesis: await testAiConnection(synthesisHost, synthesisPort) };
+		} finally {
+			synthesisTesting = false;
 		}
 	}
 
@@ -91,39 +152,28 @@
 
 <div class="panel">
 	<div class="head">
-		<span class="panel-title">AI service connection</span>
+		<span class="panel-title">Embedding &amp; clustering</span>
 	</div>
 	<p class="hint">
-		Address of your self-hosted inference server (e.g. Ollama). Model lists below are fetched
-		live from it.
+		Inference server used for embedding/clustering calls. Independent of the synthesis
+		connection below — point it at a different Ollama install if you want.
 	</p>
+	<div class="row">
+		<input type="text" bind:value={embeddingHost} placeholder="http://10.0.0.14" style="flex: 1" />
+		<input type="text" bind:value={embeddingPort} placeholder="11434" style="width: 90px" />
+		<button onclick={testEmbeddingConnection} disabled={embeddingTesting}>{embeddingTesting ? 'Testing…' : 'Test'}</button>
+		<button class="primary" onclick={saveEmbeddingConnection}>Save</button>
+		<SaveStatus status={embeddingConnStatus} />
+	</div>
 	<div class="status-row">
-		{#if aiStatus.connected}
-			<span class="connected">✓ Connected · {aiStatus.host}:{aiStatus.port} · {aiStatus.ramGB}GB RAM · GPU: {aiStatus.gpu}</span>
+		{#if aiStatus.embedding.connected}
+			<span class="connected">✓ Connected · {aiStatus.embedding.host}:{aiStatus.embedding.port}</span>
 		{:else}
 			<span class="disconnected">✕ Unreachable</span>
 		{/if}
-		<button onclick={testConnection} disabled={testing}>{testing ? 'Testing…' : 'Test'}</button>
 	</div>
-</div>
-
-<div class="panel">
-	<div class="head">
-		<span class="panel-title">Embedding &amp; clustering</span>
-	</div>
-	<select bind:value={selected.embedding} onchange={save}>
+	<select bind:value={selected.embedding} onchange={save} style="margin-top: 12px;">
 		{#each models.embedding as m}
-			<option value={m}>{m}</option>
-		{/each}
-	</select>
-</div>
-
-<div class="panel">
-	<div class="head">
-		<span class="panel-title">Image selection</span>
-	</div>
-	<select bind:value={selected.image} onchange={save}>
-		{#each models.image as m}
 			<option value={m}>{m}</option>
 		{/each}
 	</select>
@@ -132,13 +182,40 @@
 <div class="panel accent">
 	<div class="head">
 		<span class="panel-title">Article synthesis</span>
-		<SaveStatus {status} />
 	</div>
-	<select bind:value={selected.synthesis} onchange={save}>
+	<p class="hint">Inference server used for article synthesis and recaps.</p>
+	<div class="row">
+		<input type="text" bind:value={synthesisHost} placeholder="http://10.0.0.14" style="flex: 1" />
+		<input type="text" bind:value={synthesisPort} placeholder="11434" style="width: 90px" />
+		<button onclick={testSynthesisConnection} disabled={synthesisTesting}>{synthesisTesting ? 'Testing…' : 'Test'}</button>
+		<button class="primary" onclick={saveSynthesisConnection}>Save</button>
+		<SaveStatus status={synthesisConnStatus} />
+	</div>
+	<div class="status-row">
+		{#if aiStatus.synthesis.connected}
+			<span class="connected">✓ Connected · {aiStatus.synthesis.host}:{aiStatus.synthesis.port}</span>
+		{:else}
+			<span class="disconnected">✕ Unreachable</span>
+		{/if}
+	</div>
+	<select bind:value={selected.synthesis} onchange={save} style="margin-top: 12px;">
 		{#each models.synthesis as m}
 			<option value={m}>{m}</option>
 		{/each}
 	</select>
+
+	<label class="checkbox" style="margin-top: 12px;">
+		<input type="checkbox" bind:checked={disableThinking} onchange={saveDisableThinking} />
+		Disable reasoning (think: false)
+		<SaveStatus status={thinkingStatus} />
+	</label>
+	<p class="hint">
+		Reasoning models (Qwen3, DeepSeek-R1, and similar) silently "think" through a hidden pass
+		before writing their actual response, even for a rewrite/merge task with no logic or math
+		to work through — that reasoning is pure overhead here, slows generation down, and can eat
+		into the response budget for no quality benefit. Turn this on if your selected synthesis
+		model supports reasoning — it's ignored harmlessly if it doesn't.
+	</p>
 </div>
 
 <div class="panel">
@@ -212,10 +289,30 @@
 		font-size: 13px;
 		font-weight: 500;
 	}
+	.checkbox {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+		color: var(--text-secondary);
+	}
+	.checkbox input {
+		width: auto;
+	}
 	.hint {
 		font-size: 12px;
 		color: var(--text-secondary);
 		margin: 4px 0 12px;
+	}
+	.row {
+		display: flex;
+		gap: 8px;
+		margin-bottom: 10px;
+	}
+	.primary {
+		background: var(--pill-bg);
+		color: var(--pill-text);
+		border-color: var(--pill-bg);
 	}
 	.status-row {
 		display: flex;
