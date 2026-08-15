@@ -460,6 +460,18 @@ export function migrate() {
 	if (!hasColumn('global_settings', 'synthesis_disable_thinking')) {
 		db.exec('ALTER TABLE global_settings ADD COLUMN synthesis_disable_thinking INTEGER NOT NULL DEFAULT 0');
 	}
+	// Public-facing attribution for a merged/recap article — which model wrote it, how
+	// fast, how long it took. NULL for a direct-published (single-source, no synthesis)
+	// article, which never ran through this path at all. This duplicates data already
+	// logged in synthesis_runs (an unpruned benchmark history, admin-only), but that
+	// table isn't meant to be joined per-article-view — this is denormalized onto the
+	// article itself the same way hero_image/video already are, set once at publish
+	// time from the exact same GenerateStats (see pipeline/publish.ts).
+	if (!hasColumn('merged_articles', 'synthesis_model')) {
+		db.exec('ALTER TABLE merged_articles ADD COLUMN synthesis_model TEXT');
+		db.exec('ALTER TABLE merged_articles ADD COLUMN synthesis_gen_tokens_per_sec REAL');
+		db.exec('ALTER TABLE merged_articles ADD COLUMN synthesis_duration_ms INTEGER');
+	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —
 	// general news sources belong here, not on "Top stories" itself, which isn't a real
