@@ -154,6 +154,17 @@ function buildPrompt(items: ContentItem[], sourceNames: Map<string, string>, num
  */
 function stripTitleDecoration(title: string): string {
 	return title
+		// A leading divider run ("--- ", "=== ") the model wrote in place of, or right
+		// before, the real ---TITLE--- delimiter — seen in production combined with a
+		// label on the same line ("--- Title: Alpha Wealth Funds Report...").
+		.replace(/^[-=*]{2,}\s*/, '')
+		// A markdown header used as its own section marker ("### Headline:",
+		// "### Tenon Medical, Inc. Q2 2026 Earnings Summary") — seen recurring
+		// specifically on event recaps with qwen2.5:7b. \s* below in the label-strip
+		// still consumes a following newline, so "### Headline:\n<real title>" (the
+		// label and the actual headline on separate lines) resolves the same as
+		// "### <real title>" (title on the same line as the header).
+		.replace(/^#{1,6}\s*/, '')
 		.replace(/^\d+[.)]\s*/, '')
 		// A model can write its own "Title: <headline>" label line BEFORE the actual
 		// requested ---TITLE--- delimiter (seen in production: mistral:7b did exactly
