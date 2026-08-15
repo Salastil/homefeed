@@ -18,14 +18,15 @@ export async function pollWeatherNow(): Promise<void> {
 	let forecastUpdate: Partial<WeatherCache> = {};
 	let forecastSucceeded = false;
 	try {
-		const { current, hourly, daily } = await fetchForecast(
+		const { current, hourly, daily, summary } = await fetchForecast(
 			config.latitude,
 			config.longitude,
 			config.unit,
 			config.windUnit,
-			config.pressureUnit
+			config.pressureUnit,
+			config.locationName
 		);
-		forecastUpdate = { current, hourly, daily };
+		forecastUpdate = { current, hourly, daily, summary };
 		forecastSucceeded = true;
 	} catch (err) {
 		// Leave the existing cache untouched — a stale forecast beats a blank widget.

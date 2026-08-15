@@ -2,16 +2,27 @@ import type { InferenceProvider, GenerateStats } from '../inference/provider.js'
 import type { ContentItem, GlobalSettings, MergedArticle, TrackedEvent } from '../storage/db/types.js';
 import { logger } from '../storage/db/logs.js';
 
-const TITLE_DELIMITER = '---TITLE---';
-const TAG_DELIMITER = '---TAGS---';
-
-// Small/quantized models don't always reproduce a literal delimiter exactly — extra
-// dashes, an inserted blank line, different case (seen in production with the tag
-// delimiter: "---\n\nTAGS---" instead of "---TAGS---", which an exact-string split
-// missed entirely, leaking the raw delimiter text into the published body). Splitting
-// on a loose regex instead tolerates that variance.
-const TITLE_DELIMITER_RE = /-{2,}\s*TITLE\s*-{2,}/i;
-const TAG_DELIMITER_RE = /-{2,}\s*TAGS\s*-{2,}/i;
+/**
+ * Ollama's structured-output support (a JSON Schema passed as the request's `format`)
+ * constrains the model's actual output tokens at the sampling level, not just via a
+ * prompt instruction it's free to ignore or mangle. This replaced an earlier free-text
+ * "write exactly ---TITLE---, then the article" delimiter convention that kept failing
+ * in new ways — a numbered-list marker, a "Title:" label, a bare divider line, a
+ * markdown header, an empty title, a whole article dumped into the title field — every
+ * one of those was the SAME underlying problem (a small/quantized model choosing its
+ * own formatting instead of the literal delimiter text) wearing a different costume.
+ * Patching each new costume never addressed why the model kept improvising one; a
+ * schema-constrained response has no delimiter left for it to improvise around.
+ */
+const SYNTHESIS_JSON_SCHEMA = {
+	type: 'object',
+	properties: {
+		title: { type: 'string' },
+		body: { type: 'string' },
+		tags: { type: 'array', items: { type: 'string' } }
+	},
+	required: ['title', 'body', 'tags']
+};
 
 // Ollama truncates prompts that don't fit its context window by keeping a small prefix
 // and dropping everything else in the middle — silently, with no error, and with no
@@ -35,32 +46,23 @@ function capEntryText(text: string, budgetChars: number): string {
 	return text.length > budgetChars ? text.slice(0, budgetChars) + '…' : text;
 }
 
-function parseTagLabels(raw: string): string[] {
-	return raw
-		.split(',')
-		.map((t) => t.trim())
-		.filter((t) => t.length > 0 && t.length < 60);
-}
-
-const RECAP_SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given a chronological list of articles already published about an ongoing tracked event, write your response in exactly three parts, in this order:
-
-1. A short, specific headline for this recap (a single line, ideally under 12 words, no surrounding quotation marks, no trailing period).
-2. On a new line, write exactly "${TITLE_DELIMITER}", then the recap:
+const RECAP_SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given a chronological list of articles already published about an ongoing tracked event, respond with a JSON object with exactly these fields:
+- "title": a short, specific headline for this recap (ideally under 12 words, no surrounding quotation marks, no trailing period)
+- "body": the recap —
    - Write a full, comprehensive news article covering the period — not a short summary or a bare list of bullet points. Use as many paragraphs and as much length as the material actually warrants; do not artificially cut it short.
    - Organize it in chronological order, but group and connect related developments into a coherent narrative rather than restating each source article one at a time
    - Give real weight and detail to the most significant developments; minor ones can be covered more briefly, but nothing significant should be dropped for the sake of brevity
    - Stays neutral and factual, without editorializing
-3. On a new line after the recap, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this recap is about. If nothing salient qualifies, leave the tag line empty.`;
+- "tags": 2-4 short topic/entity tags (e.g. proper nouns, named events) that this recap is about — an empty array if nothing salient qualifies`;
 
-const SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given summaries from multiple news sources describing the same event, write your response in exactly three parts, in this order:
-
-1. A short, specific headline for this story (a single line, ideally under 12 words, no surrounding quotation marks, no trailing period, no site/outlet name).
-2. On a new line, write exactly "${TITLE_DELIMITER}", then the article:
+const SYSTEM_PROMPT_BASE = `You are a neutral news synthesis assistant. Given summaries from multiple news sources describing the same event, respond with a JSON object with exactly these fields:
+- "title": a short, specific headline for this story (ideally under 12 words, no surrounding quotation marks, no trailing period, no site/outlet name)
+- "body": the article —
    - Use as many paragraphs and as much length as the source material actually warrants — do not artificially cut it short, but don't pad it with filler either.
    - If you attribute a specific claim to an outlet, only use one of the exact source names given below (e.g. if a source is labeled "Source 1 (Reuters)", write "Reuters reported...") — never invent, guess, or substitute an outlet name that isn't one of them.
    - Does not copy phrasing verbatim from any source
    - Stays neutral and factual, without editorializing
-3. On a new line after the article, write exactly "${TAG_DELIMITER}" followed by 2-4 short comma-separated topic/entity tags (e.g. proper nouns, named events) that this article is about. If nothing salient qualifies, leave the tag line empty.`;
+- "tags": 2-4 short topic/entity tags (e.g. proper nouns, named events) that this article is about — an empty array if nothing salient qualifies`;
 
 // Admin-selectable presets (Merge tab, "Writing style") — appended to whichever base
 // prompt applies. 'default' adds nothing: the base prompts above already describe the
@@ -75,9 +77,10 @@ const STYLE_PRESETS: Record<GlobalSettings['synthesisStylePreset'], string> = {
  * Admin-configurable tone/length/attribution style: a preset plus optional free-text
  * instructions, both from GlobalSettings — the only knobs that affect HOW the model
  * writes, as opposed to WHAT gets clustered/published. Appended to the base prompt,
- * which only still hard-mandates the delimiter/tag format (parseResult depends on it)
- * and never inventing a source name — length and whether to name outlets at all (vs. a
- * single unified narrative with attribution handled by the site's own Sources list) are
+ * which only still hard-mandates the JSON field shape (SYNTHESIS_JSON_SCHEMA enforces
+ * that regardless) and never inventing a source name — length and whether to name
+ * outlets at all (vs. a single unified narrative with attribution handled by the
+ * site's own Sources list) are
  * deliberately left to this addendum to decide, not fixed in the base prompt. Applies
  * only to regular same-story merges — recaps have their own independent style knob, see
  * recapStyleAddendum below.
@@ -113,12 +116,6 @@ export interface SynthesisResult {
 	stats: GenerateStats;
 }
 
-/** Only used when the model doesn't follow the requested title/delimiter format at all — a real headline beats a truncated sentence fragment, but publishing with no title at all is worse than either. */
-function fallbackTitle(body: string): string {
-	const firstLine = body.split('\n')[0];
-	return firstLine.length > 100 ? firstLine.slice(0, 97) + '…' : firstLine;
-}
-
 function buildPrompt(items: ContentItem[], sourceNames: Map<string, string>, numCtx: number, numPredict: number): string {
 	const budgetPerItem = Math.max(MIN_ENTRY_CHARS, Math.floor(maxInputChars(numCtx, numPredict) / items.length));
 	let truncated = 0;
@@ -145,68 +142,25 @@ function buildPrompt(items: ContentItem[], sourceNames: Map<string, string>, num
 }
 
 /**
- * Some models wrap the headline in a numbered-list marker or quotation marks instead of
- * the plain single line the prompt asks for (seen in production: mistral:7b writing
- * `1. "Goldman Sachs Expands..."` as its opening line instead of using the requested
- * ---TITLE--- delimiter at all). Neither decoration is wrong content, just formatting
- * the prompt didn't ask for — strip it rather than publishing a title with a stray
- * "1. " prefix and literal quote characters around it.
+ * With format: SYNTHESIS_JSON_SCHEMA, Ollama guarantees `raw` parses as an object
+ * shaped like the schema — no delimiter text for the model to mangle, so no decoration
+ * to strip. Still defensive about the actual field VALUES (a schema constrains shape,
+ * not content — the model could still write an empty string, or something absurdly
+ * long, into any field), just no longer about the response's overall structure.
  */
-function stripTitleDecoration(title: string): string {
-	return title
-		.replace(/^\d+[.)]\s*/, '')
-		// A model can write its own "Title: <headline>" label line BEFORE the actual
-		// requested ---TITLE--- delimiter (seen in production: mistral:7b did exactly
-		// this, so titlePart captured "Title: <headline>" rather than the clean text
-		// after it) — a label the delimiter itself already makes redundant.
-		.replace(/^(?:title|headline)\s*:\s*/i, '')
-		.trim()
-		.replace(/^["“](.+)["”]$/, '$1')
-		.trim();
-}
-
 function parseResult(raw: string, stats: GenerateStats): SynthesisResult {
-	const [beforeTags, tagSection] = raw.split(TAG_DELIMITER_RE);
-	const tagLabels = parseTagLabels(tagSection ?? '');
-
-	const titleSplit = (beforeTags ?? raw).split(TITLE_DELIMITER_RE);
-	const titlePart = titleSplit[0];
-	// join() rather than titleSplit[1] in case the delimiter text somehow appears again
-	// inside the body itself — keeps that content rather than silently dropping it.
-	const bodyPart = titleSplit.length > 1 ? titleSplit.slice(1).join('') : undefined;
-	// If the title delimiter never showed up, the model didn't follow the requested
-	// format — treat the whole thing as body rather than mistaking the article itself
-	// for a "title", and fall back to the old truncated-first-line heuristic.
-	let body = (bodyPart ?? titlePart).trim();
-	if (bodyPart === undefined) {
-		// A bare divider line ("---", "===", ...) with no "TITLE" text at all doesn't
-		// match TITLE_DELIMITER_RE, so it falls through to here — but it's a malformed
-		// delimiter attempt, not real content. Seen in production: the model wrote a
-		// lone "---" as its own line, immediately followed by the actual headline as
-		// plain text; without this, fallbackTitle below took the "---" itself as the
-		// title and left the real headline sitting as the body's first line. Strip any
-		// such leading line(s) first so the first *substantive* line is what gets used.
-		body = body.replace(/^(?:[-=*]{2,}\s*\n)+/, '');
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (err) {
+		throw new Error(`Model's response wasn't valid JSON despite the schema constraint: ${(err as Error).message}`);
 	}
-	const title = stripTitleDecoration(bodyPart !== undefined ? titlePart.trim() : fallbackTitle(body));
-
-	// In that no-delimiter fallback case, the headline is also still sitting as the
-	// article's own first line (it's the same text `body` was derived from) — seen in
-	// production as a published article whose body literally opened with a restatement
-	// of its own headline. Drop that redundant line once we can confirm it really is a
-	// duplicate of the title we just extracted, rather than risk cutting real content.
-	if (bodyPart === undefined) {
-		const firstLine = body.split('\n')[0];
-		if (stripTitleDecoration(firstLine) === title) {
-			body = body.slice(firstLine.length).trim();
-			// The rest of a numbered-list-style response numbers its next line too
-			// (the same production case: "1. <headline>\n2. <article text>") — that
-			// leading marker is decoration from the same formatting deviation, not
-			// real list content, so strip it here alongside the line it came with.
-			body = body.replace(/^\d+[.)]\s+/, '');
-		}
-	}
-
+	const obj = (parsed ?? {}) as Record<string, unknown>;
+	const title = typeof obj.title === 'string' ? obj.title.trim() : '';
+	const body = typeof obj.body === 'string' ? obj.body.trim() : '';
+	const tagLabels = Array.isArray(obj.tags)
+		? obj.tags.filter((t): t is string => typeof t === 'string' && t.trim().length > 0 && t.length < 60).map((t) => t.trim())
+		: [];
 	return { title, body, tagLabels, stats };
 }
 
@@ -222,40 +176,23 @@ function parseResult(raw: string, stats: GenerateStats): SynthesisResult {
 const MAX_TITLE_CHARS = 150;
 
 /**
- * Two distinct ways a quantized/small model's output can pass parseResult's own logic
- * (delimiters found, nothing crashed) while still being garbage:
- *
- * 1. It reproduces just the requested delimiter scaffold ("---TITLE---\n\n---TAGS---")
- *    with no real headline or article text in between — empty in substance. Left
- *    unchecked this published a blank article (empty title/body, still with real
- *    sources/hero image attached) once in production.
- * 2. It writes the full multi-paragraph article BEFORE the ---TITLE--- delimiter and
- *    a short heading/summary AFTER it — the reverse of what the prompt asked for.
- *    parseResult has no way to tell this apart from a well-formed response (it just
- *    trusts whichever half came first), so the entire article ends up published as the
- *    article's *title* field — seen in production on a real merge.
- *
- * Both get treated as a hard failure rather than an attempted auto-correction (e.g.
- * blindly swapping title/body back) — a swap-back still often carries a stray trailing
- * paragraph the model tacked onto the "headline" half, so it wouldn't reliably produce
- * a clean result either. Failing lets the caller's existing catch-and-retry logic (see
- * priorityQueue.ts's runSynthesisCycle) leave the cluster unclustered for the next
- * cycle instead of ever inserting one of these.
+ * The JSON schema constrains structure, not content — a technically valid response can
+ * still have an empty string in a required field, or (much less likely now, but cheap
+ * to keep guarding against) a wildly oversized title if the model gets confused about
+ * which field is which. Hard-fails rather than attempting a correction, same as before:
+ * lets the caller's existing catch-and-retry logic (see priorityQueue.ts's
+ * runSynthesisCycle) leave the cluster unclustered for the next cycle instead of ever
+ * inserting a malformed result.
  */
 function assertWellFormed(result: SynthesisResult, context: string): SynthesisResult {
 	if (!result.body.trim()) {
 		throw new Error(`Model returned an empty article body for ${context}`);
 	}
-	// A blank title (seen in production: the model emitted the ---TITLE--- delimiter as
-	// close to the very first thing it wrote, with nothing — not even whitespace worth
-	// keeping — before it) parses "successfully" by parseResult's own logic (the
-	// delimiter was found, bodyPart is defined) but leaves the published article with no
-	// headline at all: an empty <h1>, and nothing to identify it by in the feed list.
 	if (!result.title.trim()) {
 		throw new Error(`Model produced an empty title for ${context}`);
 	}
 	if (result.title.includes('\n\n') || result.title.length > MAX_TITLE_CHARS) {
-		throw new Error(`Model likely swapped the title/body halves of its ---TITLE--- response (title came out ${result.title.length} chars) for ${context}`);
+		throw new Error(`Model wrote a suspiciously long/multi-paragraph title (${result.title.length} chars) for ${context} — likely put article content in the wrong field`);
 	}
 	return result;
 }
@@ -298,7 +235,7 @@ async function generateAvoidingCliches(
 	context: string
 ): Promise<SynthesisResult> {
 	const run = async (sys: string) => {
-		const { text, stats } = await provider.generate(prompt, { ...genOpts, system: sys });
+		const { text, stats } = await provider.generate(prompt, { ...genOpts, system: sys, format: SYNTHESIS_JSON_SCHEMA });
 		return assertWellFormed(parseResult(text, stats), context);
 	};
 

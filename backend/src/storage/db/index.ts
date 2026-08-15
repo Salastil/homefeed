@@ -472,6 +472,14 @@ export function migrate() {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN synthesis_gen_tokens_per_sec REAL');
 		db.exec('ALTER TABLE merged_articles ADD COLUMN synthesis_duration_ms INTEGER');
 	}
+	// Tracks every recap attempt, success or failure — see eventsRecap.ts's isDue,
+	// which uses this to back off after a failure instead of retrying a persistently
+	// malformed recap on every single synthesis tick (a real production incident: one
+	// stuck event hammered the only inference slot for 6+ hours straight, blocking
+	// every other merge/recap during each 10+ minute attempt).
+	if (!hasColumn('tracked_events', 'last_recap_attempt_at')) {
+		db.exec('ALTER TABLE tracked_events ADD COLUMN last_recap_attempt_at TEXT');
+	}
 
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —
 	// general news sources belong here, not on "Top stories" itself, which isn't a real

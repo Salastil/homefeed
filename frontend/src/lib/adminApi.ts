@@ -206,6 +206,9 @@ export const getLogs = (filters: { level?: 'info' | 'warn' | 'error'; limit?: nu
 
 export const getPipelineStats = (fetchFn?: typeof fetch) => request<PipelineStats>('/api/admin/pipeline-stats', {}, fetchFn);
 
+/** Aborts whatever generate() call Ollama is currently running (see backend's inference/stats.ts) — 404 if nothing was in flight (it may have just finished on its own). */
+export const cancelSynthesis = (fetchFn?: typeof fetch) => request<{ ok: true }>('/api/admin/synthesis/cancel', { method: 'POST' }, fetchFn);
+
 export const getSynthesisRuns = (filters: { limit?: number } = {}, fetchFn?: typeof fetch) => {
 	const qs = new URLSearchParams(filters as Record<string, string>).toString();
 	return request<SynthesisRun[]>(`/api/admin/synthesis-runs${qs ? `?${qs}` : ''}`, {}, fetchFn);

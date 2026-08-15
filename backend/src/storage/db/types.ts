@@ -187,6 +187,8 @@ export interface TrackedEvent {
 	isSpillover: boolean;
 	retentionOverrideDays: number | null;
 	lastRecapAt: string | null;
+	/** Set on every recap attempt, success or failure — distinct from lastRecapAt (success-only) so a failed attempt can back off instead of retrying on every single synthesis tick (see eventsRecap.ts's isDue). */
+	lastRecapAttemptAt: string | null;
 	/** Tone preset for this item's own recap, independent of the global Merge-tab synthesis style — see pipeline/synthesis.ts's STYLE_PRESETS. 'default' adds nothing on top of the base recap prompt. */
 	recapStylePreset: 'default' | 'casual' | 'formal';
 	/** Free-text instructions appended to the recap system prompt for this item specifically — e.g. "focus on military developments", "write as a full narrative, not bullet points". Empty string means no addendum. */

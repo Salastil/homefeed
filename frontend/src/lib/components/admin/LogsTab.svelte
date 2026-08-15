@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import type { LogEntry, PipelineStats, SynthesisRun } from '$lib/adminTypes';
-	import { getLogs, getPipelineStats, getSynthesisRuns } from '$lib/adminApi';
+	import { getLogs, getPipelineStats, getSynthesisRuns, cancelSynthesis } from '$lib/adminApi';
 
 	let { logs: initial }: { logs: LogEntry[] } = $props();
 	let logs = $state([...initial]);
@@ -10,6 +10,7 @@
 	let filter = $state<'all' | 'info' | 'warn' | 'error'>('all');
 	let autoRefresh = $state(true);
 	let loading = $state(false);
+	let canceling = $state(false);
 	let timer: ReturnType<typeof setInterval>;
 
 	async function refresh() {
@@ -68,6 +69,21 @@
 		if (minutes < 60) return `~${minutes}m`;
 		return `~${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 	}
+
+	async function handleCancel() {
+		if (!confirm('Cancel the in-progress synthesis job? It will be treated as a failed attempt (a merge cluster stays unclustered for the next cycle; a recap backs off for 30 minutes) — this cannot be undone.')) {
+			return;
+		}
+		canceling = true;
+		try {
+			await cancelSynthesis();
+			await refresh();
+		} catch {
+			// 404 just means it finished on its own between the click and the request landing
+		} finally {
+			canceling = false;
+		}
+	}
 </script>
 
 {#if stats}
@@ -113,6 +129,9 @@
 			{#if stats.ollama.inFlight}
 				<span class="tile-value live">Synthesizing</span>
 				<span class="tile-sub" title={stats.ollama.inFlight.label}>{stats.ollama.inFlight.label} · {formatDuration(stats.ollama.inFlight.elapsedMs)} elapsed</span>
+				<button class="cancel-btn" onclick={handleCancel} disabled={canceling}>
+					{canceling ? 'Canceling…' : 'Cancel job'}
+				</button>
 			{:else}
 				<span class="tile-value">Idle</span>
 				<span class="tile-sub">
@@ -249,6 +268,23 @@
 		font-size: 11px;
 		color: var(--text-secondary);
 		line-height: 1.4;
+	}
+	.cancel-btn {
+		align-self: flex-start;
+		margin-top: 4px;
+		font-size: 11px;
+		padding: 4px 10px;
+		border-radius: var(--radius);
+		border: 0.5px solid var(--text-danger);
+		background: transparent;
+		color: var(--text-danger);
+	}
+	.cancel-btn:hover:not(:disabled) {
+		background: var(--bg-accent);
+	}
+	.cancel-btn:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 
 	.section-head {
