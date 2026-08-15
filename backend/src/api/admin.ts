@@ -457,4 +457,19 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const { limit } = req.query as { limit?: string };
 		return listSynthesisRuns({ limit: limit ? Number(limit) : undefined });
 	});
+
+	// Ollama serves one request at a time — a stuck generation (a recap that keeps
+	// producing malformed output and retrying, or one that's just going to take far
+	// longer than expected) blocks every other merge/recap until it finishes, with no
+	// way to intervene short of restarting the whole process. This aborts the in-flight
+	// fetch to Ollama (see inference/stats.ts's cancelInFlight), which drops the
+	// connection and stops the underlying generation server-side. The caller that issued
+	// it (synthesizeArticle/synthesizeRecap) sees this as an ordinary failed generate()
+	// call and is handled by its existing catch-and-log/retry-next-cycle logic — no
+	// special-casing needed there.
+	app.post('/api/admin/synthesis/cancel', async (_req, reply) => {
+		const canceled = ollamaStats.cancelInFlight();
+		if (!canceled) return reply.code(404).send({ error: 'nothing in flight' });
+		return { ok: true };
+	});
 }

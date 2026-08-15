@@ -18,6 +18,8 @@ export interface InferenceProvider {
 			label?: string;
 			/** Explicitly disables a reasoning model's (e.g. Qwen3, DeepSeek-R1) hidden <think> pass — see GlobalSettings.synthesisDisableThinking for why an admin would want this. Ignored harmlessly by models that don't support reasoning at all. Omit to leave Ollama's default (thinking on, for models that support it). */
 			think?: boolean;
+			/** A JSON Schema object (or 'json' for schema-less JSON mode) — Ollama constrains the model's actual output tokens to conform via grammar-based sampling, not just a prompt instruction it can ignore or mangle. See pipeline/synthesis.ts for why this replaced a free-text delimiter convention. */
+			format?: 'json' | Record<string, unknown>;
 		}
 	): Promise<{ text: string; stats: GenerateStats }>;
 	embed(text: string, opts?: { model?: string }): Promise<number[]>;

@@ -16,11 +16,17 @@ export interface GenerateSample {
 }
 
 const samples: GenerateSample[] = [];
-let inFlight: { label: string; startedAt: number } | null = null;
+let inFlight: { label: string; startedAt: number; controller: AbortController } | null = null;
 
-/** Call immediately before issuing a generate() request. */
-export function recordGenerateStart(label: string): void {
-	inFlight = { label, startedAt: Date.now() };
+/**
+ * Call immediately before issuing a generate() request. Ollama serves one request at a
+ * time, so there's only ever meaningfully one in-flight call across the whole app —
+ * the controller lets an admin action (see cancelInFlight) abort a stuck generation
+ * (empty title / swapped halves retried forever, an oversized recap that's going to
+ * take 20+ minutes, ...) without restarting the whole process.
+ */
+export function recordGenerateStart(label: string, controller: AbortController): void {
+	inFlight = { label, startedAt: Date.now(), controller };
 }
 
 /** Call in a finally block after the request settles — pass null on failure/abort. */
@@ -33,6 +39,13 @@ export function recordGenerateEnd(sample: GenerateSample | null): void {
 
 export function getInFlight(): { label: string; elapsedMs: number } | null {
 	return inFlight ? { label: inFlight.label, elapsedMs: Date.now() - inFlight.startedAt } : null;
+}
+
+/** Aborts the current in-flight generate() call, if any — aborting the fetch drops the connection to Ollama, which stops the underlying generation rather than just giving up on waiting for it. Returns false if nothing was in flight. */
+export function cancelInFlight(): boolean {
+	if (!inFlight) return false;
+	inFlight.controller.abort();
+	return true;
 }
 
 function average(nums: number[]): number | null {

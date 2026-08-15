@@ -52,10 +52,23 @@ export class OllamaProvider implements InferenceProvider {
 
 	async generate(
 		prompt: string,
-		opts: { model?: string; system?: string; numCtx?: number; numPredict?: number; label?: string; think?: boolean } = {}
+		opts: {
+			model?: string;
+			system?: string;
+			numCtx?: number;
+			numPredict?: number;
+			label?: string;
+			think?: boolean;
+			format?: 'json' | Record<string, unknown>;
+		} = {}
 	): Promise<{ text: string; stats: GenerateStats }> {
 		const startedAt = Date.now();
-		stats.recordGenerateStart(opts.label ?? 'synthesis');
+		// Lets an admin action (see inference/stats.ts's cancelInFlight, called from
+		// POST /api/admin/synthesis/cancel) abort a stuck generation — aborting the fetch
+		// drops the connection to Ollama, which stops the underlying generation server-side
+		// rather than just giving up on waiting for a response that keeps computing anyway.
+		const controller = new AbortController();
+		stats.recordGenerateStart(opts.label ?? 'synthesis', controller);
 		try {
 			const res = await fetch(`${this.base()}/api/generate`, {
 				method: 'POST',
@@ -66,11 +79,13 @@ export class OllamaProvider implements InferenceProvider {
 					system: opts.system,
 					stream: false,
 					...(opts.think !== undefined ? { think: opts.think } : {}),
+					...(opts.format !== undefined ? { format: opts.format } : {}),
 					options: {
 						num_ctx: opts.numCtx ?? DEFAULT_NUM_CTX,
 						num_predict: opts.numPredict ?? DEFAULT_NUM_PREDICT
 					}
 				}),
+				signal: controller.signal,
 				// Not in the ambient RequestInit type this project resolves to, but Node's global
 				// fetch (built on undici) honors it at runtime — see noTimeoutDispatcher above.
 				dispatcher: noTimeoutDispatcher
@@ -104,6 +119,9 @@ export class OllamaProvider implements InferenceProvider {
 			return { text: data.response, stats: generateStats };
 		} catch (err) {
 			stats.recordGenerateEnd(null);
+			if (err instanceof Error && err.name === 'AbortError') {
+				throw new Error('Generation canceled by admin');
+			}
 			throw err;
 		}
 	}
