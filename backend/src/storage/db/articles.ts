@@ -25,7 +25,10 @@ function rowToArticle(row: any): MergedArticle {
 		topStories: !!row.top_stories,
 		tweet: row.tweet ? JSON.parse(row.tweet) : null,
 		telegramMessage: row.telegram_message ? JSON.parse(row.telegram_message) : null,
-		isRecap: !!row.is_recap
+		isRecap: !!row.is_recap,
+		synthesisInfo: row.synthesis_model
+			? { model: row.synthesis_model, genTokensPerSec: row.synthesis_gen_tokens_per_sec, durationMs: row.synthesis_duration_ms }
+			: null
 	};
 }
 
@@ -33,8 +36,8 @@ export function insertArticle(article: Omit<MergedArticle, 'id'>): MergedArticle
 	const id = `art-${randomUUID()}`;
 	db.prepare(
 		`INSERT INTO merged_articles
-		 (id, title, body, hero_image, video, category, geo, event_id, source_count, sources, published_at, updated_at, merge_confidence, tags, thread_id, previous_article_id, next_article_id, top_stories, tweet, telegram_message, is_recap)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		 (id, title, body, hero_image, video, category, geo, event_id, source_count, sources, published_at, updated_at, merge_confidence, tags, thread_id, previous_article_id, next_article_id, top_stories, tweet, telegram_message, is_recap, synthesis_model, synthesis_gen_tokens_per_sec, synthesis_duration_ms)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		id,
 		article.title,
@@ -56,7 +59,10 @@ export function insertArticle(article: Omit<MergedArticle, 'id'>): MergedArticle
 		article.topStories ? 1 : 0,
 		article.tweet ? JSON.stringify(article.tweet) : null,
 		article.telegramMessage ? JSON.stringify(article.telegramMessage) : null,
-		article.isRecap ? 1 : 0
+		article.isRecap ? 1 : 0,
+		article.synthesisInfo?.model ?? null,
+		article.synthesisInfo?.genTokensPerSec ?? null,
+		article.synthesisInfo?.durationMs ?? null
 	);
 	if (article.previousArticleId) {
 		db.prepare('UPDATE merged_articles SET next_article_id = ? WHERE id = ?').run(id, article.previousArticleId);

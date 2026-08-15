@@ -157,6 +157,8 @@ export interface MergedArticle {
 	topStories: boolean;
 	/** True only for the AI-written periodic summary of a tracked event (see eventsRecap.ts) — distinguishes it from the individual articles published under the same eventId. */
 	isRecap: boolean;
+	/** Which model wrote this article, how fast, and how long it took — null for a direct-published (single-source, no synthesis) article, which never ran through pipeline/synthesis.ts at all. */
+	synthesisInfo: { model: string; genTokensPerSec: number | null; durationMs: number } | null;
 }
 
 export interface Tag {

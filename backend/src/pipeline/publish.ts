@@ -412,7 +412,8 @@ export async function publishDirect(
 		previousArticleId: null,
 		nextArticleId: null,
 		topStories: anyPushesToTopStories([item]),
-		isRecap: false
+		isRecap: false,
+		synthesisInfo: null // passthrough — never ran through pipeline/synthesis.ts
 	});
 
 	for (const id of storedMediaIds) promoteToPublished(id, article.id);
@@ -506,7 +507,8 @@ export async function publishCluster(
 		previousArticleId,
 		nextArticleId: null,
 		topStories: anyPushesToTopStories(items),
-		isRecap: false
+		isRecap: false,
+		synthesisInfo: { model: settings.selectedModels.synthesis, genTokensPerSec: generateStats.genTokensPerSec, durationMs: generateStats.totalDurationMs }
 	});
 
 	if (storedMediaId) {
@@ -578,7 +580,8 @@ export async function publishEventRecap(
 		previousArticleId: null,
 		nextArticleId: null,
 		topStories: constituents.some((a) => a.topStories),
-		isRecap: true
+		isRecap: true,
+		synthesisInfo: { model: settings.selectedModels.synthesis, genTokensPerSec: generateStats.genTokensPerSec, durationMs: generateStats.totalDurationMs }
 	});
 
 	synthesisRuns.recordSynthesisRun({
