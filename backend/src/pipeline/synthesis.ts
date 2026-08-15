@@ -178,6 +178,16 @@ function parseResult(raw: string, stats: GenerateStats): SynthesisResult {
 	// format — treat the whole thing as body rather than mistaking the article itself
 	// for a "title", and fall back to the old truncated-first-line heuristic.
 	let body = (bodyPart ?? titlePart).trim();
+	if (bodyPart === undefined) {
+		// A bare divider line ("---", "===", ...) with no "TITLE" text at all doesn't
+		// match TITLE_DELIMITER_RE, so it falls through to here — but it's a malformed
+		// delimiter attempt, not real content. Seen in production: the model wrote a
+		// lone "---" as its own line, immediately followed by the actual headline as
+		// plain text; without this, fallbackTitle below took the "---" itself as the
+		// title and left the real headline sitting as the body's first line. Strip any
+		// such leading line(s) first so the first *substantive* line is what gets used.
+		body = body.replace(/^(?:[-=*]{2,}\s*\n)+/, '');
+	}
 	const title = stripTitleDecoration(bodyPart !== undefined ? titlePart.trim() : fallbackTitle(body));
 
 	// In that no-delimiter fallback case, the headline is also still sitting as the
