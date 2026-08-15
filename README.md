@@ -1,13 +1,15 @@
-# Homefeed — An all-in-one RSS, Social media and News Blotter
+# Homefeed — An all‑in‑one RSS, social media and news blotter
 
 <img width="320" height="320" alt="Homefeed" src="https://github.com/user-attachments/assets/e6fda335-3e24-4251-b413-e4cc4b5ad728" />
 <img width="320" height="320" alt="Article" src="https://github.com/user-attachments/assets/d4d56f64-b07e-4e32-b470-7634970add82" />
 
-# Features
-- Homefeed will capture news articles and media within reason and display it on your own site without the abunance of ads and other invasive material. 
-- Ingest content through a variety of sources; including RSS feeds, Nitter, Telegram and Youtube.
-- When news articles from multiple outlets are similar or almost identical AI will merge and rewrite articles in the style you prefer
-- Tracked items for events, as query lists. Instruct a tracked item to search for emoji such as a country flag, political leader or group's name and you can use it to follow events such as the ongoing wars in Ukraine or Iran. Tracked items have the ability to have AI run a recap every 6 hours -- compacting 40-60 sources ranging from news articles, Tweets and Telegram messages into a news article as if it were written by a news agency.
-- Dynamic widget system so you can create your own widgets to display important data at a glance.
-- Modular frontend and backend that communicates via API so if you're dissatisfied with the look of the front end you can make your own with ease such as a terminal application or Android or Iphone app. 
+Homefeed aggregates news, social posts and media into a clean, personal feed you can host on your own site — without the clutter of ads and invasive tracking. It pulls content from a variety of sources, normalizes and groups related items, and presents them in a readable, customizable format.
 
+## Features
+
+- Lightweight, user-hosted feed: display news and media on your own site with minimal ads and tracking.
+- Multiple input sources: ingest content from RSS feeds, Nitter, Telegram, YouTube, and other supported providers.
+- AI-assisted consolidation: when multiple outlets publish the same or very similar articles, Homefeed can merge and rewrite them in a voice or style you choose, reducing duplication and improving readability.
+- Event tracking and queries: create tracked items (queries) to follow events or topics — search for emoji (flags), names, organizations, or keywords and surface related posts and articles. Periodic AI recaps: configure recap intervals (for example hourly, daily, weekly, or a custom cadence) and Homefeed will generate concise summaries for each tracked item on schedule using AI.
+- Dynamic widget system: build and configure widgets to highlight important data at a glance.
+- Modular architecture: frontend and backend communicate via a clear API so you can swap or build custom clients (for example, a terminal UI, Android app, or iPhone app) without changing the ingestion or storage layer.
