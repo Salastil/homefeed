@@ -123,10 +123,27 @@ function readZipJson<T>(zip: AdmZip, entryName: string): T | null {
 	return JSON.parse(entry.getData().toString('utf8')) as T;
 }
 
-/** Column names come straight from each row's own keys (SELECT * output) — every row in a given table dump shares the same shape, so the first row's keys are representative for building the INSERT's column list. */
+function tableColumns(table: string): Set<string> {
+	return new Set((db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]).map((c) => c.name));
+}
+
+/**
+ * Column names come from each row's own keys (SELECT * output on the SOURCE instance)
+ * — but the source and destination instance don't necessarily share the exact same
+ * live schema. This app never drops a column once added (see storage/db/index.ts's
+ * migration convention), so an instance old enough to predate a rename can still carry
+ * genuinely orphaned columns (seen in production: tracked_events.cadence/cadence_time,
+ * dead since the "recap_interval_hours" rewrite, but never dropped from that table).
+ * Exporting from that instance and importing onto a fresher one that never had those
+ * columns crashed here with "table tracked_events has no column named cadence" before
+ * this filter existed — silently drop any column the destination doesn't actually have
+ * rather than assuming the zip's shape matches this table's live shape exactly.
+ */
 function bulkInsert(table: string, rows: Record<string, unknown>[]) {
 	if (rows.length === 0) return;
-	const columns = Object.keys(rows[0]);
+	const destColumns = tableColumns(table);
+	const columns = Object.keys(rows[0]).filter((c) => destColumns.has(c));
+	if (columns.length === 0) return;
 	const placeholders = columns.map(() => '?').join(', ');
 	const stmt = db.prepare(`INSERT INTO "${table}" (${columns.map((c) => `"${c}"`).join(', ')}) VALUES (${placeholders})`);
 	for (const row of rows) {
