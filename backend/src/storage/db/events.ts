@@ -14,6 +14,7 @@ function rowToEvent(row: any): TrackedEvent {
 		isSpillover: !!row.is_spillover,
 		retentionOverrideDays: row.retention_override_days,
 		lastRecapAt: row.last_recap_at,
+		lastRecapAttemptAt: row.last_recap_attempt_at,
 		recapStylePreset: row.recap_style_preset,
 		recapCustomInstructions: row.recap_custom_instructions,
 		createdAt: row.created_at
@@ -102,4 +103,9 @@ export function deleteEvent(id: string) {
 
 export function markRecapped(id: string) {
 	db.prepare('UPDATE tracked_events SET last_recap_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+}
+
+/** Called on every recap attempt, success or failure — see eventsRecap.ts's isDue, which backs off using this after a failure instead of retrying every synthesis tick. */
+export function markRecapAttempted(id: string) {
+	db.prepare('UPDATE tracked_events SET last_recap_attempt_at = ? WHERE id = ?').run(new Date().toISOString(), id);
 }
