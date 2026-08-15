@@ -141,6 +141,8 @@ export interface Weather {
 	hourly: WeatherHourEntry[];
 	daily: WeatherDayEntry[];
 	alerts: WeatherAlert[];
+	/** Plain-English wrap-up, e.g. "Current conditions in X are 86° and sunny with a light northwest wind at 5 mph. Tonight will turn..." — null until the first successful poll. */
+	summary: string | null;
 	updatedAt: string | null;
 }
 

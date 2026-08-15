@@ -56,6 +56,8 @@ export interface WeatherCache {
 	daily: WeatherDayEntry[];
 	/** Active NWS alerts (flash flood, hurricane, blizzard, etc.) for the configured location — US-only, empty elsewhere. See client.ts's fetchActiveAlerts. */
 	alerts: WeatherAlert[];
+	/** Plain-English wrap-up composed from the fields above (see client.ts's buildDaySummary) — null until the first successful poll, or if there wasn't enough data (e.g. tomorrow's forecast missing). */
+	summary: string | null;
 	updatedAt: string | null;
 }
 
@@ -75,6 +77,7 @@ const DEFAULT_CACHE: WeatherCache = {
 	hourly: [],
 	daily: [],
 	alerts: [],
+	summary: null,
 	updatedAt: null
 };
 

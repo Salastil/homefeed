@@ -6,11 +6,12 @@
 	const weather = $derived(data.weather);
 	const unitLabel = $derived(weather.unit === 'celsius' ? 'C' : 'F');
 
-	// The hourly strip covers the next 24h starting from "now" (see weather/client.ts), which
-	// almost always crosses a day boundary partway through — grouping by calendar day and
-	// labeling each group is what actually answers "which day is this hour in", rather than
-	// leaving it to be inferred from the hour-of-day alone (ambiguous for anything after
-	// midnight, and easy to misread near the boundary either way).
+	// The hourly list covers today's remaining hours (starting from the current hour, which
+	// keeps shrinking as the day goes on) through the end of tomorrow (see weather/client.ts) —
+	// grouping by calendar day and labeling each group with both a name and its date is what
+	// actually answers "which day is this hour in", rather than leaving it to be inferred from
+	// the hour-of-day alone (ambiguous for anything after midnight, and easy to misread near
+	// the boundary either way).
 	function dayLabel(d: Date): string {
 		const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
 		const diffDays = Math.round((startOfDay(d) - startOfDay(new Date())) / 86_400_000);
@@ -19,13 +20,18 @@
 		return d.toLocaleDateString([], { weekday: 'long' });
 	}
 
+	function dayDate(d: Date): string {
+		return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+	}
+
 	const hourlyGroups = $derived.by(() => {
-		const groups: { label: string; hours: typeof weather.hourly }[] = [];
+		const groups: { label: string; date: string; hours: typeof weather.hourly }[] = [];
 		for (const hour of weather.hourly) {
-			const label = dayLabel(new Date(hour.time));
+			const d = new Date(hour.time);
+			const label = dayLabel(d);
 			const last = groups[groups.length - 1];
 			if (last && last.label === label) last.hours.push(hour);
-			else groups.push({ label, hours: [hour] });
+			else groups.push({ label, date: dayDate(d), hours: [hour] });
 		}
 		return groups;
 	});
@@ -52,6 +58,10 @@
 			<span class="updated">Updated {timeAgo(weather.updatedAt ?? '')}</span>
 		</div>
 	</div>
+
+	{#if weather.summary}
+		<p class="summary">{weather.summary}</p>
+	{/if}
 
 	<div class="conditions-grid">
 		<div class="stat">
@@ -99,13 +109,17 @@
 
 	<div class="section">
 		<span class="section-title">Hourly</span>
-		{#each hourlyGroups as group (group.label + group.hours[0]?.time)}
-			<div class="hourly-day">
-				<span class="hourly-day-label">{group.label}</span>
+		{#each hourlyGroups as group, i (group.label + group.hours[0]?.time)}
+			<div class="hourly-day" class:divider={i > 0}>
+				<div class="hourly-day-head">
+					<span class="hourly-day-label">{group.label}</span>
+					<span class="hourly-day-date">{group.date}</span>
+				</div>
 				<div class="hourly-strip">
 					{#each group.hours as hour (hour.time)}
-						<div class="hour-col">
-							<span class="hour-time">{new Date(hour.time).toLocaleTimeString([], { hour: 'numeric' })}</span>
+						{@const isNow = hour.time === weather.hourly[0]?.time}
+						<div class="hour-col" class:now={isNow}>
+							<span class="hour-time">{isNow ? 'Now' : new Date(hour.time).toLocaleTimeString([], { hour: 'numeric' })}</span>
 							<span class="hour-icon">{hour.icon}</span>
 							<span class="hour-temp">{Math.round(hour.temp)}°</span>
 						</div>
@@ -154,7 +168,14 @@
 		display: flex;
 		align-items: center;
 		gap: 16px;
-		margin: 20px 0 28px;
+		margin: 20px 0 16px;
+	}
+	.summary {
+		font-size: 14px;
+		color: var(--text-secondary);
+		line-height: 1.6;
+		max-width: 560px;
+		margin: 0 0 28px;
 	}
 	.icon {
 		font-size: 64px;
@@ -263,12 +284,24 @@
 	.hourly-day:last-child {
 		margin-bottom: 0;
 	}
+	.hourly-day.divider {
+		padding-top: 18px;
+		border-top: 0.5px solid var(--border);
+	}
+	.hourly-day-head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		margin-bottom: 10px;
+	}
 	.hourly-day-label {
-		display: block;
 		font-size: 12px;
 		font-weight: 500;
 		color: var(--text-muted);
-		margin-bottom: 10px;
+	}
+	.hourly-day-date {
+		font-size: 11px;
+		color: var(--text-muted);
 	}
 	.hourly-strip {
 		display: grid;
@@ -280,6 +313,16 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 4px;
+		padding: 6px 0;
+		border-radius: var(--radius);
+	}
+	.hour-col.now {
+		background: var(--bg-accent);
+		border: 1.5px solid var(--border-accent);
+	}
+	.hour-col.now .hour-time {
+		color: var(--text-accent);
+		font-weight: 500;
 	}
 	.hour-time {
 		font-size: 11px;

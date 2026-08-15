@@ -65,6 +65,7 @@ export interface AdminWeatherSettings {
 	hourly: WeatherHourEntry[];
 	daily: WeatherDayEntry[];
 	alerts: WeatherAlert[];
+	summary: string | null;
 	updatedAt: string | null;
 }
 
