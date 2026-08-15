@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import fs from 'node:fs';
 import path from 'node:path';
 import { registerAuth } from './api/auth.js';
@@ -39,6 +40,11 @@ async function buildApp(): Promise<FastifyInstance> {
 	});
 
 	await app.register(cookie);
+
+	// Only real consumer today is POST /api/admin/backup/import (config zip upload) —
+	// export-configuration zips are config-only (no media), so this generous a limit is
+	// still nowhere near what actual article media handling would need.
+	await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 
 	// Overrides Fastify's default JSON body parser, which throws "Body cannot be empty
 	// when content-type is set to 'application/json'" for any bodyless request (DELETE,
@@ -128,11 +134,11 @@ async function buildApp(): Promise<FastifyInstance> {
  * the route set (see widgets/install.ts, uninstall.ts).
  *
  * Deliberately reuses everything else already live in this process — the DB connection,
- * the in-memory widget registry, the scheduler's setInterval loops, the Telegram client's
- * session, and the admin API key all stay untouched. Only the HTTP server + its router are
- * rebuilt, which is what makes this meaningfully better than a full process restart: none
- * of that state is lost, and in particular the admin API key (regenerated only on true
- * process start) stays valid, so installing a widget never logs the admin out.
+ * the in-memory widget registry, the scheduler's setInterval loops, and the Telegram
+ * client's session all stay untouched. Only the HTTP server + its router are rebuilt,
+ * which is what makes this meaningfully better than a full process restart: none of
+ * that in-memory state is lost (the admin API key survives either way now — see
+ * apiKey.ts — but the DB connection/scheduler/Telegram session don't).
  *
  * Split into two steps rather than one, because of a real deadlock/dropped-response bug
  * hit in testing: the install/delete admin routes that trigger a reload are themselves

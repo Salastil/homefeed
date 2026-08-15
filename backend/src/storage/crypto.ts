@@ -13,7 +13,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const DB_PATH = process.env.DB_PATH || './data/homefeed.db';
-const KEY_PATH = path.join(path.dirname(DB_PATH), '.encryption-key');
+// Exported for backup.ts — an export/import that includes encrypted secrets (Telegram
+// credentials) must travel with this exact file, or they become undecryptable on the
+// receiving instance (see this file's own top comment).
+export const KEY_PATH = path.join(path.dirname(DB_PATH), '.encryption-key');
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;

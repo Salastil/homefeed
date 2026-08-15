@@ -7,6 +7,7 @@
 	import WidgetsTab from '$lib/components/admin/WidgetsTab.svelte';
 	import ConnectionsTab from '$lib/components/admin/ConnectionsTab.svelte';
 	import LogsTab from '$lib/components/admin/LogsTab.svelte';
+	import BackupTab from '$lib/components/admin/BackupTab.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -17,7 +18,8 @@
 		{ id: 'events', label: 'Tracked items' },
 		{ id: 'widgets', label: 'Widgets' },
 		{ id: 'connections', label: 'Connections' },
-		{ id: 'logs', label: 'Logs' }
+		{ id: 'logs', label: 'Logs' },
+		{ id: 'backup', label: 'Backup' }
 	];
 
 	let active = $state('merge');
@@ -58,6 +60,8 @@
 		<ConnectionsTab settings={data.settings} telegramStatus={data.telegramStatus} />
 	{:else if active === 'logs'}
 		<LogsTab logs={data.logs} />
+	{:else if active === 'backup'}
+		<BackupTab />
 	{/if}
 </div>
 

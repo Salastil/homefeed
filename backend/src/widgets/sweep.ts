@@ -5,7 +5,10 @@ import type { DatabaseSync } from 'node:sqlite';
 // widget's data even with zero cooperation from its own code — a widget's own uninstall()
 // hook (if present) is an optimization/extension point, not a requirement for correctness.
 
-function ownedTablesForId(db: DatabaseSync, widgetId: string, extraOwnedTables: string[] = []): string[] {
+// Also reused by backup.ts to discover what to include in a config export/import —
+// the widget_<id>_ naming convention is the one generic, widget-agnostic way to know
+// which tables belong to which widget without hand-enumerating them per widget.
+export function ownedTablesForId(db: DatabaseSync, widgetId: string, extraOwnedTables: string[] = []): string[] {
 	const prefix = `widget_${widgetId}_`;
 	const rows = db
 		.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ? ESCAPE '\\'`)

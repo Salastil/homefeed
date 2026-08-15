@@ -70,9 +70,11 @@
 		...(spilloverCategories.length > 0 || spilloverEvents.length > 0 ? [{ label: 'More »', href: '/more' }] : [])
 	]);
 
+	// Exact match, not startsWith — a prefix check here would light up e.g. "fish"
+	// whenever viewing "fishtanklive" (both /category/[name] and /event/[id] are leaf
+	// routes with no sub-pages, so there's nothing a prefix match needs to catch).
 	function isActive(href: string): boolean {
-		if (href === '/') return $page.url.pathname === '/';
-		return $page.url.pathname.startsWith(href);
+		return $page.url.pathname === href;
 	}
 </script>
 

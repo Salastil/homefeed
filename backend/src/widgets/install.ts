@@ -28,9 +28,9 @@ export type InstallResult =
 // and rolled back within this same call, before anything user-visible commits.
 //
 // Either way this is a full HTTP-server rebuild within the running process, not a
-// process restart — the DB connection, scheduler intervals, Telegram session, and
-// (critically) the admin API key all survive; a process restart would regenerate the
-// key and log the admin out.
+// process restart — the DB connection, scheduler intervals, and Telegram session all
+// survive a rebuild but would be lost on a real restart (the admin API key survives
+// either way — see apiKey.ts).
 export async function installUploadedWidget(manifest: unknown, files: unknown): Promise<InstallResult> {
 	const validationError = validateManifest(manifest, files);
 	if (validationError) return { ok: false, error: validationError };

@@ -1,0 +1,71 @@
+services:
+  # Pull-only variant of docker-compose.yml for a deploy host that only has this one
+  # file — no backend/frontend source tree alongside it (e.g. Unraid's Compose Manager,
+  # which stores just the compose file under /boot/config/plugins/compose.manager/...).
+  # Build and push images elsewhere (`docker compose build && docker compose push`
+  # against the main docker-compose.yml, which still has the `build:` blocks), then
+  # deploy here with `docker compose -f docker-compose.prod.yml up -d`. Compose Manager
+  # (and Compose generally) treats a `build:` key as reason to build over pulling even
+  # when the image already exists in the registry — omitting it entirely is what makes
+  # this variant pull-only. Everything else — environment, ports, volumes, healthcheck,
+  # network_mode — is identical to docker-compose.yml; see that file's comments.
+  #
+  # FRONTEND_ORIGIN/ORIGIN below are hardcoded to salastil.com rather than reading
+  # ${PUBLIC_ORIGIN} from .env like docker-compose.yml does — Unraid's Compose Manager
+  # doesn't reliably source a project .env file the way plain `docker compose` does,
+  # and a stale fallback here breaks the site outright (SvelteKit's SSR fetch rejects
+  # the backend's CORS response the moment these two don't match character-for-
+  # character — see root README.md's reverse-proxy section). If you fork this file for
+  # a different domain, edit both values below directly.
+  backend:
+    image: ${REGISTRY:-git.salastil.com/salastil}/homefeed-backend:${IMAGE_TAG:-latest}
+    environment:
+      PORT: "4000"
+      FRONTEND_ORIGIN: https://salastil.com
+      DB_PATH: /app/data/homefeed.db
+      MEDIA_DIR: /app/data/media
+      WIDGETS_INSTALLED_DIR: /app/data/widgets-installed
+      NODE_ENV: production
+      PRIVATE_ACCESS_PASSWORD: ${PRIVATE_ACCESS_PASSWORD:-}
+      # Optional — without this, the container regenerates the admin key on every
+      # recreate (no writable backend/.env inside it). Set to any random string to
+      # pin a stable one. If this stack's .env substitution doesn't reliably apply
+      # (as PUBLIC_ORIGIN's didn't — see FRONTEND_ORIGIN/ORIGIN above), set it as a
+      # literal value directly in Compose Manager's own environment editor instead.
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+    volumes:
+      - backend-data:/app/data
+    ports:
+      - "${BACKEND_PORT:-4000}:4000"
+      - "${FRONTEND_PORT:-3000}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4000/api/categories').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    image: ${REGISTRY:-git.salastil.com/salastil}/homefeed-frontend:${IMAGE_TAG:-latest}
+    network_mode: "service:backend"
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      ORIGIN: https://salastil.com
+      ADMIN_PANEL_ENABLED: ${ADMIN_PANEL_ENABLED:-false}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend-data:

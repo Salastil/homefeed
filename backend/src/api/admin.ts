@@ -18,6 +18,7 @@ import * as telegramClient from '../telegram/client.js';
 import { loadedWidgets } from '../widgets/registry.js';
 import { installUploadedWidget } from '../widgets/install.js';
 import { uninstallWidget } from '../widgets/uninstall.js';
+import { buildExportZip, applyImportZip } from './backup.js';
 import { swapLiveServer } from '../server.js';
 import type { GlobalSettings } from '../storage/db/types.js';
 
@@ -388,6 +389,24 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const hadRoutes = await uninstallWidget(id);
 		reply.code(204).send();
 		if (hadRoutes) scheduleServerSwap(`deleting "${id}"`);
+	});
+
+	// --- Config export/import (see api/backup.ts for what's included/excluded) ---
+	app.get('/api/admin/backup/export', async (_req, reply) => {
+		const zip = buildExportZip();
+		const filename = `homefeed-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
+		reply.header('Content-Type', 'application/zip');
+		reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+		return reply.send(zip);
+	});
+
+	app.post('/api/admin/backup/import', async (req, reply) => {
+		const file = await req.file();
+		if (!file) return reply.code(400).send({ error: 'no file uploaded' });
+		const buffer = await file.toBuffer();
+		const result = applyImportZip(buffer);
+		if (!result.ok) return reply.code(400).send({ error: result.error });
+		return { ok: true, warnings: result.warnings };
 	});
 
 	// --- Logs ---
