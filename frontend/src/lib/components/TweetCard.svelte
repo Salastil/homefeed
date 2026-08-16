@@ -205,18 +205,17 @@
 		background: none;
 		cursor: pointer;
 	}
+	/* contain, not cover — cover crops a portrait photo/clip down to a sliver in these
+	   landscape-shaped grid cells. For video this also leaked into the browser's native
+	   fullscreen view (object-fit carries into "maximized" too), but the crop itself was
+	   never video-specific — a tall image in a wide cell gets squeezed exactly the same
+	   way, so this applies to every media element here, not just video/gif. */
 	.media-el {
 		width: 100%;
 		height: 100%;
-		object-fit: cover;
+		object-fit: contain;
 		display: block;
 		background: var(--surface-1);
-	}
-	/* Video/gif use contain rather than cover — cover crops a portrait clip down to a
-	   sliver in these landscape-shaped grid cells, and since object-fit carries into the
-	   browser's native fullscreen view too, that crop persisted even when "maximized". */
-	video.media-el {
-		object-fit: contain;
 	}
 	/* Nested inside the same outer frame — deliberately lighter-weight than the card
 	   itself (no independent hover border, tighter radius, tinted background instead of
