@@ -205,7 +205,8 @@ export interface WidgetsEnabled {
 	stocks: boolean;
 	bookmarks: boolean;
 	poe2: boolean;
-	order: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
-	/** Enabled uploaded widgets, in their own priority order — rendered after the 4 built-ins (see Sidebar.svelte). */
+	/** Every installed widget's id (built-in or uploaded), in display order — a pluggable widget can be positioned anywhere relative to the built-ins. */
+	order: string[];
+	/** Enabled uploaded widgets — a lookup Sidebar.svelte uses for any `order` entry that isn't one of the 4 built-in keys; missing = disabled, skip it. */
 	pluggable: PluggableWidgetSummary[];
 }

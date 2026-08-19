@@ -19,6 +19,7 @@ import type {
 	AdminWeatherSettings,
 	InstalledWidget,
 	WidgetUploadManifest,
+	AdminSearchEngine,
 	PipelineStats,
 	SynthesisRun,
 	ModelContextInfo,
@@ -285,6 +286,22 @@ export const addPoe2WatchlistEntry = (
 
 export const removePoe2WatchlistEntry = (id: string, fetchFn?: typeof fetch) =>
 	request<void>(`/api/admin/widget/poe2/watchlist/${id}`, { method: 'DELETE' }, fetchFn);
+
+// Search widget — custom search engines, admin-managed (see widgets/searchbar/index.mjs).
+// Not part of the core app; only reachable once the "searchbar" pluggable widget is
+// installed, same as poe2's routes above are only meaningful with poe2 present.
+export const getSearchEngines = (fetchFn?: typeof fetch) =>
+	request<AdminSearchEngine[]>('/api/admin/widget/searchbar/engines', {}, fetchFn);
+
+export const addSearchEngine = (name: string, urlTemplate: string, fetchFn?: typeof fetch) =>
+	request<AdminSearchEngine>(
+		'/api/admin/widget/searchbar/engines',
+		{ method: 'POST', body: JSON.stringify({ name, urlTemplate }) },
+		fetchFn
+	);
+
+export const removeSearchEngine = (id: string, fetchFn?: typeof fetch) =>
+	request<void>(`/api/admin/widget/searchbar/engines/${id}`, { method: 'DELETE' }, fetchFn);
 
 // Pluggable widgets (upload/list/enable/delete) — see backend/src/widgets/install.ts,
 // uninstall.ts. Built-in widgets (source: 'builtin') 400 on deleteWidget.

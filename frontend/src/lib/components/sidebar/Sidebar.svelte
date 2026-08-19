@@ -101,13 +101,15 @@
 					<Poe2Widget {poe2} />
 				{:else if key === 'bookmarks' && widgetsEnabled.bookmarks}
 					<BookmarksWidget bookmarks={bookmarks.items} columns={bookmarks.columns} />
-				{/if}
-			{/each}
-			{#each widgetsEnabled.pluggable as w (w.id)}
-				{#if w.frontendEntry}
-					<DynamicWidgetSlot id={w.id} displayName={w.displayName} frontendEntry={w.frontendEntry} />
 				{:else}
-					<GenericWidgetCard id={w.id} displayName={w.displayName} />
+					{@const w = widgetsEnabled.pluggable.find((p) => p.id === key)}
+					{#if w}
+						{#if w.frontendEntry}
+							<DynamicWidgetSlot id={w.id} displayName={w.displayName} frontendEntry={w.frontendEntry} />
+						{:else}
+							<GenericWidgetCard id={w.id} displayName={w.displayName} />
+						{/if}
+					{/if}
 				{/if}
 			{/each}
 		</div>

@@ -147,6 +147,15 @@ export interface WidgetUploadManifest {
 	frontendEntry?: string;
 }
 
+/** A custom search engine for the "searchbar" pluggable widget — see widgets/searchbar/index.mjs. */
+export interface AdminSearchEngine {
+	id: string;
+	name: string;
+	urlTemplate: string;
+	priorityRank: number;
+	createdAt: string;
+}
+
 export interface AdminSettings {
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	holdBeforePublishMinutes: number;
@@ -172,7 +181,8 @@ export interface AdminSettings {
 	/** Sends think:false to the synthesis model — see ModelsTab's checkbox copy for what this does and why. */
 	synthesisDisableThinking: boolean;
 	widgets: AdminWidgetsEnabled;
-	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
+	/** Every installed widget's id (built-in or uploaded), admin-sortable via the Widgets tab's up/down arrows. */
+	widgetOrder: string[];
 	/** How many columns the bookmark list lays out in, both in the sidebar and the admin panel. */
 	bookmarksColumns: 1 | 2 | 3;
 	retention: RetentionSettings;

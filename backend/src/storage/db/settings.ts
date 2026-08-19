@@ -7,9 +7,11 @@ const BUILTIN_WIDGET_IDS = ['weather', 'stocks', 'bookmarks', 'poe2'] as const;
 // widgets/widgetOrder are computed from the installed_widgets registry (see
 // storage/db/installedWidgets.ts, widgets/registry.ts) rather than stored as their own
 // global_settings columns — the registry is the single source of truth for enable state
-// and ordering for every widget, built-in or uploaded. Only the four built-in ids are
-// reflected here since GlobalSettings.widgets/widgetOrder are closed unions the frontend
-// depends on (uploaded widgets have no frontend representation yet).
+// and ordering for every widget, built-in or uploaded. `widgets` stays a closed union
+// (only the 4 built-ins ever gate a backend poller via scheduler.ts); `widgetOrder`
+// includes every installed widget's id, built-in or uploaded, in priority_rank order —
+// this is what lets a pluggable widget be positioned anywhere relative to the built-ins
+// via the Widgets tab's up/down arrows, rather than always rendering after them.
 function widgetsAndOrder(): Pick<GlobalSettings, 'widgets' | 'widgetOrder'> {
 	const installed = installedWidgetsDb.listInstalled();
 	const byId = new Map(installed.map((w) => [w.id, w]));
@@ -19,9 +21,7 @@ function widgetsAndOrder(): Pick<GlobalSettings, 'widgets' | 'widgetOrder'> {
 		bookmarks: !!byId.get('bookmarks')?.enabled,
 		poe2: !!byId.get('poe2')?.enabled
 	};
-	const widgetOrder = installed.map((w) => w.id).filter((id): id is (typeof BUILTIN_WIDGET_IDS)[number] =>
-		(BUILTIN_WIDGET_IDS as readonly string[]).includes(id)
-	);
+	const widgetOrder = installed.map((w) => w.id);
 	return { widgets, widgetOrder };
 }
 

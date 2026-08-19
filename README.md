@@ -204,16 +204,21 @@ Add one Proxy Host for your domain:
 - **SSL tab**: request a Let's Encrypt certificate, enable "Force SSL"
 - Websockets support isn't needed — this app doesn't use any
 
-Then, same-domain path routing only, add two **Custom Locations** on that same
+Then, same-domain path routing only, add three **Custom Locations** on that same
 Proxy Host:
 
-| Location  | Forward Hostname/IP           | Forward Port |
-| --------- | ------------------------------ | ------------ |
-| `/api`    | the backend's host             | `4000`       |
-| `/media`  | the backend's host             | `4000`       |
+| Location         | Forward Hostname/IP | Forward Port |
+| ---------------- | -------------------- | ------------ |
+| `/api`           | the backend's host   | `4000`       |
+| `/media`         | the backend's host   | `4000`       |
+| `/widget-assets` | the backend's host   | `4000`       |
 
-Leave the forwarded path as-is (don't strip the `/api`/`/media` prefix) — the
-backend's own routes already expect them, exactly as proxied.
+Leave the forwarded path as-is (don't strip the prefix) — the backend's own
+routes already expect it, exactly as proxied. `/widget-assets` serves a
+pluggable widget's `frontendEntry` bundle (see `DynamicWidgetSlot.svelte`) —
+easy to miss since it only matters once a widget with a frontend bundle is
+actually installed, unlike `/api`/`/media` which are needed from the very
+first page load.
 
 ### Why this works without further code changes
 

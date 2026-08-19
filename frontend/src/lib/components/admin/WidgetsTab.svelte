@@ -16,6 +16,7 @@
 	import StocksTab from './StocksTab.svelte';
 	import BookmarksTab from './BookmarksTab.svelte';
 	import Poe2Tab from './Poe2Tab.svelte';
+	import SearchEnginesTab from './SearchEnginesTab.svelte';
 
 	let {
 		settings,
@@ -37,21 +38,24 @@
 		installedWidgets: InstalledWidget[];
 	} = $props();
 
-	// Local copies so each toggle/reorder reflects immediately — same idiom as
-	// BookmarksTab's per-row "Private" toggle.
-	let widgets = $state({ ...settings.widgets });
-	let widgetOrder = $state([...settings.widgetOrder]);
-
-	const titles: Record<(typeof widgetOrder)[number], string> = {
+	const BUILTIN_TITLES: Record<string, string> = {
 		weather: 'Weather',
 		stocks: 'Stocks',
 		bookmarks: 'Bookmarks',
 		poe2: 'PoE2'
 	};
 
-	async function toggle(key: keyof typeof widgets) {
-		widgets[key] = !widgets[key];
-		await updateSettings({ widgets });
+	// One ordered list for every installed widget, built-in or uploaded — installedWidgets
+	// (GET /api/admin/widgets) already returns both kinds from the same registry with no
+	// filtering, and widgetOrder is that same registry's priority_rank, so a single move()
+	// here can position a pluggable widget anywhere relative to a built-in.
+	let widgetOrder = $state([...settings.widgetOrder]);
+	let installed = $state([...installedWidgets]);
+	const installedById = $derived(new Map(installed.map((w) => [w.id, w])));
+
+	async function toggle(w: InstalledWidget) {
+		const updated = await setWidgetEnabled(w.id, !w.enabled);
+		installed = installed.map((x) => (x.id === w.id ? updated : x));
 	}
 
 	async function move(index: number, dir: -1 | 1) {
@@ -63,9 +67,14 @@
 		await updateSettings({ widgetOrder });
 	}
 
-	// --- Pluggable (uploaded) widgets — see backend/src/widgets/install.ts, uninstall.ts.
-	// Built-ins never appear here (source: 'builtin'); the delete route rejects them anyway.
-	let pluggable = $state(installedWidgets.filter((w) => w.source === 'uploaded'));
+	// Built-ins are rejected by the delete route (400) — this button only ever renders for
+	// an uploaded widget's row (see the {#if} below), so no source check needed here.
+	async function handleDelete(id: string) {
+		if (!confirm('Delete this widget? This removes all of its data and cannot be undone.')) return;
+		await deleteWidget(id);
+		installed = installed.filter((w) => w.id !== id);
+		widgetOrder = widgetOrder.filter((k) => k !== id);
+	}
 
 	let showUpload = $state(false);
 	let uploadId = $state('');
@@ -75,10 +84,6 @@
 	let frontendFile = $state<File | null>(null);
 	let uploading = $state(false);
 	let uploadError = $state<string | null>(null);
-
-	async function refreshPluggable() {
-		pluggable = (await listWidgets()).filter((w) => w.source === 'uploaded');
-	}
 
 	async function handleUpload() {
 		if (!uploadId.trim() || !uploadName.trim() || !backendFile) {
@@ -100,7 +105,8 @@
 				manifest.frontendEntry = 'frontend.mjs';
 			}
 			await installWidget(manifest, files);
-			await refreshPluggable();
+			installed = await listWidgets();
+			widgetOrder = installed.map((w) => w.id);
 			showUpload = false;
 			uploadId = '';
 			uploadName = '';
@@ -113,44 +119,43 @@
 			uploading = false;
 		}
 	}
-
-	async function togglePluggable(w: InstalledWidget) {
-		const updated = await setWidgetEnabled(w.id, !w.enabled);
-		pluggable = pluggable.map((x) => (x.id === w.id ? updated : x));
-	}
-
-	async function handleDeletePluggable(id: string) {
-		if (!confirm('Delete this widget? This removes all of its data and cannot be undone.')) return;
-		await deleteWidget(id);
-		pluggable = pluggable.filter((w) => w.id !== id);
-	}
 </script>
 
 {#each widgetOrder as key, i (key)}
-	<WidgetSection
-		title={titles[key]}
-		enabled={widgets[key]}
-		onToggle={() => toggle(key)}
-		canMoveUp={i > 0}
-		canMoveDown={i < widgetOrder.length - 1}
-		onMoveUp={() => move(i, -1)}
-		onMoveDown={() => move(i, 1)}
-	>
-		{#if key === 'weather'}
-			<WeatherTab config={weatherConfig} />
-		{:else if key === 'stocks'}
-			<StocksTab tickers={stockTickers} />
-		{:else if key === 'bookmarks'}
-			<BookmarksTab {bookmarks} config={bookmarksConfig} />
-		{:else if key === 'poe2'}
-			<Poe2Tab {poe2} watchlist={poe2Watchlist} />
-		{/if}
-	</WidgetSection>
+	{@const w = installedById.get(key)}
+	{#if w}
+		<WidgetSection
+			title={BUILTIN_TITLES[key] ?? w.displayName}
+			enabled={w.enabled}
+			onToggle={() => toggle(w)}
+			canMoveUp={i > 0}
+			canMoveDown={i < widgetOrder.length - 1}
+			onMoveUp={() => move(i, -1)}
+			onMoveDown={() => move(i, 1)}
+		>
+			{#if key === 'weather'}
+				<WeatherTab config={weatherConfig} />
+			{:else if key === 'stocks'}
+				<StocksTab tickers={stockTickers} />
+			{:else if key === 'bookmarks'}
+				<BookmarksTab {bookmarks} config={bookmarksConfig} />
+			{:else if key === 'poe2'}
+				<Poe2Tab {poe2} watchlist={poe2Watchlist} />
+			{:else}
+				{#if key === 'searchbar'}
+					<SearchEnginesTab />
+				{/if}
+				<div class="pluggable-footer">
+					<button class="icon-btn danger" onclick={() => handleDelete(w.id)}>Delete widget</button>
+				</div>
+			{/if}
+		</WidgetSection>
+	{/if}
 {/each}
 
 <div class="pluggable">
 	<div class="pluggable-head">
-		<span class="section-title">Pluggable widgets</span>
+		<span class="section-title">Upload a new widget</span>
 		<button class="upload-toggle" onclick={() => (showUpload = !showUpload)}>{showUpload ? 'Cancel' : '+ Upload'}</button>
 	</div>
 
@@ -169,22 +174,6 @@
 			</label>
 			{#if uploadError}<p class="hint" style="color: var(--text-danger);">{uploadError}</p>{/if}
 			<button onclick={handleUpload} disabled={uploading}>{uploading ? 'Uploading…' : 'Install'}</button>
-		</div>
-	{/if}
-
-	{#if pluggable.length === 0}
-		<p class="hint">No uploaded widgets installed.</p>
-	{:else}
-		<div class="list">
-			{#each pluggable as w (w.id)}
-				<div class="row">
-					<span class="row-name">{w.displayName}</span>
-					<span class="badge" class:active={w.enabled} onclick={() => togglePluggable(w)} role="button" tabindex="0">
-						{w.enabled ? 'Active' : 'Disabled'}
-					</span>
-					<button class="icon-btn danger" onclick={() => handleDeletePluggable(w.id)} title="Delete">✕</button>
-				</div>
-			{/each}
 		</div>
 	{/if}
 </div>
@@ -231,40 +220,12 @@
 		color: var(--text-muted);
 		margin: 0;
 	}
-	.list {
+	.pluggable-footer {
 		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-	.row {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		background: var(--surface-2);
-		border-radius: var(--radius);
-		padding: 8px 12px;
-	}
-	.row-name {
-		font-size: 13px;
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.badge {
-		font-size: 11px;
-		padding: 2px 10px;
-		border-radius: var(--radius);
-		background: var(--surface-1);
-		color: var(--text-muted);
-		cursor: pointer;
-		white-space: nowrap;
-		flex-shrink: 0;
-	}
-	.badge.active {
-		background: var(--bg-accent);
-		color: var(--text-accent);
+		justify-content: flex-end;
+		margin-top: 10px;
+		padding-top: 10px;
+		border-top: 0.5px solid var(--border);
 	}
 	.icon-btn {
 		font-size: 12px;
@@ -272,7 +233,6 @@
 		background: transparent;
 		border: none;
 		color: var(--text-secondary);
-		flex-shrink: 0;
 	}
 	.icon-btn.danger:hover {
 		color: var(--text-danger);
