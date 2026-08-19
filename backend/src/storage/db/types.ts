@@ -316,8 +316,8 @@ export interface GlobalSettings {
 		bookmarks: boolean;
 		poe2: boolean;
 	};
-	/** Sidebar widget display order, admin-sortable via the Widgets tab's up/down arrows — mirrored exactly by Sidebar.svelte. */
-	widgetOrder: ('weather' | 'stocks' | 'bookmarks' | 'poe2')[];
+	/** Sidebar widget display order (every installed widget, built-in or uploaded), admin-sortable via the Widgets tab's up/down arrows — mirrors installed_widgets.priority_rank exactly, mirrored exactly by Sidebar.svelte. */
+	widgetOrder: string[];
 	retention: {
 		publishedArticleMaxAgeDays: number | null;
 		rawItemMaxAgeDays: number | null;

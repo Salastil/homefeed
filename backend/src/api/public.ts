@@ -89,12 +89,13 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 		return categories.filter((c) => !c.isPrivate);
 	});
 
-	// Per-widget enable flags + display order for the 4 built-ins — see the admin panel's
-	// consolidated "Widgets" tab. Weather/Stocks/PoE2's backend pollers are also gated on
-	// these flags (see scheduler.ts); Sidebar.svelte renders in exactly this order. The
-	// `pluggable` array lists enabled *uploaded* widgets separately (their ids aren't part
-	// of the closed weather|stocks|bookmarks|poe2 union `order` uses) — see
-	// widgets/registry.ts, Sidebar.svelte's GenericWidgetCard/DynamicWidgetSlot.
+	// Per-widget enable flags for the 4 built-ins, plus `order` — every installed widget's
+	// id (built-in or uploaded), admin-sortable via the Widgets tab, in exactly the
+	// sequence Sidebar.svelte renders. Weather/Stocks/PoE2's backend pollers are also
+	// gated on the 4 flags (see scheduler.ts). `pluggable` is a lookup array (displayName/
+	// frontendEntry) for the *enabled* uploaded widgets referenced in `order` — Sidebar.svelte
+	// looks an id up there when it isn't one of the 4 built-in keys, and skips it entirely
+	// if not found (disabled) — see widgets/registry.ts, GenericWidgetCard/DynamicWidgetSlot.
 	app.get('/api/widgets', async () => {
 		const { widgets, widgetOrder } = settingsDb.getSettings();
 		const pluggable = installedWidgetsDb

@@ -183,17 +183,15 @@
 		background: none;
 		cursor: pointer;
 	}
+	/* contain, not cover — see TweetCard.svelte for the reasoning (cover crops a portrait
+	   photo/clip down to a sliver in these landscape-shaped grid cells; applies to every
+	   media element here, not just video, since the crop isn't video-specific). */
 	.media-el {
 		width: 100%;
 		height: 100%;
-		object-fit: cover;
+		object-fit: contain;
 		display: block;
 		background: var(--surface-1);
-	}
-	/* Video/gif use contain rather than cover — see TweetCard.svelte for the reasoning
-	   (cover crops portrait clips, and that crop persists into native fullscreen too). */
-	video.media-el {
-		object-fit: contain;
 	}
 	.time {
 		font-size: 11px;

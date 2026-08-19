@@ -98,16 +98,18 @@
 			</div>
 		{:else}
 			<div class="row">
-				<div>
+				<div class="row-main">
 					<div class="name">{bookmark.name}</div>
 					<div class="sub">{bookmark.url}</div>
 				</div>
-				<label class="private-toggle">
-					<input type="checkbox" checked={bookmark.isPrivate} onchange={() => togglePrivate(bookmark)} />
-					Private
-				</label>
-				<button class="icon-btn" onclick={() => startEdit(bookmark)} title="Edit">Edit</button>
-				<button class="icon-btn danger" onclick={() => handleDelete(bookmark.id)} title="Delete">✕</button>
+				<div class="row-controls">
+					<label class="private-toggle">
+						<input type="checkbox" checked={bookmark.isPrivate} onchange={() => togglePrivate(bookmark)} />
+						Private
+					</label>
+					<button class="icon-btn" onclick={() => startEdit(bookmark)} title="Edit">Edit</button>
+					<button class="icon-btn danger" onclick={() => handleDelete(bookmark.id)} title="Delete">✕</button>
+				</div>
 			</div>
 		{/if}
 	{/each}
@@ -205,9 +207,25 @@
 		border-radius: var(--radius);
 		padding: 10px 14px;
 	}
+	.row-main {
+		min-width: 0;
+		flex: 1;
+	}
+	.row-controls {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		flex-shrink: 0;
+	}
+	.row-controls .private-toggle {
+		margin-bottom: 0;
+	}
 	.name {
 		font-size: 13px;
 		font-weight: 500;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.sub {
 		font-size: 11px;
@@ -215,7 +233,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		max-width: 320px;
 	}
 	.icon-btn {
 		font-size: 12px;

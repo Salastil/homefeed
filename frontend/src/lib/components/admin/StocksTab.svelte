@@ -79,7 +79,7 @@
 			</div>
 		{:else}
 			<div class="row">
-				<div>
+				<div class="row-main">
 					<div class="name">{ticker.label}</div>
 					<div class="sub">
 						{ticker.symbol}
@@ -88,16 +88,18 @@
 						{/if}
 					</div>
 				</div>
-				{#if ticker.lastPrice !== null}
-					<span class="price" class:up={(ticker.lastChangePercent ?? 0) >= 0} class:down={(ticker.lastChangePercent ?? 0) < 0}>
-						{ticker.lastPrice.toFixed(2)}
-						{#if ticker.lastChangePercent !== null}
-							({ticker.lastChangePercent >= 0 ? '+' : ''}{ticker.lastChangePercent.toFixed(2)}%)
-						{/if}
-					</span>
-				{/if}
-				<button class="icon-btn" onclick={() => startEdit(ticker)} title="Edit">Edit</button>
-				<button class="icon-btn danger" onclick={() => handleDelete(ticker.id)} title="Delete">✕</button>
+				<div class="row-controls">
+					{#if ticker.lastPrice !== null}
+						<span class="price" class:up={(ticker.lastChangePercent ?? 0) >= 0} class:down={(ticker.lastChangePercent ?? 0) < 0}>
+							{ticker.lastPrice.toFixed(2)}
+							{#if ticker.lastChangePercent !== null}
+								({ticker.lastChangePercent >= 0 ? '+' : ''}{ticker.lastChangePercent.toFixed(2)}%)
+							{/if}
+						</span>
+					{/if}
+					<button class="icon-btn" onclick={() => startEdit(ticker)} title="Edit">Edit</button>
+					<button class="icon-btn danger" onclick={() => handleDelete(ticker.id)} title="Delete">✕</button>
+				</div>
 			</div>
 		{/if}
 	{/each}
@@ -160,13 +162,29 @@
 		border-radius: var(--radius);
 		padding: 10px 14px;
 	}
+	.row-main {
+		min-width: 0;
+		flex: 1;
+	}
+	.row-controls {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		flex-shrink: 0;
+	}
 	.name {
 		font-size: 13px;
 		font-weight: 500;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.sub {
 		font-size: 11px;
 		color: var(--text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.error {
 		color: var(--text-danger);
@@ -175,6 +193,7 @@
 		font-size: 12px;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
+		flex-shrink: 0;
 	}
 	.price.up {
 		color: var(--text-success);
