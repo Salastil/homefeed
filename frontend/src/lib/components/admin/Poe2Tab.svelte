@@ -226,6 +226,9 @@
 		font-size: 13px;
 		font-weight: 500;
 		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.arrow {
 		color: var(--text-muted);
@@ -261,6 +264,7 @@
 		background: transparent;
 		border: none;
 		color: var(--text-secondary);
+		flex-shrink: 0;
 	}
 	.icon-btn.danger:hover {
 		color: var(--text-danger);

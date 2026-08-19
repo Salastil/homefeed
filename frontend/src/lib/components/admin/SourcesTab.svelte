@@ -268,7 +268,7 @@
 			>
 				{typeIcon(source.type)}
 			</button>
-			<div>
+			<div class="name-col">
 				<div class="name">{source.name}</div>
 				{#if justCleared?.id === source.id || justReissued?.id === source.id || justPolled?.id === source.id || source.lastError}
 					<div
@@ -446,12 +446,21 @@
 			transform: rotate(360deg);
 		}
 	}
+	.name-col {
+		min-width: 0;
+	}
 	.name {
 		font-size: 13px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.sub {
 		font-size: 11px;
 		color: var(--text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.sub.error {
 		color: var(--text-danger);

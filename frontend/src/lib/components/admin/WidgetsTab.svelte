@@ -248,6 +248,9 @@
 		font-size: 13px;
 		flex: 1;
 		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.badge {
 		font-size: 11px;
@@ -257,6 +260,7 @@
 		color: var(--text-muted);
 		cursor: pointer;
 		white-space: nowrap;
+		flex-shrink: 0;
 	}
 	.badge.active {
 		background: var(--bg-accent);
@@ -268,6 +272,7 @@
 		background: transparent;
 		border: none;
 		color: var(--text-secondary);
+		flex-shrink: 0;
 	}
 	.icon-btn.danger:hover {
 		color: var(--text-danger);

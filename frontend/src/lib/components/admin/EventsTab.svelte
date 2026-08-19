@@ -255,17 +255,19 @@
 			</div>
 		{:else}
 			<div class="row">
-				<div>
+				<div class="row-main">
 					<div class="name">{event.name}</div>
 					<div class="sub">
 						{event.sourceIds.length} source{event.sourceIds.length === 1 ? '' : 's'} active
 					</div>
 				</div>
-				<span class="badge" class:active={event.active} onclick={() => toggleActive(event)} role="button" tabindex="0">
-					{event.active ? 'Active' : 'Paused'}
-				</span>
-				<button class="icon-btn" onclick={() => startEdit(event)} title="Edit">Edit</button>
-				<button class="icon-btn danger" onclick={() => handleDelete(event.id)} title="Delete">✕</button>
+				<div class="row-controls">
+					<span class="badge" class:active={event.active} onclick={() => toggleActive(event)} role="button" tabindex="0">
+						{event.active ? 'Active' : 'Paused'}
+					</span>
+					<button class="icon-btn" onclick={() => startEdit(event)} title="Edit">Edit</button>
+					<button class="icon-btn danger" onclick={() => handleDelete(event.id)} title="Delete">✕</button>
+				</div>
 			</div>
 		{/if}
 	{/each}
@@ -328,13 +330,29 @@
 		border-radius: var(--radius);
 		padding: 10px 14px;
 	}
+	.row-main {
+		min-width: 0;
+		flex: 1;
+	}
+	.row-controls {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		flex-shrink: 0;
+	}
 	.name {
 		font-size: 13px;
 		font-weight: 500;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.sub {
 		font-size: 11px;
 		color: var(--text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.badge {
 		font-size: 11px;
@@ -344,6 +362,7 @@
 		color: var(--text-muted);
 		cursor: pointer;
 		white-space: nowrap;
+		flex-shrink: 0;
 	}
 	.badge.active {
 		background: var(--bg-accent);
