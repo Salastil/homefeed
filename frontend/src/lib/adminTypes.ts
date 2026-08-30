@@ -180,6 +180,8 @@ export interface AdminSettings {
 	synthesisNumPredict: number;
 	/** Sends think:false to the synthesis model — see ModelsTab's checkbox copy for what this does and why. */
 	synthesisDisableThinking: boolean;
+	/** Language every synthesized article and event recap is written in — instructed in the prompt and then verified against the response's script (see backend/src/pipeline/synthesis.ts). */
+	synthesisLanguage: string;
 	widgets: AdminWidgetsEnabled;
 	/** Every installed widget's id (built-in or uploaded), admin-sortable via the Widgets tab's up/down arrows. */
 	widgetOrder: string[];

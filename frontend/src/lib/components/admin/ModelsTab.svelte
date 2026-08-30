@@ -37,6 +37,29 @@
 	let disableThinking = $state(settings.synthesisDisableThinking);
 	let thinkingStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
+	// Mirrors LANGUAGE_SCRIPTS in backend/src/pipeline/synthesis.ts — the backend both
+	// instructs the model in this language and validates the response's script against it,
+	// so a value not in that map turns the validation off (the prompt still asks for it).
+	// Same list-duplication the Merge tab's style presets already have.
+	const LANGUAGES = [
+		'English', 'Spanish', 'French', 'German', 'Portuguese', 'Italian', 'Dutch', 'Polish',
+		'Turkish', 'Vietnamese', 'Indonesian', 'Russian', 'Ukrainian', 'Greek',
+		'Chinese (Simplified)', 'Japanese', 'Korean', 'Arabic', 'Hebrew', 'Hindi'
+	];
+	let language = $state(settings.synthesisLanguage);
+	let languageStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+	async function saveLanguage() {
+		languageStatus = 'saving';
+		try {
+			await updateSettings({ synthesisLanguage: language });
+			languageStatus = 'saved';
+			setTimeout(() => (languageStatus = 'idle'), 1500);
+		} catch {
+			languageStatus = 'error';
+		}
+	}
+
 	async function saveDisableThinking() {
 		thinkingStatus = 'saving';
 		try {
@@ -203,6 +226,23 @@
 			<option value={m}>{m}</option>
 		{/each}
 	</select>
+
+	<div class="head" style="margin-top: 16px;">
+		<span class="field-label">Output language</span>
+		<SaveStatus status={languageStatus} />
+	</div>
+	<select bind:value={language} onchange={saveLanguage}>
+		{#each LANGUAGES as l}
+			<option value={l}>{l}</option>
+		{/each}
+	</select>
+	<p class="hint">
+		The language every merged article and event recap is written in. This is enforced twice:
+		the model is told to use it, and the response is then checked to confirm it actually came
+		back in that language's script — if it didn't, the article is regenerated once before
+		publishing. Multilingual models (Qwen, DeepSeek, and similar) will otherwise occasionally
+		slip into another language mid-sentence and stay there for the rest of the article.
+	</p>
 
 	<label class="checkbox" style="margin-top: 12px;">
 		<input type="checkbox" bind:checked={disableThinking} onchange={saveDisableThinking} />

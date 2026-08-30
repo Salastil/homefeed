@@ -309,6 +309,8 @@ export interface GlobalSettings {
 	synthesisNumPredict: number;
 	/** Sends think:false on every synthesis/recap generate() call — reasoning models (Qwen3, DeepSeek-R1, etc.) otherwise spend part of their response budget on a hidden <think> pass before writing anything, which is pure overhead for a rewrite/merge task (no logic/math to reason through) and directly eats into real generation time. Ignored harmlessly if the selected synthesis model doesn't support reasoning at all. Left as an explicit opt-in rather than always-on since it depends on which model is selected — see the Models tab. */
 	synthesisDisableThinking: boolean;
+	/** Language every synthesized article/recap must be written in (Models tab). Pinned explicitly because a multilingual model will occasionally sample a foreign-script token mid-generation and then continue in that language for the rest of the response — see pipeline/synthesis.ts's languageDirective and findScriptViolation, which instruct on it and then verify it. */
+	synthesisLanguage: string;
 	/** Per-widget enable flags — see admin/settings' consolidated "Widgets" tab. Weather/Stocks/PoE2's backend pollers (scheduler.ts) are gated on these too, not just sidebar visibility; Bookmarks has no poller so its flag only affects the sidebar. */
 	widgets: {
 		weather: boolean;

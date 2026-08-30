@@ -50,6 +50,7 @@ function rowToSettings(row: any): GlobalSettings {
 		synthesisNumCtx: row.synthesis_num_ctx,
 		synthesisNumPredict: row.synthesis_num_predict,
 		synthesisDisableThinking: !!row.synthesis_disable_thinking,
+		synthesisLanguage: row.synthesis_language,
 		...widgetsAndOrder(),
 		retention: {
 			publishedArticleMaxAgeDays: row.published_article_max_age_days,
@@ -101,7 +102,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			telegram_media_mode=$telegram_media_mode,
 			synthesis_style_preset=$synthesis_style_preset, synthesis_custom_instructions=$synthesis_custom_instructions,
 			synthesis_num_ctx=$synthesis_num_ctx, synthesis_num_predict=$synthesis_num_predict,
-			synthesis_disable_thinking=$synthesis_disable_thinking,
+			synthesis_disable_thinking=$synthesis_disable_thinking, synthesis_language=$synthesis_language,
 			published_article_max_age_days=$published_article_max_age_days, raw_item_max_age_days=$raw_item_max_age_days,
 			storage_cap_enabled=$storage_cap_enabled, storage_cap_value=$storage_cap_value, storage_cap_unit=$storage_cap_unit
 		 WHERE id = 1`
@@ -126,6 +127,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		$synthesis_num_ctx: merged.synthesisNumCtx,
 		$synthesis_num_predict: merged.synthesisNumPredict,
 		$synthesis_disable_thinking: merged.synthesisDisableThinking ? 1 : 0,
+		$synthesis_language: merged.synthesisLanguage,
 		$published_article_max_age_days: merged.retention.publishedArticleMaxAgeDays,
 		$raw_item_max_age_days: merged.retention.rawItemMaxAgeDays,
 		$storage_cap_enabled: merged.retention.storageCapEnabled ? 1 : 0,
