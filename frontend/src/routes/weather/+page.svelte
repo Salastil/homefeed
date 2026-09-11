@@ -35,6 +35,43 @@
 		}
 		return groups;
 	});
+
+	// Hovering an hour previews THAT hour's numbers in the stat panel; leaving the strip
+	// falls back to live current conditions. Kept as the hour's timestamp rather than the
+	// object itself so it survives `weather` being replaced by a background refresh
+	// mid-hover (the same object identity wouldn't).
+	let hoveredTime = $state<string | null>(null);
+	const hoveredHour = $derived(hoveredTime ? (weather.hourly.find((h) => h.time === hoveredTime) ?? null) : null);
+
+	// The panel shows either a forecast hour or the live reading, and those don't carry the
+	// same fields — `current` has feelsLike/sunrise/sunset, an hour doesn't. Everything the
+	// panel actually renders is normalized here so the markup below stays a single branchless
+	// block rather than two near-duplicate copies.
+	const panel = $derived.by(() => {
+		const c = weather.current;
+		if (hoveredHour) {
+			return {
+				heading: new Date(hoveredHour.time).toLocaleTimeString([], { weekday: 'short', hour: 'numeric' }),
+				conditionText: hoveredHour.conditionText,
+				humidity: hoveredHour.humidity,
+				precipitationChance: hoveredHour.precipitationChance,
+				windSpeed: hoveredHour.windSpeed,
+				windDirection: hoveredHour.windDirection,
+				pressure: hoveredHour.pressure,
+				isForecast: true
+			};
+		}
+		return {
+			heading: 'Now',
+			conditionText: c?.conditionText ?? '',
+			humidity: c?.humidity ?? 0,
+			precipitationChance: c?.precipitationChance ?? 0,
+			windSpeed: c?.windSpeed ?? 0,
+			windDirection: c?.windDirection ?? '',
+			pressure: c?.pressure ?? 0,
+			isForecast: false
+		};
+	});
 </script>
 
 <div class="head">
@@ -63,30 +100,38 @@
 		<p class="summary">{weather.summary}</p>
 	{/if}
 
-	<div class="conditions-grid">
-		<div class="stat">
-			<span class="stat-label">Humidity</span>
-			<span class="stat-value">{weather.current.humidity}%</span>
+	<div class="conditions-panel" class:previewing={panel.isForecast}>
+		<div class="panel-head">
+			<span class="panel-heading">{panel.heading}</span>
+			<span class="panel-condition">{panel.conditionText}</span>
 		</div>
-		<div class="stat">
-			<span class="stat-label">Precip. chance</span>
-			<span class="stat-value">{weather.current.precipitationChance}%</span>
-		</div>
-		<div class="stat">
-			<span class="stat-label">Wind</span>
-			<span class="stat-value">{weather.current.windDirection} {Math.round(weather.current.windSpeed)} {weather.windUnit}</span>
-		</div>
-		<div class="stat">
-			<span class="stat-label">Pressure</span>
-			<span class="stat-value">{weather.current.pressure} {weather.pressureUnit}</span>
-		</div>
-		<div class="stat">
-			<span class="stat-label">Sunrise</span>
-			<span class="stat-value">{new Date(weather.current.sunrise).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
-		</div>
-		<div class="stat">
-			<span class="stat-label">Sunset</span>
-			<span class="stat-value">{new Date(weather.current.sunset).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+		<div class="conditions-grid">
+			<div class="stat">
+				<span class="stat-label">Humidity</span>
+				<span class="stat-value">{panel.humidity}%</span>
+			</div>
+			<div class="stat">
+				<span class="stat-label">Precip. chance</span>
+				<span class="stat-value">{panel.precipitationChance}%</span>
+			</div>
+			<div class="stat">
+				<span class="stat-label">Wind</span>
+				<span class="stat-value">{panel.windDirection} {Math.round(panel.windSpeed)} {weather.windUnit}</span>
+			</div>
+			<div class="stat">
+				<span class="stat-label">Pressure</span>
+				<span class="stat-value">{panel.pressure} {weather.pressureUnit}</span>
+			</div>
+			<!-- Sunrise/sunset are properties of the day, not of an hour — they stay put while
+			     the hovered-hour values above them change, rather than blanking out. -->
+			<div class="stat">
+				<span class="stat-label">Sunrise</span>
+				<span class="stat-value">{new Date(weather.current.sunrise).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+			</div>
+			<div class="stat">
+				<span class="stat-label">Sunset</span>
+				<span class="stat-value">{new Date(weather.current.sunset).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+			</div>
 		</div>
 	</div>
 
@@ -115,14 +160,27 @@
 					<span class="hourly-day-label">{group.label}</span>
 					<span class="hourly-day-date">{group.date}</span>
 				</div>
-				<div class="hourly-strip">
+				<div
+					class="hourly-strip"
+					role="group"
+					aria-label="Hourly forecast for {group.label}, {group.date}"
+					onmouseleave={() => (hoveredTime = null)}
+				>
 					{#each group.hours as hour (hour.time)}
 						{@const isNow = hour.time === weather.hourly[0]?.time}
-						<div class="hour-col" class:now={isNow}>
+						<button
+							type="button"
+							class="hour-col"
+							class:now={isNow}
+							class:hovered={hoveredTime === hour.time}
+							onmouseenter={() => (hoveredTime = hour.time)}
+							onfocus={() => (hoveredTime = hour.time)}
+							onblur={() => (hoveredTime = null)}
+						>
 							<span class="hour-time">{isNow ? 'Now' : new Date(hour.time).toLocaleTimeString([], { hour: 'numeric' })}</span>
 							<span class="hour-icon">{hour.icon}</span>
 							<span class="hour-temp">{Math.round(hour.temp)}°</span>
-						</div>
+						</button>
 					{/each}
 				</div>
 			</div>
@@ -207,15 +265,59 @@
 		color: var(--text-muted);
 		margin-top: 4px;
 	}
-	.conditions-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-		gap: 16px;
+	/* Blue is this page's own accent for "the hour you're pointing at", deliberately distinct
+	   from the app-wide bronze --*-accent that marks the CURRENT hour — the two mark
+	   different things and are frequently on screen together, so they can't share a color.
+	   Scoped here rather than added to the global palette since nothing else uses them. */
+	.conditions-panel {
+		--hour-hover-bg: #e8f0fb;
+		--hour-hover-border: #4a7fc1;
+		--hour-hover-text: #2c5c96;
+	}
+	.hourly-strip {
+		--hour-hover-bg: #e8f0fb;
+		--hour-hover-border: #4a7fc1;
+		--hour-hover-text: #2c5c96;
+	}
+	:global(:root[data-theme='dark']) .conditions-panel,
+	:global(:root[data-theme='dark']) .hourly-strip {
+		--hour-hover-bg: #22303f;
+		--hour-hover-border: #5b8fd0;
+		--hour-hover-text: #8fb8e8;
+	}
+	.conditions-panel {
 		max-width: 640px;
 		margin-bottom: 28px;
 		padding: 16px;
 		background: var(--surface-1);
 		border-radius: 12px;
+		border: 1.5px solid transparent;
+		transition: border-color 0.12s ease;
+	}
+	.conditions-panel.previewing {
+		border-color: var(--hour-hover-border);
+	}
+	.panel-head {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+		margin-bottom: 14px;
+	}
+	.panel-heading {
+		font-size: 13px;
+		font-weight: 500;
+	}
+	.conditions-panel.previewing .panel-heading {
+		color: var(--hour-hover-text);
+	}
+	.panel-condition {
+		font-size: 12px;
+		color: var(--text-muted);
+	}
+	.conditions-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+		gap: 16px;
 	}
 	.stat {
 		display: flex;
@@ -315,13 +417,30 @@
 		gap: 4px;
 		padding: 6px 0;
 		border-radius: var(--radius);
+		/* Became a <button> for keyboard reachability — strip the UA/global button chrome so
+		   it still renders as a plain cell. */
+		background: transparent;
+		border: 1.5px solid transparent;
+		font: inherit;
+		color: inherit;
+		cursor: pointer;
 	}
 	.hour-col.now {
 		background: var(--bg-accent);
-		border: 1.5px solid var(--border-accent);
+		border-color: var(--border-accent);
 	}
 	.hour-col.now .hour-time {
 		color: var(--text-accent);
+		font-weight: 500;
+	}
+	/* Listed after .now so hovering the current hour shows the blue preview state too —
+	   otherwise the one cell you can't preview would be the current one. */
+	.hour-col.hovered {
+		background: var(--hour-hover-bg);
+		border-color: var(--hour-hover-border);
+	}
+	.hour-col.hovered .hour-time {
+		color: var(--hour-hover-text);
 		font-weight: 500;
 	}
 	.hour-time {

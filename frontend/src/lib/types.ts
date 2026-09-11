@@ -100,6 +100,16 @@ export interface WeatherHourEntry {
 	temp: number;
 	conditionText: string;
 	icon: string;
+	/** Percent, 0-100. */
+	humidity: number;
+	/** Percent, 0-100. */
+	precipitationChance: number;
+	/** Already in the feed's configured windUnit. */
+	windSpeed: number;
+	/** 8-point compass abbreviation, e.g. "NW". */
+	windDirection: string;
+	/** Already in the feed's configured pressureUnit. */
+	pressure: number;
 }
 
 export interface WeatherDayEntry {

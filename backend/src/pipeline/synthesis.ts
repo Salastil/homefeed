@@ -108,6 +108,99 @@ function recapStyleAddendum(event: TrackedEvent): string {
 	return `\n\nAdditional style instructions from the site admin for this recap (follow these without breaking the rules above):\n${lines.join('\n')}`;
 }
 
+/**
+ * Output languages offered in the Models tab, each mapped to the script(s) a correct
+ * response is allowed to be written in. The script list is what makes the check below
+ * symmetric: setting Japanese doesn't just stop flagging kana, it starts flagging a
+ * response that comes back in Latin. Mirrored in frontend/src/lib/components/admin/
+ * ModelsTab.svelte's dropdown (same duplication STYLE_PRESETS already has with MergeTab).
+ */
+type Script = 'latin' | 'cyrillic' | 'han' | 'kana' | 'hangul' | 'arabic' | 'hebrew' | 'greek' | 'devanagari';
+
+const LANGUAGE_SCRIPTS: Record<string, Script[]> = {
+	English: ['latin'],
+	Spanish: ['latin'],
+	French: ['latin'],
+	German: ['latin'],
+	Portuguese: ['latin'],
+	Italian: ['latin'],
+	Dutch: ['latin'],
+	Polish: ['latin'],
+	Turkish: ['latin'],
+	Vietnamese: ['latin'],
+	Indonesian: ['latin'],
+	Russian: ['cyrillic'],
+	Ukrainian: ['cyrillic'],
+	Greek: ['greek'],
+	'Chinese (Simplified)': ['han'],
+	// Japanese mixes kanji with kana in ordinary prose, so both are legitimate.
+	Japanese: ['kana', 'han'],
+	Korean: ['hangul'],
+	Arabic: ['arabic'],
+	Hebrew: ['hebrew'],
+	Hindi: ['devanagari']
+};
+
+function scriptOf(ch: string): Script | null {
+	const c = ch.codePointAt(0) ?? 0;
+	if ((c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a)) return 'latin';
+	if ((c >= 0xc0 && c <= 0x24f) || (c >= 0x1e00 && c <= 0x1eff)) return 'latin'; // accented/extended Latin
+	if (c >= 0x370 && c <= 0x3ff) return 'greek';
+	if (c >= 0x400 && c <= 0x4ff) return 'cyrillic';
+	if (c >= 0x590 && c <= 0x5ff) return 'hebrew';
+	if (c >= 0x600 && c <= 0x6ff) return 'arabic';
+	if (c >= 0x900 && c <= 0x97f) return 'devanagari';
+	if (c >= 0x3040 && c <= 0x30ff) return 'kana';
+	if (c >= 0x4e00 && c <= 0x9fff) return 'han';
+	if (c >= 0xac00 && c <= 0xd7af) return 'hangul';
+	return null; // digits, punctuation, whitespace, emoji — carry no language signal
+}
+
+// A foreign proper noun quoted inside an otherwise-correct article is legitimate, so this
+// is a ratio rather than zero-tolerance. Calibrated at a third rather than lower because
+// the tolerance has to hold in both directions: Chinese/Japanese/Korean prose routinely
+// carries Latin acronyms and names ("US", "NATO") at well over 15% of its characters, so a
+// tighter bound would reject correct output the moment the configured language is a CJK
+// one. A response that has actually flipped language sits far above this — the incident
+// that prompted the check was 100% Han in the body and ~43% in the title.
+const MIN_SCRIPT_SAMPLE = 8;
+const MAX_FOREIGN_SCRIPT_RATIO = 0.35;
+
+/** The offending script when `text` is substantially not in `language`, else null. Unknown languages return null — a free-form value can't be judged, so it's left to the prompt alone. */
+function findScriptViolation(text: string, language: string): Script | null {
+	const expected = LANGUAGE_SCRIPTS[language];
+	if (!expected) return null;
+	let total = 0;
+	const foreign = new Map<Script, number>();
+	for (const ch of text) {
+		const script = scriptOf(ch);
+		if (!script) continue;
+		total++;
+		if (!expected.includes(script)) foreign.set(script, (foreign.get(script) ?? 0) + 1);
+	}
+	if (total < MIN_SCRIPT_SAMPLE) return null;
+	let worst: Script | null = null;
+	let worstCount = 0;
+	for (const [script, n] of foreign) {
+		if (n > worstCount) {
+			worstCount = n;
+			worst = script;
+		}
+	}
+	return worst && worstCount / total >= MAX_FOREIGN_SCRIPT_RATIO ? worst : null;
+}
+
+/**
+ * Appended to both base system prompts. "even mid-word" is not padding: the failure this
+ * guards against was a title that began "…Warns of Un" and then emitted the Chinese token
+ * for "sustainable" in place of the English one, after which the whole body continued in
+ * Chinese. Instructing this only lowers the odds — findScriptViolation above is what
+ * actually catches it when the model does it anyway.
+ */
+function languageDirective(language: string): string {
+	return `\n\nWrite the entire response — every field, including "title" and "body" — in ${language}. Never switch to another language or script partway through, even mid-word.`;
+}
+
 export interface SynthesisResult {
 	title: string;
 	body: string;
@@ -227,24 +320,58 @@ function findBannedPhrase(body: string): string | null {
 	return null;
 }
 
-async function generateAvoidingCliches(
+/**
+ * Runs the generation, then re-runs it ONCE naming back whatever was wrong with the first
+ * attempt. Both faults it checks for are things the model was already told not to do, so a
+ * retry is the point: the prompt sets the odds, this is what makes a bad roll recoverable.
+ *
+ * Deliberately capped at one retry with both faults reported together, rather than a retry
+ * per fault — on the CPU-only reference box a single synthesis call runs into the minutes
+ * (the incident recap took ~8 minutes to generate), and Ollama serves one request at a
+ * time, so a third call would delay every other article queued behind it.
+ */
+async function generateValidated(
 	provider: InferenceProvider,
 	prompt: string,
 	system: string,
 	genOpts: { model: string; numCtx: number; numPredict: number; label: string; think?: boolean },
-	context: string
+	context: string,
+	language: string
 ): Promise<SynthesisResult> {
 	const run = async (sys: string) => {
 		const { text, stats } = await provider.generate(prompt, { ...genOpts, system: sys, format: SYNTHESIS_JSON_SCHEMA });
 		return assertWellFormed(parseResult(text, stats), context);
 	};
+	// The title is checked alongside the body because language drift can start there and
+	// the body is what dominates a combined ratio — the incident's title had already
+	// flipped mid-word while its own Latin/Han split stayed close to even.
+	const scriptFault = (r: SynthesisResult) => findScriptViolation(r.title, language) ?? findScriptViolation(r.body, language);
 
 	let result = await run(system);
+
+	const corrections: string[] = [];
+	const wrongScript = scriptFault(result);
+	if (wrongScript) {
+		logger.warn('synthesis', `${context} came back in the wrong script (${wrongScript}), not ${language} — retrying once`);
+		corrections.push(
+			`Your previous attempt was written in ${wrongScript} script instead of ${language}. Write the ENTIRE response — "title" and "body" — in ${language}, and do not switch language or script anywhere in it.`
+		);
+	}
 	const hit = findBannedPhrase(result.body);
 	if (hit) {
 		logger.warn('synthesis', `Escalation-cliché phrase "${hit}" found in ${context} — retrying once with the violation named back to the model`);
-		const correctiveSystem = `${system}\n\nYour previous attempt used the banned phrase "${hit}." Do not use it, or any similar escalation-framing cliché, anywhere in this rewrite.`;
-		result = await run(correctiveSystem);
+		corrections.push(`Your previous attempt used the banned phrase "${hit}." Do not use it, or any similar escalation-framing cliché, anywhere in this rewrite.`);
+	}
+
+	if (corrections.length > 0) {
+		result = await run(`${system}\n\n${corrections.join('\n')}`);
+		// Published anyway rather than dropped — a flawed article still beats silently
+		// losing the story — but logged at error level for the wrong-language case, since
+		// unlike a cliché that one leaves the article unreadable to the site's audience.
+		const stillWrongScript = scriptFault(result);
+		if (stillWrongScript) {
+			logger.error('synthesis', `${context} still in the wrong script (${stillWrongScript}) after retry — publishing as-is; consider a different synthesis model`);
+		}
 		const secondHit = findBannedPhrase(result.body);
 		if (secondHit) {
 			logger.warn('synthesis', `Escalation-cliché phrase "${secondHit}" still present in ${context} after retry — publishing as-is`);
@@ -262,15 +389,16 @@ export async function synthesizeArticle(
 ): Promise<SynthesisResult> {
 	const { synthesisNumCtx: numCtx, synthesisNumPredict: numPredict } = settings;
 	const prompt = buildPrompt(items, sourceNames, numCtx, numPredict);
-	const system = SYSTEM_PROMPT_BASE + styleAddendum(settings);
+	const system = SYSTEM_PROMPT_BASE + languageDirective(settings.synthesisLanguage) + styleAddendum(settings);
 	const label = `Merging ${items.length} source${items.length === 1 ? '' : 's'}: "${items[0]?.title.slice(0, 60) ?? ''}"`;
 	const context = `"${items[0]?.title.slice(0, 60) ?? ''}"`;
-	return generateAvoidingCliches(
+	return generateValidated(
 		provider,
 		prompt,
 		system,
 		{ model, numCtx, numPredict, label, ...(settings.synthesisDisableThinking ? { think: false } : {}) },
-		context
+		context,
+		settings.synthesisLanguage
 	);
 }
 
@@ -305,14 +433,15 @@ export async function synthesizeRecap(
 ): Promise<SynthesisResult> {
 	const { synthesisNumCtx: numCtx, synthesisNumPredict: numPredict } = settings;
 	const prompt = buildRecapPrompt(event.name, articles, numCtx, numPredict);
-	const system = RECAP_SYSTEM_PROMPT_BASE + recapStyleAddendum(event);
+	const system = RECAP_SYSTEM_PROMPT_BASE + languageDirective(settings.synthesisLanguage) + recapStyleAddendum(event);
 	const label = `Recapping event: "${event.name.slice(0, 60)}"`;
 	const context = `event recap "${event.name.slice(0, 60)}"`;
-	return generateAvoidingCliches(
+	return generateValidated(
 		provider,
 		prompt,
 		system,
 		{ model, numCtx, numPredict, label, ...(settings.synthesisDisableThinking ? { think: false } : {}) },
-		context
+		context,
+		settings.synthesisLanguage
 	);
 }

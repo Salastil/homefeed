@@ -256,6 +256,7 @@ export function migrate() {
 			synthesis_custom_instructions TEXT NOT NULL DEFAULT '', -- free-text addendum appended to the synthesis system prompt, on top of the preset
 			synthesis_num_ctx INTEGER NOT NULL DEFAULT 8192, -- admin-tunable context window (Models tab) — see inference/ollama-provider.ts's DEFAULT_NUM_CTX
 			synthesis_num_predict INTEGER NOT NULL DEFAULT 700, -- admin-tunable max response length — too low silently truncates output mid-sentence
+			synthesis_language TEXT NOT NULL DEFAULT 'English', -- output language every article/recap is written in (Models tab) — see pipeline/synthesis.ts
 			widget_weather_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_stocks_enabled INTEGER NOT NULL DEFAULT 1,
 			widget_bookmarks_enabled INTEGER NOT NULL DEFAULT 1,
@@ -440,6 +441,9 @@ export function migrate() {
 	}
 	if (!hasColumn('global_settings', 'synthesis_num_predict')) {
 		db.exec('ALTER TABLE global_settings ADD COLUMN synthesis_num_predict INTEGER NOT NULL DEFAULT 700');
+	}
+	if (!hasColumn('global_settings', 'synthesis_language')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN synthesis_language TEXT NOT NULL DEFAULT 'English'");
 	}
 	if (!hasColumn('global_settings', 'bookmarks_columns')) {
 		db.exec('ALTER TABLE global_settings ADD COLUMN bookmarks_columns INTEGER NOT NULL DEFAULT 1');
