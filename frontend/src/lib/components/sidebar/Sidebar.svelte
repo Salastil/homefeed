@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import type { Weather, StockTicker, BookmarksFeed, Poe2Data, WidgetsEnabled } from '$lib/types';
+	import type { Weather, StocksFeed, BookmarksFeed, Poe2Data, WidgetsEnabled } from '$lib/types';
 	import WeatherWidget from './WeatherWidget.svelte';
 	import StocksWidget from './StocksWidget.svelte';
 	import BookmarksWidget from './BookmarksWidget.svelte';
@@ -16,7 +16,7 @@
 		widgetsEnabled
 	}: {
 		weather: Weather;
-		stocks: StockTicker[];
+		stocks: StocksFeed;
 		bookmarks: BookmarksFeed;
 		poe2: Poe2Data;
 		widgetsEnabled: WidgetsEnabled;
@@ -96,7 +96,7 @@
 				{#if key === 'weather' && widgetsEnabled.weather}
 					<WeatherWidget {weather} />
 				{:else if key === 'stocks' && widgetsEnabled.stocks}
-					<StocksWidget {stocks} />
+					<StocksWidget tickers={stocks.tickers} pollIntervalMinutes={stocks.pollIntervalMinutes} />
 				{:else if key === 'poe2' && widgetsEnabled.poe2}
 					<Poe2Widget {poe2} />
 				{:else if key === 'bookmarks' && widgetsEnabled.bookmarks}

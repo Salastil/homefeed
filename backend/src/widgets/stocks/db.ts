@@ -1,6 +1,35 @@
 import { randomUUID } from 'node:crypto';
 import { db } from '../../storage/db/index.js';
+import { getKv, setKv } from '../../storage/db/widgetKv.js';
 import type { StockTicker } from '../../storage/db/types.js';
+
+/**
+ * How often Yahoo is polled, in minutes — stored in this widget's own widget_kv config
+ * blob rather than a column, same as the bookmarks widget's column count.
+ *
+ * The floor is deliberate. client.ts fires one request per ticker per poll, in parallel,
+ * against an undocumented Yahoo endpoint that publishes no rate limit and answers a
+ * non-browser User-Agent with a 429 on the very first request — so the failure mode isn't
+ * a quota you can back off from, it's a silent block. A handful of tickers at 5 minutes is
+ * ~60 requests an hour, comfortably clear of anything reported as troublesome; going below
+ * a minute with a long ticker list would not be.
+ */
+const ALLOWED_POLL_INTERVALS = [1, 5, 15, 30, 60] as const;
+const DEFAULT_POLL_INTERVAL_MINUTES = 5;
+
+export function getPollIntervalMinutes(): number {
+	const stored = getKv<{ pollIntervalMinutes?: number }>('stocks', 'config')?.pollIntervalMinutes;
+	return stored !== undefined && (ALLOWED_POLL_INTERVALS as readonly number[]).includes(stored)
+		? stored
+		: DEFAULT_POLL_INTERVAL_MINUTES;
+}
+
+/** Returns the value actually stored — an unsupported one is rejected rather than silently written, so the widget can't end up polling on a cadence the UI can't represent. */
+export function setPollIntervalMinutes(minutes: number): number {
+	if (!(ALLOWED_POLL_INTERVALS as readonly number[]).includes(minutes)) return getPollIntervalMinutes();
+	setKv('stocks', 'config', { pollIntervalMinutes: minutes });
+	return minutes;
+}
 
 function rowToTicker(row: any): StockTicker {
 	return {

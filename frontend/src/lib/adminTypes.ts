@@ -119,6 +119,11 @@ export interface AdminPoe2Entry {
 	lastError: string | null;
 }
 
+/** Stocks widget config — how often Yahoo is polled. See backend/src/widgets/stocks/db.ts for why the options stop at 1 minute. */
+export interface AdminStocksConfig {
+	pollIntervalMinutes: number;
+}
+
 export interface AdminWidgetsEnabled {
 	weather: boolean;
 	stocks: boolean;

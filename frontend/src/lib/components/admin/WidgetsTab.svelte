@@ -2,6 +2,7 @@
 	import type {
 		AdminSettings,
 		AdminStockTicker,
+		AdminStocksConfig,
 		AdminBookmark,
 		AdminBookmarksConfig,
 		AdminPoe2Entry,
@@ -21,6 +22,7 @@
 	let {
 		settings,
 		stockTickers,
+		stocksConfig,
 		bookmarks,
 		bookmarksConfig,
 		poe2Watchlist,
@@ -30,6 +32,7 @@
 	}: {
 		settings: AdminSettings;
 		stockTickers: AdminStockTicker[];
+		stocksConfig: AdminStocksConfig;
 		bookmarks: AdminBookmark[];
 		bookmarksConfig: AdminBookmarksConfig;
 		poe2Watchlist: AdminPoe2Entry[];
@@ -136,7 +139,7 @@
 			{#if key === 'weather'}
 				<WeatherTab config={weatherConfig} />
 			{:else if key === 'stocks'}
-				<StocksTab tickers={stockTickers} />
+				<StocksTab tickers={stockTickers} config={stocksConfig} />
 			{:else if key === 'bookmarks'}
 				<BookmarksTab {bookmarks} config={bookmarksConfig} />
 			{:else if key === 'poe2'}

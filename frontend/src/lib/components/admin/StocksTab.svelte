@@ -1,9 +1,24 @@
 <script lang="ts">
-	import type { AdminStockTicker } from '$lib/adminTypes';
-	import { addStockTicker, updateStockTicker, deleteStockTicker } from '$lib/adminApi';
+	import type { AdminStockTicker, AdminStocksConfig } from '$lib/adminTypes';
+	import { addStockTicker, updateStockTicker, deleteStockTicker, updateStocksConfig } from '$lib/adminApi';
+	import SaveStatus from './SaveStatus.svelte';
 
-	let { tickers: initial }: { tickers: AdminStockTicker[] } = $props();
+	let { tickers: initial, config }: { tickers: AdminStockTicker[]; config: AdminStocksConfig } = $props();
 	let tickers = $state([...initial]);
+
+	let pollIntervalMinutes = $state(config.pollIntervalMinutes);
+	let intervalStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+	async function saveInterval() {
+		intervalStatus = 'saving';
+		try {
+			await updateStocksConfig(pollIntervalMinutes);
+			intervalStatus = 'saved';
+			setTimeout(() => (intervalStatus = 'idle'), 1500);
+		} catch {
+			intervalStatus = 'error';
+		}
+	}
 	let showAdd = $state(false);
 	let newTicker = $state({ label: '', symbol: '' });
 
@@ -45,6 +60,24 @@
 	<button class="add-btn" onclick={() => (showAdd = !showAdd)}>+ New ticker</button>
 </div>
 <p class="hint" style="margin: -6px 0 12px;">Price and % change are today's — since the previous trading day's close.</p>
+
+<div class="interval-row">
+	<span class="field-label">Poll interval</span>
+	<select bind:value={pollIntervalMinutes} onchange={saveInterval}>
+		<option value={1}>Every minute</option>
+		<option value={5}>Every 5 minutes</option>
+		<option value={15}>Every 15 minutes</option>
+		<option value={30}>Every 30 minutes</option>
+		<option value={60}>Every hour</option>
+	</select>
+	<SaveStatus status={intervalStatus} />
+</div>
+<p class="hint" style="margin: 0 0 14px;">
+	One request per ticker per poll, against a Yahoo endpoint that publishes no rate limit —
+	so the cost scales with your ticker count, not just this setting. A handful of tickers at
+	5 minutes is well within safe territory; a long list every minute is not. Shown in the
+	sidebar widget so readers know how current the prices are.
+</p>
 
 {#if showAdd}
 	<div class="add-panel">
@@ -147,6 +180,16 @@
 		font-size: 11px;
 		color: var(--text-muted);
 		margin: 0;
+	}
+	.interval-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-bottom: 8px;
+	}
+	.field-label {
+		font-size: 11px;
+		color: var(--text-muted);
 	}
 	.list {
 		display: flex;

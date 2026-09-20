@@ -164,6 +164,12 @@ export interface StockTicker {
 	lastChangePercent: number | null;
 }
 
+/** Tickers plus the cadence they're refreshed on — the sidebar states the interval so a price that looks stale can be read as "polled every N minutes" rather than "broken". */
+export interface StocksFeed {
+	tickers: StockTicker[];
+	pollIntervalMinutes: number;
+}
+
 export interface Bookmark {
 	id: string;
 	name: string;

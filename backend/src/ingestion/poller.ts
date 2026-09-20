@@ -22,6 +22,34 @@ const adapters: Record<Source['type'], SourceAdapter> = {
 // as opposed to Telegram where the message itself *is* the content.
 const FOLLOWS_LINK_FOR_FULL_ARTICLE: Source['type'][] = ['rss', 'api'];
 
+// Not every adapter bounds its own network call: rss/api/telegram had no timeout at all
+// (only nitter, youtube and articleFetcher did), and the Telegram one rides a long-lived
+// MTProto connection whose calls simply never return if that connection is half-dead —
+// TCP up, no reply. Since pollDueSources walks sources sequentially, one such call takes
+// down ingestion entirely: every source behind it is never reached, the tick's promise
+// never settles, and scheduler.ts's overlap guard then skips every later tick forever.
+// That is exactly how polling stopped dead after "NBC10" and stayed dead for two days
+// without logging a thing. A try/catch cannot help here — a hang never rejects.
+const SOURCE_FETCH_TIMEOUT_MS = 30_000;
+
+function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+	// The losing promise can't be cancelled (adapters don't uniformly accept an
+	// AbortSignal, and gramJS has no per-call abort), so it's left pending — but its
+	// eventual rejection is swallowed explicitly, since an unhandled rejection surfacing
+	// minutes after we stopped waiting would take the whole process down under Node's
+	// default policy. Leaking one abandoned promise beats wedging ingestion.
+	work.catch(() => {});
+	let timer: NodeJS.Timeout;
+	return Promise.race([
+		work.finally(() => clearTimeout(timer)),
+		new Promise<never>((_, reject) => {
+			timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms);
+			// Never hold the process open just for this timer.
+			timer.unref();
+		})
+	]);
+}
+
 export async function pollDueSources(): Promise<number> {
 	const due = sourcesDb.sourcesDueForPoll();
 	let ingested = 0;
@@ -40,7 +68,11 @@ async function pollOne(source: Source): Promise<number> {
 	const adapter = adapters[source.type];
 	let ingested = 0;
 	try {
-		const fetched = await adapter.fetch(source);
+		const fetched = await withTimeout(
+			adapter.fetch(source),
+			SOURCE_FETCH_TIMEOUT_MS,
+			`${source.type} fetch for "${source.name}"`
+		);
 		for (const item of fetched) {
 			if (contentItemsDb.existsByLink(item.link)) continue;
 
