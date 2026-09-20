@@ -9,6 +9,16 @@ import { logger } from '../storage/db/logs.js';
 import { loadedWidgets } from '../widgets/registry.js';
 import type { WidgetPlugin } from '../widgets/types.js';
 
+// How long a tick may run before it gets reported as stuck. Set well above each tick's
+// genuine worst case so a healthy-but-slow pass never cries wolf: a synthesis pass runs
+// 20+ minutes legitimately on CPU-only hardware (a long event recap at the Models tab's
+// num_predict), whereas a poll pass is bounded by poller.ts's per-source fetch timeout
+// and has no business taking minutes at all.
+const POLL_STALL_MS = 5 * 60_000;
+const DIRECT_PUBLISH_STALL_MS = 10 * 60_000;
+const SYNTHESIS_STALL_MS = 45 * 60_000;
+const RETENTION_STALL_MS = 10 * 60_000;
+
 const POLL_TICK_MS = 60_000; // checks which sources are due every minute; each source's own interval governs actual fetch frequency
 const DIRECT_PUBLISH_TICK_MS = 60_000;
 const SYNTHESIS_TICK_MS = 60_000;
@@ -32,11 +42,32 @@ const RETENTION_TICK_MS = 60 * 60_000; // hourly
  * (see priorityQueue.ts), so there's no risk of the two racing each other into a
  * duplicate publish the way an overlapping call to the *same* fn would.
  */
-function everyTickSkippingOverlap(ms: number, fn: () => Promise<void>) {
+function everyTickSkippingOverlap(ms: number, fn: () => Promise<void>, label: string, stallWarnMs: number) {
 	let running = false;
+	let startedAt = 0;
+	let warned = false;
 	setInterval(() => {
-		if (running) return;
+		if (running) {
+			// A tick whose promise never settles leaves `running` stuck true and silently
+			// disables this subsystem permanently — which is how RSS ingestion stopped for
+			// two days without a single log line. Individual awaits are bounded at their own
+			// call sites (see poller.ts's withTimeout), so this is the backstop: it does NOT
+			// release the guard, because letting a second pass start over the same items is
+			// a worse failure for the publish ticks (concurrent passes can double-publish)
+			// than a stall. It just makes the stall visible instead of silent.
+			const stalledMs = Date.now() - startedAt;
+			if (!warned && stalledMs >= stallWarnMs) {
+				warned = true;
+				logger.error(
+					'scheduler',
+					`${label} tick has been running ${Math.round(stalledMs / 60_000)}m and is blocking every later ${label} tick — it is likely stuck on a call that never returns`
+				);
+			}
+			return;
+		}
 		running = true;
+		startedAt = Date.now();
+		warned = false;
 		fn().finally(() => {
 			running = false;
 		});
@@ -62,17 +93,29 @@ export function startWidgetPolling(plugin: WidgetPlugin) {
 	if (installedWidgetsDb.getInstalled(plugin.id)?.enabled) {
 		plugin.poll.run().catch((err) => logger.error(plugin.id, `Initial poll failed: ${(err as Error).message}`));
 	}
-	const handle = setInterval(() => {
-		if (!installedWidgetsDb.getInstalled(plugin.id)?.enabled) return;
-		plugin.poll!.run().catch((err) => logger.error(plugin.id, `Poll tick failed: ${(err as Error).message}`));
-	}, plugin.poll.intervalMs);
-	widgetIntervals.set(plugin.id, handle);
+	// A self-rearming timeout rather than setInterval, because intervalMs is allowed to be
+	// a getter over admin-set config (see widgets/stocks/plugin.ts): setInterval reads it
+	// once and pins the widget to whatever the cadence was at startup, so a change would
+	// not take hold until the next process restart. Re-reading it each cycle means a new
+	// value applies from the following tick.
+	const arm = () => {
+		const handle = setTimeout(() => {
+			if (installedWidgetsDb.getInstalled(plugin.id)?.enabled) {
+				plugin.poll!.run().catch((err) => logger.error(plugin.id, `Poll tick failed: ${(err as Error).message}`));
+			}
+			arm();
+		}, plugin.poll!.intervalMs);
+		widgetIntervals.set(plugin.id, handle);
+	};
+	arm();
 }
 
 export function stopWidgetPolling(id: string) {
 	const handle = widgetIntervals.get(id);
 	if (handle) {
-		clearInterval(handle);
+		// clearTimeout, not clearInterval — startWidgetPolling schedules with setTimeout now.
+		// Node treats the two as interchangeable, but the matching name keeps the pairing legible.
+		clearTimeout(handle);
 		widgetIntervals.delete(id);
 	}
 }
@@ -94,7 +137,7 @@ export function startScheduler() {
 		} catch (err) {
 			logger.error('scheduler', `Poll tick failed: ${(err as Error).message}`);
 		}
-	});
+	}, 'poll', POLL_STALL_MS);
 
 	everyTickSkippingOverlap(DIRECT_PUBLISH_TICK_MS, async () => {
 		try {
@@ -115,7 +158,7 @@ export function startScheduler() {
 		} catch (err) {
 			logger.error('scheduler', `Direct-publish tick failed: ${(err as Error).message}`);
 		}
-	});
+	}, 'direct-publish', DIRECT_PUBLISH_STALL_MS);
 
 	everyTickSkippingOverlap(SYNTHESIS_TICK_MS, async () => {
 		try {
@@ -147,7 +190,7 @@ export function startScheduler() {
 		} catch (err) {
 			logger.error('scheduler', `Synthesis tick failed: ${(err as Error).message}`);
 		}
-	});
+	}, 'synthesis', SYNTHESIS_STALL_MS);
 
 	everyTickSkippingOverlap(RETENTION_TICK_MS, async () => {
 		try {
@@ -156,7 +199,7 @@ export function startScheduler() {
 		} catch (err) {
 			logger.error('retention', `Retention tick failed: ${(err as Error).message}`);
 		}
-	});
+	}, 'retention', RETENTION_STALL_MS);
 
 	for (const plugin of loadedWidgets.values()) {
 		startWidgetPolling(plugin);

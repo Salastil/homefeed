@@ -12,6 +12,7 @@ import type {
 	LogEntry,
 	GeocodeResult,
 	AdminStockTicker,
+	AdminStocksConfig,
 	AdminBookmark,
 	AdminBookmarksConfig,
 	Poe2BrowseEntry,
@@ -235,6 +236,16 @@ export const addStockTicker = (label: string, symbol: string, fetchFn?: typeof f
 
 export const updateStockTicker = (id: string, patch: { label?: string; symbol?: string }, fetchFn?: typeof fetch) =>
 	request<AdminStockTicker>(`/api/admin/widget/stocks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
+
+export const getStocksConfig = (fetchFn?: typeof fetch) =>
+	request<AdminStocksConfig>('/api/admin/widget/stocks/config', {}, fetchFn);
+
+export const updateStocksConfig = (pollIntervalMinutes: number, fetchFn?: typeof fetch) =>
+	request<AdminStocksConfig>(
+		'/api/admin/widget/stocks/config',
+		{ method: 'PATCH', body: JSON.stringify({ pollIntervalMinutes }) },
+		fetchFn
+	);
 
 export const deleteStockTicker = (id: string, fetchFn?: typeof fetch) =>
 	request<void>(`/api/admin/widget/stocks/${id}`, { method: 'DELETE' }, fetchFn);

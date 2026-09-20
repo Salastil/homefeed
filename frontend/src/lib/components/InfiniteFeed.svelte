@@ -1,30 +1,80 @@
 <script lang="ts">
+	import { slide } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	import type { MergedArticle } from '$lib/types';
 	import { getFeed, type FeedParams } from '$lib/api';
 	import ArticleListRow from './ArticleListRow.svelte';
 
 	let { initial, filters, pageSize = 15 }: { initial: MergedArticle[]; filters: FeedParams; pageSize?: number } = $props();
 
+	// The publish pipeline runs on a ~1 minute tick (see queue/scheduler.ts), so there's
+	// nothing new to find by asking any more often than this.
+	const POLL_MS = 60_000;
+
+	// A poll rarely returns exactly one story — hold-before-publish releases whole batches
+	// at once (6 and 11 in a single tick, in production logs), and animating those as one
+	// block reads as a glitch. Each entering card is offset by this much so a burst
+	// cascades instead of landing flat.
+	const ENTER_STAGGER_MS = 90;
+	const ENTER_DURATION_MS = 450;
+	// How long the accent wash lingers before fading, so a story that arrives while you're
+	// looking elsewhere is still marked when you look back.
+	const ENTER_MARKER_MS = 2200;
+
+	// Honoured for the whole effect rather than just softened: the entry animation exists
+	// to catch the eye, which is exactly what this setting asks us not to do.
+	const reducedMotion =
+		typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 	let articles = $state<MergedArticle[]>(initial);
 	let loading = $state(false);
 	let done = $state(initial.length < pageSize);
 	let sentinel = $state<HTMLDivElement>();
+	// Plain variable, not $state — nothing renders from it; it exists only to stop two
+	// polls (interval tick and a visibilitychange landing together) from overlapping.
+	let refreshing = false;
+
+	// id -> position within the batch it arrived in, which drives both that card's stagger
+	// offset and its marker delay. Membership doubles as "this one is still new": an entry
+	// is dropped once its own animation and marker have finished, which is what returns the
+	// card to a normal row. Only ids polled in while the page was open ever land here, so a
+	// first render (and a navigation, which rebuilds the whole list) animates nothing.
+	let entering = $state(new Map<string, number>());
+
+	function markEntering(ids: string[]) {
+		const next = new Map(entering);
+		ids.forEach((id, i) => next.set(id, i));
+		entering = next;
+		ids.forEach((id, i) => {
+			setTimeout(
+				() => {
+					const done = new Map(entering);
+					done.delete(id);
+					entering = done;
+				},
+				i * ENTER_STAGGER_MS + ENTER_DURATION_MS + ENTER_MARKER_MS
+			);
+		});
+	}
 
 	// Re-syncs when the page's load data changes on a *subsequent* navigation —
 	// necessary because SvelteKit reuses this component instance across client-side
 	// navigations between category pages (only the route param changes), so a
 	// one-time state init would leave stale articles on screen after navigating e.g.
-	// Tech -> World. Guarded to skip the first run: articles is already correctly
-	// initialized from `initial` above, and re-running this unconditionally on mount
-	// created a render race where SSR output briefly reflected an empty array instead.
-	let firstEffectRun = true;
+	// Tech -> World.
+	//
+	// Keyed on which articles `initial` actually contains, not on the prop's object
+	// identity. The layout's periodic invalidate('app:sidebar') rebuilds the page data
+	// object without the feed itself having changed, and an identity-based check treated
+	// that as a navigation and reset the list — which silently threw away everything
+	// refresh() had polled in (measured: stories appearing and then vanishing 4ms later).
+	// Comparing ids also subsumes the old skip-the-first-run guard, since on mount the
+	// signature already matches what `articles` was initialized from.
+	let syncedIds = initial.map((a) => a.id).join(',');
 	$effect(() => {
-		initial;
-		pageSize;
-		if (firstEffectRun) {
-			firstEffectRun = false;
-			return;
-		}
+		const ids = initial.map((a) => a.id).join(',');
+		if (ids === syncedIds) return;
+		syncedIds = ids;
 		articles = [...initial];
 		done = initial.length < pageSize;
 	});
@@ -43,6 +93,67 @@
 		}
 	}
 
+	// Pulls the newest page and folds it into what's already on screen, rather than
+	// replacing the list — a wholesale swap would throw away everything paged in by
+	// loadMore() and bounce the reader back to the top.
+	async function refresh() {
+		// loadMore() appends using the last article's timestamp as its cursor; merging a
+		// prepend into that mid-flight would shift the array under it.
+		if (refreshing || loading) return;
+		refreshing = true;
+		try {
+			const fresh = await getFeed({ ...filters, limit: pageSize });
+			const known = new Set(articles.map((a) => a.id));
+			const incoming = fresh.filter((a) => !known.has(a.id));
+			// A story already on screen can change without being new: a merge keeps
+			// absorbing sources after it publishes (sourceCount climbs, the body gets
+			// rewritten), so a row whose updatedAt moved is swapped in place instead of
+			// being left stale until the next full page load.
+			const byId = new Map(fresh.map((a) => [a.id, a]));
+			const revised = articles.map((a) => {
+				const f = byId.get(a.id);
+				return f && f.updatedAt !== a.updatedAt ? f : a;
+			});
+			const anyRevised = revised.some((a, i) => a !== articles[i]);
+			if (incoming.length === 0 && !anyRevised) return;
+
+			// Prepended deliberately, with no scroll adjustment of our own: browsers
+			// implement scroll anchoring for exactly this case and keep the reader's place
+			// when content is inserted above the viewport. Two hand-rolled corrections were
+			// tried here and both made it worse — compensating by the document height delta
+			// double-counted against the browser's own adjustment (overshooting by exactly
+			// the inserted height), and anchoring off the previously-first row scrolled the
+			// page to the top outright. The native behaviour was already correct on its own.
+			if (incoming.length > 0) markEntering(incoming.map((a) => a.id));
+			articles = [...incoming, ...revised];
+		} catch {
+			// Transient failure (backend restarting, network blip) — the next tick retries.
+			// Deliberately silent: a stale list is better than an error banner over content
+			// that's still perfectly readable.
+		} finally {
+			refreshing = false;
+		}
+	}
+
+	// SvelteKit re-runs load() only on navigation, so without this a tab left open never
+	// shows anything published after it rendered. Polling rather than SSE on purpose: the
+	// deployment sits behind a reverse proxy that needs explicit buffering changes before
+	// an event stream works at all (see the /widget-assets note in README), and a
+	// 1-minute poll already matches the rate at which articles can appear.
+	$effect(() => {
+		const pollIfVisible = () => {
+			if (document.visibilityState === 'visible') refresh();
+		};
+		const interval = setInterval(pollIfVisible, POLL_MS);
+		// A hidden tab skips its polls, so refresh the moment it's looked at again instead
+		// of showing content up to a full interval out of date.
+		document.addEventListener('visibilitychange', pollIfVisible);
+		return () => {
+			clearInterval(interval);
+			document.removeEventListener('visibilitychange', pollIfVisible);
+		};
+	});
+
 	$effect(() => {
 		if (!sentinel) return;
 		const observer = new IntersectionObserver(
@@ -58,7 +169,24 @@
 
 <div class="list">
 	{#each articles as article (article.id)}
-		<ArticleListRow {article} />
+		{@const enterIndex = entering.get(article.id)}
+		<!-- A wrapper because a transition directive can't go on a component, and the row's
+		     own root varies (plain row, tweet card, telegram card). Duration collapses to 0
+		     for anything that wasn't just polled in, which is what keeps a navigation — where
+		     the whole list is replaced at once — from unfolding every card simultaneously. -->
+		<div
+			class="entry"
+			class:marked={enterIndex !== undefined && !reducedMotion}
+			style:animation-delay="{(enterIndex ?? 0) * ENTER_STAGGER_MS}ms"
+			style:--entry-marker-ms="{ENTER_MARKER_MS}ms"
+			transition:slide={{
+				duration: enterIndex === undefined || reducedMotion ? 0 : ENTER_DURATION_MS,
+				delay: enterIndex === undefined || reducedMotion ? 0 : enterIndex * ENTER_STAGGER_MS,
+				easing: cubicOut
+			}}
+		>
+			<ArticleListRow {article} />
+		</div>
 	{/each}
 </div>
 
@@ -77,6 +205,38 @@
 <style>
 	.list {
 		max-width: 720px;
+	}
+	.entry {
+		position: relative;
+	}
+	/* An overlay tint rather than a background on the wrapper: tweet and telegram rows
+	   paint their own opaque card surface, which would hide anything sitting behind them.
+	   Positioned over the card instead, it marks every row type identically, and since it
+	   only animates opacity it costs no layout and can't disturb scroll position while the
+	   unfold above it is still changing the page height. */
+	.entry::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		border-radius: 12px;
+		background: var(--bg-accent);
+		opacity: 0;
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.entry.marked::after {
+			animation: entry-marker var(--entry-marker-ms, 2200ms) ease-out forwards;
+			animation-delay: inherit;
+		}
+	}
+	@keyframes entry-marker {
+		0%,
+		55% {
+			opacity: 0.55;
+		}
+		100% {
+			opacity: 0;
+		}
 	}
 	.sentinel {
 		height: 1px;

@@ -49,6 +49,7 @@
 		<WidgetsTab
 			settings={data.settings}
 			stockTickers={data.stockTickers}
+			stocksConfig={data.stocksConfig}
 			bookmarks={data.bookmarks}
 			bookmarksConfig={data.bookmarksConfig}
 			poe2Watchlist={data.poe2Watchlist}

@@ -20,9 +20,25 @@
 	// to this layout's own 'app:sidebar' dependency (see +layout.ts) rather than
 	// invalidateAll(), so it doesn't also re-run page-level loads — e.g. the home feed's
 	// own pagination state would otherwise reset every refresh.
+	//
+	// Matched to InfiniteFeed's own poll interval so the sidebar and the article list go
+	// stale (and catch up) together rather than drifting minutes apart. This is cheap
+	// regardless of the backend's slower cadences — every one of these reads is served
+	// from SQLite, so an unchanged widget just re-reads the same cached row.
+	const SIDEBAR_POLL_MS = 60_000;
+
 	onMount(() => {
-		const interval = setInterval(() => invalidate('app:sidebar'), 5 * 60_000);
-		return () => clearInterval(interval);
+		// A hidden tab's polls are skipped and made up on return, so a backgrounded tab
+		// costs nothing and a reopened one is current immediately.
+		const pollIfVisible = () => {
+			if (document.visibilityState === 'visible') invalidate('app:sidebar');
+		};
+		const interval = setInterval(pollIfVisible, SIDEBAR_POLL_MS);
+		document.addEventListener('visibilitychange', pollIfVisible);
+		return () => {
+			clearInterval(interval);
+			document.removeEventListener('visibilitychange', pollIfVisible);
+		};
 	});
 
 	// Admin pages already use full page width for their own tab UI — the sidebar's utility

@@ -1,17 +1,21 @@
 <script lang="ts">
 	import type { StockTicker } from '$lib/types';
 
-	let { stocks }: { stocks: StockTicker[] } = $props();
+	let { tickers, pollIntervalMinutes }: { tickers: StockTicker[]; pollIntervalMinutes: number } = $props();
+
+	// "today" already qualifies what the percentage measures (change since the previous
+	// close); the cadence tells the reader how current the price beside it actually is.
+	const cadence = $derived(pollIntervalMinutes >= 60 ? `${pollIntervalMinutes / 60}h` : `${pollIntervalMinutes}m`);
 </script>
 
 <div class="widget">
 	<div class="head">
 		<span class="title">Stocks</span>
-		{#if stocks.length > 0}<span class="interval">today</span>{/if}
+		{#if tickers.length > 0}<span class="interval">today · every {cadence}</span>{/if}
 	</div>
-	{#if stocks.length > 0}
+	{#if tickers.length > 0}
 		<div class="list">
-			{#each stocks as stock (stock.id)}
+			{#each tickers as stock (stock.id)}
 				<div class="row">
 					<span class="label">{stock.label}</span>
 					{#if stock.lastPrice !== null}
