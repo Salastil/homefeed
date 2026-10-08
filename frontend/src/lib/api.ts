@@ -6,7 +6,14 @@ async function get<T>(path: string, fetchFn: typeof fetch = fetch): Promise<T> {
 	// is sent cross-origin to the backend, revealing private categories/articles to
 	// anyone who's logged in — without it every request would look unauthenticated.
 	const res = await fetchFn(`${getBackendUrl()}${path}`, { credentials: 'include' });
-	if (!res.ok) throw new Error(`Request failed: ${path} (${res.status})`);
+	if (!res.ok) {
+		// Carries the status the way adminApi's request() does, so a caller can tell a
+		// genuinely-missing resource apart from a backend that's down — an article that
+		// aged out of retention should render as 404, not as a 500 "Internal Error".
+		const err = new Error(`Request failed: ${path} (${res.status})`) as Error & { status?: number };
+		err.status = res.status;
+		throw err;
+	}
 	return res.json();
 }
 

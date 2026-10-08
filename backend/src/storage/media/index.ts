@@ -74,6 +74,39 @@ export function totalStorageBytes(): number {
 	return row.total;
 }
 
+/**
+ * Bytes belonging to assets some still-existing article owns — i.e. the only bytes the
+ * storage cap's FIFO pass can actually reclaim. Everything else (candidate-tier media
+ * awaiting its own age sweep, or assets attached to nothing) stays put no matter how
+ * many articles get deleted, which is what makes a cap set below that floor impossible
+ * to satisfy rather than merely expensive — see enforceStorageCap.
+ */
+export function articleAttachedBytes(): number {
+	const row = db
+		.prepare('SELECT COALESCE(SUM(size_bytes), 0) as total FROM media_assets WHERE article_id IN (SELECT id FROM merged_articles)')
+		.get() as { total: number };
+	return row.total;
+}
+
+/**
+ * Drops assets pointing at an article that no longer exists. Deleting an article is a
+ * plain DELETE on merged_articles (there's no FK chain to media_assets — see
+ * contentCascade.ts), so anything that removed an article without also calling
+ * deleteMediaByArticleId left its media behind, counting against the storage cap
+ * forever. Reclaiming those costs no published content, so the cap sweep does it first.
+ */
+export function deleteOrphanedMedia(): { count: number; bytes: number } {
+	const rows = db
+		.prepare(
+			'SELECT id, local_path, size_bytes FROM media_assets WHERE article_id IS NOT NULL AND article_id NOT IN (SELECT id FROM merged_articles)'
+		)
+		.all() as { id: string; local_path: string; size_bytes: number }[];
+	if (rows.length === 0) return { count: 0, bytes: 0 };
+	deleteRows(rows);
+	db.prepare('DELETE FROM media_assets WHERE article_id IS NOT NULL AND article_id NOT IN (SELECT id FROM merged_articles)').run();
+	return { count: rows.length, bytes: rows.reduce((sum, r) => sum + r.size_bytes, 0) };
+}
+
 export function deleteCandidateMediaOlderThan(days: number): number {
 	const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
 	const rows = db
