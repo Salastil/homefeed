@@ -61,6 +61,7 @@ export interface AdminWeatherSettings {
 	unit: 'celsius' | 'fahrenheit';
 	windUnit: 'mph' | 'kph';
 	pressureUnit: 'inHg' | 'hPa';
+	precipUnit: 'in' | 'mm';
 	current: WeatherCurrentConditions | null;
 	hourly: WeatherHourEntry[];
 	daily: WeatherDayEntry[];

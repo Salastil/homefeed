@@ -24,6 +24,7 @@ export async function pollWeatherNow(): Promise<void> {
 			config.unit,
 			config.windUnit,
 			config.pressureUnit,
+			config.precipUnit,
 			config.locationName
 		);
 		forecastUpdate = { current, hourly, daily, summary };

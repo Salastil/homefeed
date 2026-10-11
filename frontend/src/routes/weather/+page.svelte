@@ -47,6 +47,20 @@
 	// same fields — `current` has feelsLike/sunrise/sunset, an hour doesn't. Everything the
 	// panel actually renders is normalized here so the markup below stays a single branchless
 	// block rather than two near-duplicate copies.
+	// Snow depth is conventionally centimetres where rain is millimetres, so the label
+	// depends on WHAT is falling, not just the configured unit. Imperial uses inches for both.
+	function precipUnitLabel(isSnow: boolean): string {
+		if (weather.precipUnit !== 'mm') return 'in';
+		return isSnow ? 'cm' : 'mm';
+	}
+
+	// Hundredths for inches and centimetres (0.05" of rain is a real reading); whole
+	// millimetres, where a decimal is below the forecast's own resolution.
+	function formatPrecip(amount: number, isSnow: boolean): string {
+		if (weather.precipUnit === 'mm' && !isSnow) return String(Math.round(amount));
+		return amount.toFixed(2).replace(/0$/, '');
+	}
+
 	const panel = $derived.by(() => {
 		const c = weather.current;
 		if (hoveredHour) {
@@ -55,6 +69,8 @@
 				conditionText: hoveredHour.conditionText,
 				humidity: hoveredHour.humidity,
 				precipitationChance: hoveredHour.precipitationChance,
+				precipAmount: hoveredHour.precipAmount,
+				precipIsSnow: hoveredHour.precipIsSnow,
 				windSpeed: hoveredHour.windSpeed,
 				windDirection: hoveredHour.windDirection,
 				pressure: hoveredHour.pressure,
@@ -66,6 +82,8 @@
 			conditionText: c?.conditionText ?? '',
 			humidity: c?.humidity ?? 0,
 			precipitationChance: c?.precipitationChance ?? 0,
+			precipAmount: c?.precipAmount ?? 0,
+			precipIsSnow: c?.precipIsSnow ?? false,
 			windSpeed: c?.windSpeed ?? 0,
 			windDirection: c?.windDirection ?? '',
 			pressure: c?.pressure ?? 0,
@@ -114,6 +132,14 @@
 				<span class="stat-label">Precip. chance</span>
 				<span class="stat-value">{panel.precipitationChance}%</span>
 			</div>
+			<!-- Only shown when there's actually accumulation: a permanent "0 in" row next to
+			     a 0% chance is noise on the overwhelming majority of hours. -->
+			{#if panel.precipAmount > 0}
+				<div class="stat">
+					<span class="stat-label">{panel.precipIsSnow ? 'Snowfall' : 'Rainfall'}</span>
+					<span class="stat-value">{formatPrecip(panel.precipAmount, panel.precipIsSnow)} {precipUnitLabel(panel.precipIsSnow)}</span>
+				</div>
+			{/if}
 			<div class="stat">
 				<span class="stat-label">Wind</span>
 				<span class="stat-value">{panel.windDirection} {Math.round(panel.windSpeed)} {weather.windUnit}</span>

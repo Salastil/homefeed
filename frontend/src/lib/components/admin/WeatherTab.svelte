@@ -26,7 +26,8 @@
 					longitude: weather.longitude,
 					unit: weather.unit,
 					windUnit: weather.windUnit,
-					pressureUnit: weather.pressureUnit
+					pressureUnit: weather.pressureUnit,
+					precipUnit: weather.precipUnit
 				});
 				status = 'saved';
 				setTimeout(() => (status = 'idle'), 1500);
@@ -72,6 +73,13 @@
 	const pressureUnits: { label: string; value: 'inHg' | 'hPa' }[] = [
 		{ label: 'inHg', value: 'inHg' },
 		{ label: 'hPa', value: 'hPa' }
+	];
+
+	// Metric splits by what's falling: millimetres of rain, centimetres of snow depth —
+	// the convention forecasters use, and what Open-Meteo returns. Imperial uses inches for both.
+	const precipUnits: { label: string; value: 'in' | 'mm' }[] = [
+		{ label: 'in', value: 'in' },
+		{ label: 'mm / cm', value: 'mm' }
 	];
 </script>
 
@@ -153,6 +161,22 @@
 				class:active={weather.pressureUnit === unit.value}
 				onclick={() => {
 					weather.pressureUnit = unit.value;
+					scheduleSave();
+				}}
+			>
+				{unit.label}
+			</button>
+		{/each}
+	</div>
+
+	<div class="field-label">Precipitation</div>
+	<div class="pill-row">
+		{#each precipUnits as unit}
+			<button
+				class="pill"
+				class:active={weather.precipUnit === unit.value}
+				onclick={() => {
+					weather.precipUnit = unit.value;
 					scheduleSave();
 				}}
 			>

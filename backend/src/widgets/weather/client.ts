@@ -19,8 +19,8 @@ export interface WeatherCondition {
 // WMO weather interpretation codes, as returned by Open-Meteo's weather_code field —
 // https://open-meteo.com/en/docs lists the full table this summarizes.
 const WMO_CONDITIONS: Record<number, WeatherCondition> = {
-	0: { text: 'Clear sky', icon: '☀️' },
-	1: { text: 'Mainly clear', icon: '🌤️' },
+	0: { text: 'Sunny', icon: '☀️' },
+	1: { text: 'Mostly sunny', icon: '🌤️' },
 	2: { text: 'Partly cloudy', icon: '⛅' },
 	3: { text: 'Overcast', icon: '☁️' },
 	45: { text: 'Fog', icon: '🌫️' },
@@ -49,7 +49,37 @@ const WMO_CONDITIONS: Record<number, WeatherCondition> = {
 	99: { text: 'Thunderstorm, heavy hail', icon: '⛈️' }
 };
 
-export function wmoToCondition(code: number): WeatherCondition {
+/**
+ * After dark, every condition above whose label or icon implies sunshine is simply wrong —
+ * "Sunny ☀️" at midnight being the obvious one, but 🌤️/⛅/🌦️ all draw a sun too. Only the
+ * codes that actually change are listed; anything absent (rain, fog, snow, thunder) looks
+ * and reads the same at any hour, so it falls through to WMO_CONDITIONS untouched.
+ *
+ * There is no widely-rendered "moon behind cloud" emoji, so partly-cloudy nights borrow
+ * the plain cloud. That shares an icon with Overcast, but the label beside it still
+ * distinguishes the two.
+ */
+const NIGHT_CONDITIONS: Record<number, WeatherCondition> = {
+	0: { text: 'Clear', icon: '🌙' },
+	1: { text: 'Mostly clear', icon: '🌙' },
+	2: { text: 'Partly cloudy', icon: '☁️' },
+	51: { text: 'Light drizzle', icon: '🌧️' },
+	53: { text: 'Moderate drizzle', icon: '🌧️' },
+	55: { text: 'Dense drizzle', icon: '🌧️' },
+	80: { text: 'Slight rain showers', icon: '🌧️' },
+	81: { text: 'Moderate rain showers', icon: '🌧️' }
+};
+
+/**
+ * `isDay` defaults to true so a caller with no day/night context — notably the daily
+ * forecast, which summarises a whole day and should read "Sunny", never "Clear 🌙" —
+ * keeps the daytime wording.
+ */
+export function wmoToCondition(code: number, isDay = true): WeatherCondition {
+	if (!isDay) {
+		const night = NIGHT_CONDITIONS[code];
+		if (night) return night;
+	}
 	return WMO_CONDITIONS[code] ?? { text: 'Unknown', icon: '❔' };
 }
 
@@ -69,13 +99,15 @@ function degreesToCompass(degrees: number): string {
 	return COMPASS_POINTS[Math.round(degrees / 45) % 8];
 }
 
-// WMO_CONDITIONS' text is a noun-phrase status label ("Clear sky", "Overcast") — good for
+// A condition's text is a noun-phrase status label ("Sunny", "Overcast") — good for
 // a chip, but reads oddly after "will turn" ("will turn clear sky" isn't a sentence). Maps
 // each one to a plain adjective for the day-summary sentence specifically; anything not
 // listed (Unknown, an unmapped future code) just falls back to the lowercased label.
 const CONDITION_ADJECTIVES: Record<string, string> = {
-	'Clear sky': 'clear',
-	'Mainly clear': 'mostly clear',
+	Sunny: 'sunny',
+	'Mostly sunny': 'mostly sunny',
+	Clear: 'clear',
+	'Mostly clear': 'mostly clear',
 	'Partly cloudy': 'partly cloudy',
 	Overcast: 'cloudy',
 	Fog: 'foggy',
@@ -174,11 +206,24 @@ function segmentOfHour(hourOfDay: number): DaySegment {
  * same day read "Light drizzle". Falls back to overcast when every hour is wet (the
  * caller only uses this for dry segments, so that's a formality).
  */
-function dominantSky(hours: { conditionText: string }[]): string {
+/**
+ * Night's clear labels folded back to their daytime wording. A whole-DAY summary should
+ * tally "Sunny" and "Clear" together — they are the same sky, split only by the clock —
+ * and report the daytime word, since the phrase describes a day. Counting them separately
+ * lets a half-cloudy day outvote a clear one. Per-SEGMENT callers must NOT fold, as that
+ * is exactly what keeps "clear overnight" from becoming "sunny overnight".
+ */
+const DAY_FORM_SKY: Record<string, string> = {
+	Clear: 'Sunny',
+	'Mostly clear': 'Mostly sunny'
+};
+
+function dominantSky(hours: { conditionText: string }[], foldNightToDay = false): string {
 	const counts = new Map<string, number>();
 	for (const h of hours) {
 		if (precipKind(h.conditionText)) continue;
-		counts.set(h.conditionText, (counts.get(h.conditionText) ?? 0) + 1);
+		const text = foldNightToDay ? (DAY_FORM_SKY[h.conditionText] ?? h.conditionText) : h.conditionText;
+		counts.set(text, (counts.get(text) ?? 0) + 1);
 	}
 	let best: string | null = null;
 	let bestCount = 0;
@@ -271,6 +316,30 @@ function groupRuns(outlooks: SegmentOutlook[]): OutlookRun[] {
 	return runs;
 }
 
+/**
+ * "Sunny" is daytime-only, so a dry run that starts in daylight and continues past sunset
+ * cannot carry it — "sunny this afternoon and into the overnight hours" is nonsense. Each
+ * has a day-neutral equivalent that reads correctly either side of sunset, so a run whose
+ * segments disagree only on that falls back to it. A run that stays in daylight keeps
+ * "sunny", and genuinely different skies (clear vs cloudy) keep the existing first-segment
+ * behaviour rather than being silently blended.
+ */
+const DAY_NEUTRAL_SKY: Record<string, string> = {
+	sunny: 'clear',
+	'mostly sunny': 'mostly clear'
+};
+
+function runSky(run: OutlookRun): string {
+	const skies = run.segments.map((seg) => seg.sky);
+	if (skies.every((sky) => sky === skies[0])) return skies[0];
+	const neutral = skies.map((sky) => DAY_NEUTRAL_SKY[sky] ?? sky);
+	// Falling back to skies[0] here would reintroduce the daytime-only word whenever the
+	// run's segments disagree on more than day/night (clear vs mostly clear vs cloudy),
+	// which is exactly the case this function exists to prevent. The first segment still
+	// names the run, but always in a form that survives sunset.
+	return neutral[0];
+}
+
 function runLabel(run: OutlookRun, when: 'today' | 'future'): string {
 	const first = run.segments[0].segment;
 	const last = run.segments[run.segments.length - 1].segment;
@@ -319,8 +388,8 @@ function describeTodaySentence(outlooks: SegmentOutlook[], currentSegment: DaySe
 				: `${run.noun} ${isPluralNoun(run.noun) ? 'move' : 'moves'} in ${label}`;
 			return { text, dry: false };
 		}
-		const sky = run.segments[0].sky;
-		const clearing = /clear/.test(sky);
+		const sky = runSky(run);
+		const clearing = /clear|sunny/.test(sky);
 		if (isCurrent) return { text: `skies are ${sky} ${label}`, dry: false };
 		// Only a run that FOLLOWS wet weather is "easing off"/"clearing" — a dry run in
 		// first position has nothing to have eased from.
@@ -335,12 +404,26 @@ function describeTodaySentence(outlooks: SegmentOutlook[], currentSegment: DaySe
  * tense (nothing about tomorrow is happening now), and reports actual sky cover when
  * nothing is falling rather than assuming dry means clear.
  */
-function describeFuturePhrase(outlooks: SegmentOutlook[], allHours: { conditionText: string }[], snowfallInches: number): string {
+function describeFuturePhrase(
+	outlooks: SegmentOutlook[],
+	allHours: { conditionText: string }[],
+	totals: { rainTotal: number; snowTotal: number },
+	precipUnit: PrecipUnit
+): string {
 	const wet = outlooks.filter((o) => o.isPrecip);
 	const anySnow = wet.some((o) => o.snow);
-	const snowClause = anySnow && snowfallInches >= 0.1 ? `, with around ${snowfallInches.toFixed(1)} inches expected` : '';
+	// Snow is called out by depth (what people actually plan around); rain only earns a
+	// clause when no snow is expected, so the phrase never carries two amounts at once.
+	const amountClause = anySnow
+		? meetsPrecipFloor(totals.snowTotal, precipUnit, true)
+			? `, with around ${precipPhrase(totals.snowTotal, precipUnit, true)} expected`
+			: ''
+		: meetsPrecipFloor(totals.rainTotal, precipUnit, false)
+			? `, with around ${precipPhrase(totals.rainTotal, precipUnit, false)} expected`
+			: '';
+	const snowClause = amountClause;
 
-	if (wet.length === 0) return `with ${dominantSky(allHours)} skies`;
+	if (wet.length === 0) return `with ${dominantSky(allHours, true)} skies`;
 
 	if (wet.length === outlooks.length) {
 		const strongest = wet.reduce((a, b) => (a.rank >= b.rank ? a : b));
@@ -404,6 +487,10 @@ export interface CurrentConditions {
 	windSpeed: number;
 	windDirection: string;
 	pressure: number;
+	/** Accumulation in the hour just gone, in the caller's configured precipUnit (snow as depth). */
+	precipAmount: number;
+	/** True when precipAmount is snow depth rather than rainfall. */
+	precipIsSnow: boolean;
 	sunrise: string;
 	sunset: string;
 }
@@ -425,6 +512,10 @@ export interface ForecastResult {
 		windDirection: string;
 		/** Already in the caller's configured pressureUnit. */
 		pressure: number;
+		/** Accumulation during this hour, in the caller's configured precipUnit (snow as depth). */
+		precipAmount: number;
+		/** True when precipAmount is snow depth rather than rainfall. */
+		precipIsSnow: boolean;
 	}[];
 	daily: { date: string; tempMax: number; tempMin: number; conditionText: string; icon: string }[];
 	/** A plain-English wrap-up ("Current conditions in X are 86°F and sunny with a light northwest wind at 5 mph. Tonight will turn...") — composed from the same numbers above, not a separate API call. Null if there isn't enough data to build one (e.g. tomorrow's forecast missing). */
@@ -452,16 +543,75 @@ function windDescriptor(speed: number, unit: 'mph' | 'kph'): string {
  * plain phrasing. Also avoids competing with actual article synthesis for the one Ollama
  * inference slot on every 45-minute poll cycle (see widgets/weather/plugin.ts).
  */
+export type PrecipUnit = 'in' | 'mm';
+
+/**
+ * Rain and snow diverge only on the metric side: depth of snow is conventionally reported
+ * in centimetres while rainfall stays in millimetres. Open-Meteo already returns snowfall
+ * in cm whenever precipitation_unit=mm, so this picks the label rather than converting.
+ */
+function precipUnitLabel(precipUnit: PrecipUnit, isSnow: boolean): string {
+	if (precipUnit === 'in') return 'in';
+	return isSnow ? 'cm' : 'mm';
+}
+
+/** Prose form for the summary sentence: "3 inches", "0.4 inches", "12 mm", "4.5 cm". */
+function precipPhrase(amount: number, precipUnit: PrecipUnit, isSnow: boolean): string {
+	if (precipUnit === 'mm' && !isSnow) return `${Math.round(amount)} mm`;
+	const rounded = Math.round(amount * 10) / 10;
+	const n = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+	if (precipUnit === 'mm') return `${n} cm`;
+	return `${n} ${rounded === 1 ? 'inch' : 'inches'}`;
+}
+
+/**
+ * Below these, an accumulation is a trace not worth a sentence — "rainfall will total
+ * around 0 inches" is noise. Snow gets a lower bar relative to its unit because an inch of
+ * snow matters in a way a hundredth of an inch of rain does not.
+ */
+function meetsPrecipFloor(amount: number, precipUnit: PrecipUnit, isSnow: boolean): boolean {
+	if (precipUnit === 'in') return amount >= (isSnow ? 0.1 : 0.05);
+	return amount >= (isSnow ? 0.5 : 1);
+}
+
+/**
+ * The day's expected accumulation as its own sentence. Snow leads when both are present —
+ * it is the one that changes plans — with rain trailing as a subordinate clause.
+ * Returns null when neither clears its floor, so the caller can just filter it out.
+ */
+function describePrecipTotals(
+	rainTotal: number,
+	snowTotal: number,
+	precipUnit: PrecipUnit,
+	when: 'today' | 'tomorrow'
+): string | null {
+	const snow = meetsPrecipFloor(snowTotal, precipUnit, true);
+	const rain = meetsPrecipFloor(rainTotal, precipUnit, false);
+	const label = when === 'today' ? 'today' : 'tomorrow';
+	if (snow && rain) {
+		return `Snowfall ${label} will total around ${precipPhrase(snowTotal, precipUnit, true)}, with around ${precipPhrase(rainTotal, precipUnit, false)} of rain.`;
+	}
+	if (snow) return `Snowfall ${label} will total around ${precipPhrase(snowTotal, precipUnit, true)}.`;
+	if (rain) return `Rainfall ${label} will total around ${precipPhrase(rainTotal, precipUnit, false)}.`;
+	return null;
+}
+
 function buildDaySummary(
 	locationName: string | null,
 	current: CurrentConditions,
 	todayRemaining: { time: string; temp: number; conditionText: string }[],
-	tomorrow: { date: string; tempMax: number; precipitationChance: number; snowfallInches: number } | undefined,
+	tomorrow: { date: string; tempMax: number; precipitationChance: number; rainTotal: number; snowTotal: number } | undefined,
 	tomorrowHourly: { time: string; temp: number; conditionText: string }[],
 	windUnit: 'mph' | 'kph',
-	currentHourOfDay: number
+	currentHourOfDay: number,
+	todayTotals: { rainTotal: number; snowTotal: number },
+	precipUnit: PrecipUnit
 ): string | null {
-	if (!tomorrow || todayRemaining.length === 0) return null;
+	// Each sentence below is independently omitted when its own inputs are missing, rather
+	// than one gap discarding the lot: with no hours left in today, current conditions and
+	// tomorrow are still perfectly describable, and silently returning null blanked the
+	// widget's entire synopsis.
+	if (!tomorrow) return null;
 
 	const place = locationName ?? 'your area';
 	const wind = windDescriptor(current.windSpeed, windUnit);
@@ -483,20 +633,23 @@ function buildDaySummary(
 	const currentSegment = segmentOfHour(currentHourOfDay);
 	const tomorrowOvernight = tomorrowHourly.filter((h) => segmentOfHour(Number(h.time.slice(11, 13))) === 'overnight');
 	const restOfToday = currentSegment === 'overnight' ? todayRemaining : [...todayRemaining, ...tomorrowOvernight];
-	const todaySentence = describeTodaySentence(segmentOutlooks(restOfToday), currentSegment);
+	const todaySentence = restOfToday.length > 0 ? describeTodaySentence(segmentOutlooks(restOfToday), currentSegment) : null;
 
 	// Genuinely the overnight low, not just the coldest remaining hour of today's calendar
 	// day — those differ by several degrees whenever the temperature is still falling at
 	// midnight, which is most nights.
 	const overnightPool = restOfToday.filter((h) => segmentOfHour(Number(h.time.slice(11, 13))) === 'overnight');
-	const tonightLow = Math.round(Math.min(...(overnightPool.length > 0 ? overnightPool : todayRemaining).map((h) => h.temp)));
+	// Math.min of an empty list is Infinity, which would render as "Overnight lows near
+	// Infinity°" — so an empty pool drops the sentence instead.
+	const lowPool = overnightPool.length > 0 ? overnightPool : restOfToday;
+	const tonightLow = lowPool.length > 0 ? Math.round(Math.min(...lowPool.map((h) => h.temp))) : null;
 
 	// Tomorrow's own overnight hours belong to tonight (described above), so its outlook
 	// covers the three daylight segments only.
 	const tomorrowDaytime = tomorrowHourly.filter((h) => segmentOfHour(Number(h.time.slice(11, 13))) !== 'overnight');
 	const tomorrowDate = parseDateOnly(tomorrow.date);
 	const tomorrowLabel = tomorrowDate.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-	const outlook = describeFuturePhrase(segmentOutlooks(tomorrowDaytime), tomorrowDaytime, tomorrow.snowfallInches);
+	const outlook = describeFuturePhrase(segmentOutlooks(tomorrowDaytime), tomorrowDaytime, tomorrow, precipUnit);
 
 	// Each sentence anchored to its own time up front — a single run-on sentence
 	// ("...low around 73°, followed by a high of 79° and a 68% chance of rain tomorrow,
@@ -506,7 +659,10 @@ function buildDaySummary(
 	return [
 		`Current conditions in ${place} are ${conditionsClause} a ${wind} ${windDirectionFull} wind at ${Math.round(current.windSpeed)} ${windUnit}.`,
 		todaySentence,
-		`Overnight lows near ${tonightLow}°.`,
+		// Whole-day totals, not just the hours still to come: someone reading at 4 PM wants
+		// the day's figure, and a part-day number would quietly understate it.
+		describePrecipTotals(todayTotals.rainTotal, todayTotals.snowTotal, precipUnit, 'today'),
+		tonightLow !== null ? `Overnight lows near ${tonightLow}°.` : null,
 		`Tomorrow, ${tomorrowLabel}, expect a high of ${Math.round(tomorrow.tempMax)}° ${outlook}.`
 	]
 		.filter(Boolean)
@@ -519,20 +675,21 @@ export async function fetchForecast(
 	unit: 'celsius' | 'fahrenheit',
 	windUnit: 'mph' | 'kph',
 	pressureUnit: 'inHg' | 'hPa',
+	precipUnit: PrecipUnit,
 	locationName: string | null
 ): Promise<ForecastResult> {
 	const url =
 		`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
-		`&current=temperature_2m,apparent_temperature,weather_code,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl` +
+		`&current=temperature_2m,apparent_temperature,weather_code,is_day,precipitation,snowfall,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl` +
 		// humidity/wind/pressure are per-hour duplicates of what `current` already reports for
 		// right now — the weather page's stat panel swaps to the hovered hour's values, so it
 		// needs the whole series, not just the current hour's.
-		`&hourly=temperature_2m,weather_code,precipitation_probability,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl` +
-		`&daily=temperature_2m_max,temperature_2m_min,weather_code,sunrise,sunset,precipitation_probability_max,snowfall_sum` +
+		`&hourly=temperature_2m,weather_code,is_day,precipitation,snowfall,precipitation_probability,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl` +
+		`&daily=temperature_2m_max,temperature_2m_min,weather_code,sunrise,sunset,precipitation_probability_max,rain_sum,showers_sum,snowfall_sum` +
 		// precipitation_unit affects amount-based fields (snowfall_sum) — precipitation_probability_max is a
 		// percentage either way, unaffected. "inch" here regardless of the admin's chosen temperature/wind
-		// units — the day summary always states snowfall in inches (see describeTomorrowOutlook).
-		`&precipitation_unit=inch` +
+		// units — amounts follow the admin's precipUnit, snowfall arriving as cm when metric.
+		`&precipitation_unit=${precipUnit === 'in' ? 'inch' : 'mm'}` +
 		`&temperature_unit=${unit}&wind_speed_unit=${windUnit === 'kph' ? 'kmh' : 'mph'}&timezone=auto&forecast_days=7`;
 	const res = await fetch(url);
 	if (!res.ok) throw new Error(`Forecast API returned ${res.status}`);
@@ -542,6 +699,9 @@ export async function fetchForecast(
 			temperature_2m: number;
 			apparent_temperature: number;
 			weather_code: number;
+			is_day: number;
+			precipitation: number;
+			snowfall: number;
 			relative_humidity_2m: number;
 			wind_speed_10m: number;
 			wind_direction_10m: number;
@@ -551,6 +711,9 @@ export async function fetchForecast(
 			time: string[];
 			temperature_2m: number[];
 			weather_code: number[];
+			is_day: number[];
+			precipitation: number[];
+			snowfall: number[];
 			precipitation_probability: number[];
 			relative_humidity_2m: number[];
 			wind_speed_10m: number[];
@@ -565,6 +728,8 @@ export async function fetchForecast(
 			sunrise: string[];
 			sunset: string[];
 			precipitation_probability_max: number[];
+			rain_sum: number[];
+			showers_sum: number[];
 			snowfall_sum: number[];
 		};
 	};
@@ -583,7 +748,17 @@ export async function fetchForecast(
 		hourlyTimes.findIndex((t) => new Date(t).getTime() >= now)
 	);
 
-	const currentCondition = wmoToCondition(data.current.weather_code);
+	// Open-Meteo anchors its arrays to the day the response was generated for, which can
+	// still be YESTERDAY in the location's own timezone during the first hour(s) after local
+	// midnight — Glasgow at 00:55 BST was served daily[0] = the previous date. Anchoring on
+	// the first hour actually being shown keeps "today", today's totals and today's
+	// sunrise/sunset on the day the reader is living in. indexOf returning -1 (a date the
+	// daily array doesn't carry) falls back to 0, i.e. the old behaviour.
+	const todayStr = (hourlyTimes[startIdx] ?? data.hourly.time[0]).slice(0, 10);
+	const todayIdx = Math.max(0, data.daily.time.indexOf(todayStr));
+	const tomorrowIdx = todayIdx + 1;
+
+	const currentCondition = wmoToCondition(data.current.weather_code, data.current.is_day === 1);
 	const pressure = pressureUnit === 'inHg' ? hPaToInHg(data.current.pressure_msl) : data.current.pressure_msl;
 	const current: CurrentConditions = {
 		temp: data.current.temperature_2m,
@@ -592,11 +767,15 @@ export async function fetchForecast(
 		icon: currentCondition.icon,
 		humidity: data.current.relative_humidity_2m,
 		precipitationChance: data.hourly.precipitation_probability[startIdx] ?? 0,
+		// Snow is reported as depth and rain as liquid, so they can't simply be added — the
+		// flag says which number this is, and whichever is falling wins.
+		precipAmount: (data.current.snowfall ?? 0) > 0 ? data.current.snowfall : (data.current.precipitation ?? 0),
+		precipIsSnow: (data.current.snowfall ?? 0) > 0,
 		windSpeed: data.current.wind_speed_10m,
 		windDirection: degreesToCompass(data.current.wind_direction_10m),
 		pressure: pressureUnit === 'inHg' ? Math.round(pressure * 100) / 100 : Math.round(pressure),
-		sunrise: withUtcOffset(data.daily.sunrise[0], data.utc_offset_seconds),
-		sunset: withUtcOffset(data.daily.sunset[0], data.utc_offset_seconds)
+		sunrise: withUtcOffset(data.daily.sunrise[todayIdx], data.utc_offset_seconds),
+		sunset: withUtcOffset(data.daily.sunset[todayIdx], data.utc_offset_seconds)
 	};
 
 	// Through the end of TOMORROW (index 47 — hourly.time starts at today's midnight, so
@@ -606,7 +785,7 @@ export async function fetchForecast(
 	// frontend now expects today's remaining hours plus the whole of tomorrow.
 	const hourly = hourlyTimes.slice(startIdx, 48).map((time, i) => {
 		const idx = startIdx + i;
-		const condition = wmoToCondition(data.hourly.weather_code[idx]);
+		const condition = wmoToCondition(data.hourly.weather_code[idx], data.hourly.is_day[idx] === 1);
 		const hourPressure = pressureUnit === 'inHg' ? hPaToInHg(data.hourly.pressure_msl[idx]) : data.hourly.pressure_msl[idx];
 		return {
 			time,
@@ -615,6 +794,8 @@ export async function fetchForecast(
 			icon: condition.icon,
 			humidity: data.hourly.relative_humidity_2m[idx],
 			precipitationChance: data.hourly.precipitation_probability[idx] ?? 0,
+			precipAmount: (data.hourly.snowfall[idx] ?? 0) > 0 ? data.hourly.snowfall[idx] : (data.hourly.precipitation[idx] ?? 0),
+			precipIsSnow: (data.hourly.snowfall[idx] ?? 0) > 0,
 			windSpeed: data.hourly.wind_speed_10m[idx],
 			windDirection: degreesToCompass(data.hourly.wind_direction_10m[idx]),
 			pressure: pressureUnit === 'inHg' ? Math.round(hourPressure * 100) / 100 : Math.round(hourPressure)
@@ -635,18 +816,19 @@ export async function fetchForecast(
 	// "Today" means the weather LOCATION's calendar day, not the server's — new Date()
 	// would answer that in the server's own local timezone (production runs the
 	// container with no TZ set, so that's UTC, not wherever the location actually is).
-	// data.hourly.time[0] (the raw, un-sliced array) is guaranteed by Open-Meteo to be
-	// the location's own midnight today, so its date portion is exactly the string to
-	// compare against — plain string prefix comparison, no Date/timezone math at all.
-	const todayStr = data.hourly.time[0].slice(0, 10);
+	// todayStr/todayIdx were resolved up front against the first hour being shown — see
+	// the comment there for why hourly.time[0] alone is not a safe anchor.
 	const todayRemaining = hourly.filter((h) => h.time.slice(0, 10) === todayStr);
-	const tomorrowDateStr = data.daily.time.length > 1 ? data.daily.time[1] : undefined;
+	const tomorrowDateStr = data.daily.time.length > tomorrowIdx ? data.daily.time[tomorrowIdx] : undefined;
 	const tomorrow = tomorrowDateStr
 		? {
 				date: tomorrowDateStr,
-				tempMax: data.daily.temperature_2m_max[1],
-				precipitationChance: data.daily.precipitation_probability_max[1],
-				snowfallInches: data.daily.snowfall_sum[1]
+				tempMax: data.daily.temperature_2m_max[tomorrowIdx],
+				precipitationChance: data.daily.precipitation_probability_max[tomorrowIdx],
+				// rain_sum excludes showers, which Open-Meteo counts separately — summing both
+				// is what makes a shower-driven day report any rain at all.
+				rainTotal: (data.daily.rain_sum[tomorrowIdx] ?? 0) + (data.daily.showers_sum[tomorrowIdx] ?? 0),
+				snowTotal: data.daily.snowfall_sum[tomorrowIdx] ?? 0
 			}
 		: undefined;
 	const tomorrowHourly = tomorrowDateStr ? hourly.filter((h) => h.time.slice(0, 10) === tomorrowDateStr) : [];
@@ -654,7 +836,21 @@ export async function fetchForecast(
 	// for it — new Date().getHours() would answer in the server's timezone (UTC in
 	// production), putting "this afternoon" several segments off for anyone west of it.
 	const currentHourOfDay = Number((hourlyTimes[startIdx] ?? data.hourly.time[0]).slice(11, 13));
-	const summary = buildDaySummary(locationName, current, todayRemaining, tomorrow, tomorrowHourly, windUnit, currentHourOfDay);
+	const todayTotals = {
+		rainTotal: (data.daily.rain_sum[todayIdx] ?? 0) + (data.daily.showers_sum[todayIdx] ?? 0),
+		snowTotal: data.daily.snowfall_sum[todayIdx] ?? 0
+	};
+	const summary = buildDaySummary(
+		locationName,
+		current,
+		todayRemaining,
+		tomorrow,
+		tomorrowHourly,
+		windUnit,
+		currentHourOfDay,
+		todayTotals,
+		precipUnit
+	);
 
 	return { current, hourly, daily, summary };
 }

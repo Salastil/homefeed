@@ -7,7 +7,7 @@ import * as settingsDb from '../storage/db/settings.js';
 import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
 import { getKv } from '../storage/db/widgetKv.js';
 import type { WidgetReport } from '../widgets/report.js';
-import type { MergedArticle } from '../storage/db/types.js';
+import type { MergedArticle, Tag } from '../storage/db/types.js';
 import { hasPrivateAccess } from './privateAccess.js';
 
 // The DB keeps article.video.url as the real upstream URL (video-proxy.ts needs it to
@@ -54,15 +54,27 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 		return presentArticle(article);
 	});
 
+	// The embedding is a clustering artifact (hundreds of full-precision floats per tag,
+	// ~15KB each) that no client reads — the frontend's Tag type doesn't even declare it.
+	// Shipping it made /api/tags ~19MB across ~1300 tags, and because the article page
+	// SSR-fetches tags to turn its handful of tag ids into labels, SvelteKit inlined that
+	// whole dump into every single article page. One article view cost ~9.7MB on the wire
+	// and those pages were 79% of this site's total egress, saturating the uplink in
+	// bursts whenever a crawler walked them.
+	function presentTag(tag: Tag) {
+		const { embedding: _embedding, ...rest } = tag;
+		return rest;
+	}
+
 	app.get('/api/tags', async () => {
-		return tagsDb.listActiveTags();
+		return tagsDb.listActiveTags().map(presentTag);
 	});
 
 	app.get('/api/tag/:slug', async (req, reply) => {
 		const { slug } = req.params as { slug: string };
 		const tag = tagsDb.getTagBySlug(slug);
 		if (!tag) return reply.code(404).send({ error: 'not found' });
-		return tag;
+		return presentTag(tag);
 	});
 
 	app.get('/api/events', async () => {
