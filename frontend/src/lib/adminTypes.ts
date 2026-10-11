@@ -27,9 +27,20 @@ export interface WeatherHourEntry {
 export interface WeatherDayEntry {
 	date: string;
 	tempMax: number;
+	/** The calendar day's minimum - the fallback for nightLow. */
 	tempMin: number;
+	/** Short daytime description composed from the hourly forecast, e.g. "Mostly cloudy with a shower". */
 	conditionText: string;
 	icon: string;
+	/** Short description of the night that follows this day, e.g. "A couple of evening showers". */
+	nightDescription: string;
+	nightIcon: string;
+	/** That night's low - what AccuWeather shows as the day's "low". Null when too little of the night is in the forecast. */
+	nightLow: number | null;
+	/** Percent, 0-100: the day's highest hourly chance of precipitation. */
+	precipitationChance: number | null;
+	/** Same, for that night alone — what a "Tonight" row shows. */
+	nightPrecipitationChance: number | null;
 }
 
 export interface WeatherCurrentConditions {

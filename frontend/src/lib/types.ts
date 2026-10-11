@@ -95,7 +95,37 @@ export interface Category {
 	isSpillover: boolean;
 }
 
-export interface WeatherHourEntry {
+/**
+ * The at-a-glance conditions an hour and "right now" both carry, so the weather page's
+ * header card can render either through one code path (see backend widgets/weather/db.ts).
+ */
+export interface WeatherConditionDetails {
+	/** Already in the feed's configured windUnit. */
+	windGust: number;
+	/** Percent, 0-100. */
+	cloudCover: number;
+	/** Miles when windUnit is mph, kilometres when kph. Null when the forecast model has none. */
+	visibility: number | null;
+	/** In the feed's configured temperature unit. */
+	dewPoint: number;
+	/** Estimated indoor relative humidity, percent. */
+	indoorHumidity: number;
+	/** "Ideal Humidity", "Slightly Dry", "Dangerously Humid", ... — one of AccuWeather's 11 descriptions. */
+	indoorHumidityLabel: string;
+	/** -5 (dangerously dry) .. 0 (ideal) .. +5 (dangerously humid). */
+	indoorHumidityLevel: number;
+	/** Feet; null when unknown. NWS data, so US only — see the backend's fetchCeilingBlocks. At or above 25,000 means "no ceiling below that". */
+	cloudCeilingFt: number | null;
+}
+
+/** See the backend's ConditionKind: a coarse look for one hour, so neighbouring hours can merge into one stretch of the timeline bar. */
+export type WeatherConditionKind = 'clear' | 'partly' | 'cloudy' | 'fog' | 'light-rain' | 'rain' | 'freezing' | 'snow' | 'storm';
+
+export interface WeatherHourEntry extends WeatherConditionDetails {
+	/** Absent on a forecast cached before the field existed - until the next poll, a few seconds after a deploy. */
+	conditionKind?: WeatherConditionKind;
+	/** Apparent temperature, in the feed's configured temperature unit. */
+	feelsLike: number;
 	time: string;
 	temp: number;
 	conditionText: string;
@@ -118,12 +148,23 @@ export interface WeatherHourEntry {
 export interface WeatherDayEntry {
 	date: string;
 	tempMax: number;
+	/** The calendar day's minimum - the fallback for nightLow. */
 	tempMin: number;
+	/** Short daytime description composed from the hourly forecast, e.g. "Mostly cloudy with a shower". */
 	conditionText: string;
 	icon: string;
+	/** Short description of the night that follows this day, e.g. "A couple of evening showers". */
+	nightDescription: string;
+	nightIcon: string;
+	/** That night's low - what AccuWeather shows as the day's "low". Null when too little of the night is in the forecast. */
+	nightLow: number | null;
+	/** Percent, 0-100: the day's highest hourly chance of precipitation. */
+	precipitationChance: number | null;
+	/** Same, for that night alone — what a "Tonight" row shows. */
+	nightPrecipitationChance: number | null;
 }
 
-export interface WeatherCurrentConditions {
+export interface WeatherCurrentConditions extends WeatherConditionDetails {
 	temp: number;
 	feelsLike: number;
 	conditionText: string;
