@@ -110,6 +110,9 @@ export interface WeatherHourEntry {
 	windDirection: string;
 	/** Already in the feed's configured pressureUnit. */
 	pressure: number;
+	/** Accumulation during this hour, already in the feed's configured precipUnit. Snow is DEPTH, not liquid equivalent — precipIsSnow says which, and picks the label (in / mm for rain / cm for snow). */
+	precipAmount: number;
+	precipIsSnow: boolean;
 }
 
 export interface WeatherDayEntry {
@@ -130,6 +133,8 @@ export interface WeatherCurrentConditions {
 	windSpeed: number;
 	windDirection: string;
 	pressure: number;
+	precipAmount: number;
+	precipIsSnow: boolean;
 	sunrise: string;
 	sunset: string;
 }
@@ -147,6 +152,8 @@ export interface Weather {
 	unit: 'celsius' | 'fahrenheit';
 	windUnit: 'mph' | 'kph';
 	pressureUnit: 'inHg' | 'hPa';
+	/** 'mm' means millimetres for rain but centimetres for snow depth — see precipUnitLabel. */
+	precipUnit: 'in' | 'mm';
 	current: WeatherCurrentConditions | null;
 	hourly: WeatherHourEntry[];
 	daily: WeatherDayEntry[];

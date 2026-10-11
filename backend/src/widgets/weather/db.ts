@@ -15,6 +15,10 @@ export interface WeatherHourEntry {
 	windDirection: string;
 	/** Already in the admin's configured pressureUnit. */
 	pressure: number;
+	/** Precipitation accumulated during this hour, already in the admin's configured precipUnit — inches, or mm for rain / cm for snow when metric. Snow is reported as DEPTH, not liquid equivalent, which is why precipIsSnow has to travel with it to pick the right label. */
+	precipAmount: number;
+	/** True when this hour's accumulation is snow depth rather than rainfall. */
+	precipIsSnow: boolean;
 }
 
 export interface WeatherDayEntry {
@@ -40,6 +44,8 @@ export interface WeatherConfig {
 	unit: 'celsius' | 'fahrenheit';
 	windUnit: 'mph' | 'kph';
 	pressureUnit: 'inHg' | 'hPa';
+	/** 'in' reports both rain and snow in inches. 'mm' follows the metric convention of millimetres for rain but CENTIMETRES for snow depth, which is what Open-Meteo returns and what forecasters actually use. */
+	precipUnit: 'in' | 'mm';
 }
 
 export interface WeatherCache {
@@ -59,6 +65,10 @@ export interface WeatherCache {
 		windDirection: string;
 		/** Already in the admin's configured pressureUnit. */
 		pressure: number;
+		/** Precipitation in the hour just gone, in the configured precipUnit — see WeatherHourEntry.precipAmount. */
+		precipAmount: number;
+		/** True when that accumulation is snow depth rather than rainfall. */
+		precipIsSnow: boolean;
 		sunrise: string;
 		sunset: string;
 	} | null;
@@ -79,7 +89,8 @@ const DEFAULT_CONFIG: WeatherConfig = {
 	longitude: null,
 	unit: 'fahrenheit',
 	windUnit: 'mph',
-	pressureUnit: 'inHg'
+	pressureUnit: 'inHg',
+	precipUnit: 'in'
 };
 
 const DEFAULT_CACHE: WeatherCache = {
@@ -96,7 +107,10 @@ const DEFAULT_CACHE: WeatherCache = {
 // tables already had from global_settings, just via the generic kv store instead of a
 // bespoke table (this widget has no data shaped like rows, so no dedicated table is needed).
 export function getConfig(): WeatherConfig {
-	return getKv<WeatherConfig>(WIDGET_ID, 'config') ?? DEFAULT_CONFIG;
+	// Spread over the defaults rather than falling back to them wholesale: a config saved
+	// before a field existed is a stored object MISSING that key, not an absent row, so
+	// `?? DEFAULT_CONFIG` alone would hand back `undefined` for every newer setting.
+	return { ...DEFAULT_CONFIG, ...(getKv<Partial<WeatherConfig>>(WIDGET_ID, 'config') ?? {}) };
 }
 
 export function setConfig(patch: Partial<WeatherConfig>): WeatherConfig {
