@@ -489,7 +489,6 @@
 		--hour-hover-text: #8fb8e8;
 	}
 	.weather-card {
-		max-width: 640px;
 		margin: 20px 0 20px;
 		padding: 16px;
 		background: var(--surface-1);
@@ -529,7 +528,6 @@
 		font-size: 14px;
 		color: var(--text-secondary);
 		line-height: 1.6;
-		max-width: 560px;
 		margin: 0 0 28px;
 	}
 	.icon {
@@ -774,7 +772,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
-		max-width: 640px;
 	}
 	.alert-row {
 		border-left: 3px solid var(--text-muted);
@@ -812,7 +809,6 @@
 	.daily-list {
 		display: flex;
 		flex-direction: column;
-		max-width: 640px;
 	}
 	.day-row {
 		display: flex;
