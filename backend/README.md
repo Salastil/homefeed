@@ -17,13 +17,22 @@ npm run dev
 Runs on `:4000` by default. Point the frontend's `VITE_BACKEND_URL` at it instead of
 the mock backend and everything else keeps working unchanged — same API contract.
 
-On startup, the console prints an admin API key — a fresh random value generated
-every time the process starts (see `api/apiKey.ts`), not stored anywhere and not
-configurable via `.env`. Every `/api/admin/*` request must send it as an
-`X-Api-Key` header (enforced in `api/auth.ts`); the admin login page just asks for
-this key and stashes it in the browser's `localStorage` rather than issuing its own
-session. Restarting the backend invalidates the previous key — check the console
-each time.
+Every `/api/admin/*` request must send an admin API key as an `X-Api-Key` header
+(enforced in `api/auth.ts`); the admin login page just asks for this key and stashes
+it in the browser's `localStorage` rather than issuing its own session. The key comes
+from, in order (see `api/apiKey.ts`):
+
+1. the `ADMIN_API_KEY` environment variable — **set this to choose your own password.**
+   It's used exactly as given (surrounding whitespace is trimmed) and, because you
+   already know it, it is *not* printed at startup. Use 16+ characters: nothing limits
+   repeated wrong guesses, and the backend warns when the key is shorter than that.
+2. an `ADMIN_API_KEY=` line already saved in `backend/.env` by a previous launch;
+3. otherwise a random one is generated on the first launch, printed to the console and
+   appended to `backend/.env` so it stays the same on later launches.
+
+In Docker the environment variable has to be forwarded by the compose file
+(`ADMIN_API_KEY: ${ADMIN_API_KEY:-}` under `backend.environment`) — a value sitting in
+the project's `.env` that no compose line references never reaches the container.
 
 You'll also need a running Ollama instance (see `AI_SERVICE_HOST`/`AI_SERVICE_PORT` in
 the admin panel's Connections tab, or `PATCH /api/admin/settings` directly) with at
@@ -95,8 +104,8 @@ real RSS parsing, real HTTP calls to a stub Ollama server, real media download t
 disk, real tag dedup across separate synthesis calls):
 
 - SQLite schema + repository layer for every entity in `homefeed-data-schema.md`
-- Per-launch API key auth (random key printed to the console on every startup,
-  checked via a timing-safe comparison against an `X-Api-Key` header on every
+- Admin API key auth (your own `ADMIN_API_KEY`, or a random one generated once and
+  persisted, checked via a timing-safe comparison against an `X-Api-Key` header on every
   request, CORS locked to the configured frontend origin) protecting all
   `/api/admin/*` routes
 - RSS adapter (real parsing, images/video extraction) and a generic JSON API adapter

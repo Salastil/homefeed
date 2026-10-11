@@ -20,8 +20,10 @@ npm install
 npm run dev
 ```
 
-The console prints an admin API key on every startup (a fresh one each time) — copy
-it into the admin login page. See `backend/README.md` for details.
+The admin login page asks for an admin API key. Either set `ADMIN_API_KEY` in
+`backend/.env` to a password of your choosing, or leave it unset and copy the random
+key the console prints the first time it starts (it's saved to `.env` and reused after
+that). See `backend/README.md` for details.
 
 See `backend/README.md` for what's fully implemented vs. stubbed (Telegram adapter,
 etc.), and how it behaves when Ollama isn't reachable.
@@ -80,9 +82,11 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Open http://localhost:3000. The backend's admin API key prints to its container
-log on every start (`docker compose logs backend`) — same as running it directly,
-just a fresh one each time the container restarts.
+Open http://localhost:3000. For the admin panel, set `ADMIN_API_KEY` in `.env` to a
+password of your choosing — it's passed through to the backend (see `.env.example`).
+If you leave it unset the backend invents a random key and prints it to its container
+log (`docker compose logs backend`), but a container has no writable `.env` to remember
+it in, so you'd get a different one every time the container is recreated.
 
 `.env.example` documents every variable `docker-compose.yml` reads; the two that
 matter most:
@@ -152,9 +156,10 @@ npm run build
 node --experimental-sqlite --env-file=.env dist/index.js
 ```
 
-Keep this running (systemd, pm2, tmux — whatever you'd normally use). It prints a
-fresh admin API key to its console/log on every start; you'll need whatever's there
-each time it restarts (see `backend/README.md`).
+Keep this running (systemd, pm2, tmux — whatever you'd normally use). Set
+`ADMIN_API_KEY` in `backend/.env` to choose your admin password; if you don't, it
+generates one the first time, prints it to the console and saves it to `.env` so it
+stays the same on later starts (see `backend/README.md`).
 
 > **`FRONTEND_ORIGIN` here and `ORIGIN` in `frontend/.env` (next step) must be the
 > exact same value** — same scheme, same host, same trailing-slash-or-not. SvelteKit's
