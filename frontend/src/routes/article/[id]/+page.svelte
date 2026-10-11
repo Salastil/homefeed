@@ -162,9 +162,6 @@
 		display: flex;
 		gap: 8px;
 	}
-	article {
-		max-width: 640px;
-	}
 	.meta {
 		font-size: 11px;
 		color: var(--text-accent);

@@ -150,23 +150,40 @@
 		margin-bottom: 8px;
 		background: var(--surface-1);
 	}
+	/* Each shape keeps the proportions it had when the feed column was 640px wide (1 item
+	   380px tall, 2 items 240px, 3-4 items 300px) and scales with the card from there. A
+	   fixed height alone left landscape photos letterboxed with dark side bars once the
+	   column grew past that. The old heights survive as a floor, so a narrow phone column
+	   still gets the same tall frame it always did.
+
+	   Sized with container units rather than `aspect-ratio` + `min-height`: that pair turns
+	   the minimum HEIGHT into a minimum WIDTH through the ratio (380px becomes 676px wide),
+	   which pushed these frames past the edge of a phone screen. The plain height line above
+	   each is the fallback for a browser without container units. */
+	.telegram-card {
+		container-type: inline-size;
+	}
 	.media-grid[data-count='1'] {
 		grid-template-columns: 1fr;
 		height: 380px;
+		height: max(380px, 56.25cqw);
 	}
 	.media-grid[data-count='2'] {
 		grid-template-columns: 1fr 1fr;
 		height: 240px;
+		height: max(240px, 37.5cqw);
 	}
 	.media-grid[data-count='3'] {
 		grid-template-columns: 1fr 1fr;
 		grid-template-rows: 1fr 1fr;
 		height: 300px;
+		height: max(300px, 46.875cqw);
 	}
 	.media-grid[data-count='4'] {
 		grid-template-columns: 1fr 1fr;
 		grid-template-rows: 1fr 1fr;
 		height: 300px;
+		height: max(300px, 46.875cqw);
 	}
 	.media-cell {
 		overflow: hidden;

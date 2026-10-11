@@ -70,9 +70,6 @@
 	.cat-name:hover {
 		color: var(--text-accent);
 	}
-	.list {
-		max-width: 720px;
-	}
 	.empty {
 		font-size: 12px;
 		color: var(--text-muted);

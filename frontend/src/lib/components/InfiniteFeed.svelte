@@ -203,9 +203,6 @@
 {/if}
 
 <style>
-	.list {
-		max-width: 720px;
-	}
 	.entry {
 		position: relative;
 	}
