@@ -85,3 +85,13 @@ services:
 
 volumes:
   backend-data:
+    # Pinned to an existing volume by its exact name instead of letting Compose derive
+    # "<project>_backend-data". The derived name changes with the project name, and
+    # Compose Manager's project name is whatever is in its project_name file - which once
+    # drifted from the folder name, so its Up button silently created a fresh, empty
+    # database next to the real one. `external` also means Compose will refuse to start
+    # (rather than quietly create a blank volume) if this one is ever missing, and that
+    # `down -v` can never delete it. On a brand-new host, create it first:
+    #   docker volume create homefeed-001_backend-data
+    external: true
+    name: homefeed-001_backend-data
