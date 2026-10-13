@@ -51,9 +51,11 @@ services:
       # every render. Pointing it straight at NPM keeps SNI/TLS and the vhost match intact.
       # Declared on backend because the frontend uses network_mode: service:backend and so
       # shares this container's /etc/hosts (Docker rejects extra_hosts on a container-networked
-      # service). Like FRONTEND_ORIGIN/ORIGIN, this is deployment-specific: change both the
-      # name and the address if you fork this file for another domain/host.
-      - "salastil.com:192.168.1.212"
+      # service). Like FRONTEND_ORIGIN/ORIGIN, this is deployment-specific: change the name if
+      # you fork this file for another domain. The address is the LAN IP of the host running
+      # NPM - set LAN_HOST_IP in .env when that machine's address changes, otherwise every
+      # server-rendered page 500s with "fetch failed" until this is updated.
+      - "salastil.com:${LAN_HOST_IP:-192.168.0.60}"
     healthcheck:
       test:
         [
