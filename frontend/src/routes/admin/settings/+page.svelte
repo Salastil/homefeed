@@ -40,7 +40,13 @@
 	{#if active === 'merge'}
 		<MergeTab settings={data.settings} sources={data.sources} />
 	{:else if active === 'models'}
-		<ModelsTab settings={data.settings} models={data.models} aiStatus={data.aiStatus} />
+		<!-- The AI server's answer is deliberately not awaited by the page load (an unreachable
+		     host takes seconds to time out), so this is the one place that waits for it. -->
+		{#await Promise.all([data.models, data.aiStatus])}
+			<p class="checking">Checking the AI server…</p>
+		{:then [models, aiStatus]}
+			<ModelsTab settings={data.settings} {models} {aiStatus} />
+		{/await}
 	{:else if active === 'retention'}
 		<RetentionTab settings={data.settings} />
 	{:else if active === 'events'}
@@ -67,6 +73,11 @@
 </div>
 
 <style>
+	.checking {
+		color: var(--text-muted);
+		font-size: 13px;
+		padding: 24px 0;
+	}
 	.head {
 		display: flex;
 		align-items: center;

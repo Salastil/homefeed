@@ -51,18 +51,18 @@ export const load: PageLoad = async ({ fetch }) => {
 			listWidgets(fetch)
 		]);
 
-		// The AI service (Ollama) may not be running yet — that shouldn't take down the
-		// whole settings page, just leave the Models/Connections tabs showing "unreachable".
-		let models: ModelCatalog = EMPTY_MODELS;
-		let aiStatus: AiStatusBySlot = {
+		// The AI service (Ollama) may not be running yet, or may be switched off on purpose -
+		// that must not take down the settings page, and must not hold it up either: an
+		// unreachable host costs a full connection timeout, and awaiting it here made every
+		// tab wait for it (10-15s with the AI server down). So these are started now but NOT
+		// awaited; only the Models tab uses them and it awaits them itself, showing
+		// "unreachable" if they fail. Each promise handles its own failure, so neither can
+		// reject unobserved.
+		const models: Promise<ModelCatalog> = getModels(fetch).catch(() => EMPTY_MODELS);
+		const aiStatus: Promise<AiStatusBySlot> = getAiStatus(fetch).catch(() => ({
 			embedding: { connected: false, host: settings.embeddingServiceHost, port: settings.embeddingServicePort, ramGB: null, gpu: null },
 			synthesis: { connected: false, host: settings.synthesisServiceHost, port: settings.synthesisServicePort, ramGB: null, gpu: null }
-		};
-		try {
-			[models, aiStatus] = await Promise.all([getModels(fetch), getAiStatus(fetch)]);
-		} catch {
-			// swallow — surfaced instead via aiStatus.connected in the UI
-		}
+		}));
 
 		const telegramStatus: TelegramStatus = await getTelegramStatus(fetch).catch(
 			() => ({ credentialsConfigured: false, connected: false, phone: null })
