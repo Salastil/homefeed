@@ -51,7 +51,13 @@ export async function loadUploadedWidget(id: string, codePath: string): Promise<
 	try {
 		const manifest = JSON.parse(fs.readFileSync(path.join(codePath, 'manifest.json'), 'utf8')) as { entry: string };
 		const entryUrl = pathToFileURL(path.join(codePath, manifest.entry)).href;
-		const mod = await import(entryUrl);
+		// The query string makes every load a distinct module URL. Node caches an import() by
+		// URL for the life of the process, so without it re-uploading a widget (delete +
+		// install, the only way to update one) silently kept running the PREVIOUS code - and
+		// its module-level state - while the new files sat unused on disk, until the whole
+		// backend was restarted. Costs one small leaked module per (re)load. Only the entry
+		// file is re-evaluated: files it imports by relative path still come from the cache.
+		const mod = await import(`${entryUrl}?v=${Date.now()}`);
 		const plugin: WidgetPlugin = mod.default;
 		if (!plugin || typeof plugin.id !== 'string') {
 			throw new Error('module has no default-exported WidgetPlugin');
