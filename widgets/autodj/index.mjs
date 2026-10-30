@@ -1,22 +1,42 @@
 // Backend half of the AutoDJ radio widget. The player itself lives in frontend.mjs; this
-// file exists for one reason: AutoDJ's public site (music.salastil.com) sends no CORS
-// headers, so JavaScript running on the homefeed page can't read its /api/status. The
-// browser can still *play* the stream and *show* the cover (an <audio> / <img> needs no
-// CORS), so only the metadata has to be relayed through here.
+// file relays AutoDJ's now-playing status to it. A relay (rather than the browser calling
+// music.salastil.com directly) because it works for any visitor whatever origin they arrive
+// on - AutoDJ's CORS allow-list names exact origins - and because it caps the load on the
+// radio machine: one upstream request per few seconds however many tabs are open. The
+// browser still *plays* the stream and *shows* the cover itself (an <audio> / <img> needs
+// no CORS), so only the metadata goes through here.
 //
 // No tables, no poll loop: the now-playing data is fetched on demand and held for a few
 // seconds, because it's only ever wanted while someone has the page open. Registers a
 // public route, so installing this widget triggers the host's server rebuild (see
 // backend/src/widgets/install.ts) - same as the searchbar widget.
 
+// What BROWSERS use: the stream and the cover art are loaded by the visitor's own browser,
+// so these must be the public address.
 const STATION_URL = 'https://music.salastil.com';
 const STREAM_URL = `${STATION_URL}/stream.mp3`;
+
+// What the BACKEND asks for the now-playing data. AutoDJ's read-only site is published on
+// the same machine as this backend (port 8181), so the relay reads it over the LAN - no
+// Cloudflare, no trip out to the internet and back. That address is deployment-specific
+// (the NAS's LAN IP); if it stops answering the relay quietly falls back to the public URL,
+// so a changed IP degrades to "a bit slower", not "broken". Set to null to always use the
+// public URL.
+const LAN_STATUS_URL = 'http://192.168.0.60:8181';
 
 // Every visitor's browser polls /now, and each of those would otherwise become a request
 // to the radio box. Responses are shared for this long, and concurrent misses share one
 // upstream request, so upstream load is ~1 request per CACHE_MS no matter how many tabs.
 const CACHE_MS = 3000;
-const UPSTREAM_TIMEOUT_MS = 5000;
+
+// A fetch() can stall in a way that neither its AbortSignal nor its own timeout ever
+// resolves (a half-dead connection: TCP up, no reply - the same failure the poller guards
+// against in ingestion/poller.ts). Each attempt therefore races a plain timer, not just an
+// abort signal. This matters more here than usual: concurrent callers share ONE in-flight
+// request, so a request that never settles would block every later caller forever - which
+// is exactly what wedged v1.0.0 in production until the backend was restarted.
+const LAN_DEADLINE_MS = 2500;
+const PUBLIC_DEADLINE_MS = 4000;
 
 let cached = null; // { at: ms, body }
 let inflight = null; // Promise<body> while an upstream request is running
@@ -49,24 +69,50 @@ function shapeNowPlaying(raw) {
 	};
 }
 
+// Resolves with `work`'s result, or rejects after `ms` whether or not `work` ever settles.
+// `work` is abandoned, not cancelled, on timeout (its eventual rejection is swallowed so it
+// can't surface later as an unhandled rejection).
+function withDeadline(work, ms) {
+	work.catch(() => {});
+	let timer;
+	return Promise.race([
+		work.finally(() => clearTimeout(timer)),
+		new Promise((_, reject) => {
+			timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+			timer.unref?.();
+		})
+	]);
+}
+
+async function readStatus(baseUrl, deadlineMs) {
+	const res = await withDeadline(fetch(`${baseUrl}/api/status`, { signal: AbortSignal.timeout(deadlineMs) }), deadlineMs);
+	if (!res.ok) throw new Error(`status ${res.status}`);
+	return withDeadline(res.json(), deadlineMs);
+}
+
 async function fetchStatus() {
 	const base = { streamUrl: STREAM_URL };
-	try {
-		const res = await fetch(`${STATION_URL}/api/status`, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
-		if (!res.ok) throw new Error(`status ${res.status}`);
-		const data = await res.json();
-		return {
-			...base,
-			online: true,
-			stationName: str(data.station_name) ?? 'AutoDJ Radio',
-			listeners: Number.isInteger(data.listeners) ? data.listeners : null,
-			nowPlaying: shapeNowPlaying(data.now_playing)
-		};
-	} catch {
-		// The widget can still offer the stream (it may be only the status endpoint that is
-		// down), it just has nothing to say about what's playing.
-		return { ...base, online: false, stationName: 'AutoDJ Radio', listeners: null, nowPlaying: null };
+	const attempts = [];
+	if (LAN_STATUS_URL) attempts.push([LAN_STATUS_URL, LAN_DEADLINE_MS]);
+	attempts.push([STATION_URL, PUBLIC_DEADLINE_MS]);
+
+	for (const [baseUrl, deadlineMs] of attempts) {
+		try {
+			const data = await readStatus(baseUrl, deadlineMs);
+			return {
+				...base,
+				online: true,
+				stationName: str(data.station_name) ?? 'AutoDJ Radio',
+				listeners: Number.isInteger(data.listeners) ? data.listeners : null,
+				nowPlaying: shapeNowPlaying(data.now_playing)
+			};
+		} catch {
+			// try the next address
+		}
 	}
+	// The widget can still offer the stream (it may be only the status endpoint that is
+	// down), it just has nothing to say about what's playing.
+	return { ...base, online: false, stationName: 'AutoDJ Radio', listeners: null, nowPlaying: null };
 }
 
 async function getNow() {
@@ -88,7 +134,7 @@ async function getNow() {
 export default {
 	id: 'autodj',
 	displayName: 'AutoDJ Radio',
-	version: '1.0.0',
+	version: '1.1.0',
 
 	registerPublicRoutes(app) {
 		app.get('/api/widget/autodj/now', async (_req, reply) => {
