@@ -14,7 +14,7 @@
 // What BROWSERS use: the stream and the cover art are loaded by the visitor's own browser,
 // so these must be the public address.
 const STATION_URL = 'https://music.salastil.com';
-const STREAM_URL = `${STATION_URL}/stream.mp3`;
+const STREAM_URL = `${STATION_URL}/stream.opus`;
 
 // What the BACKEND asks for the now-playing data. AutoDJ's read-only site is published on
 // the same machine as this backend (port 8181), so the relay reads it over the LAN - no

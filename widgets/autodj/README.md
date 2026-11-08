@@ -8,7 +8,7 @@ not built into the app.
 | File | Role |
 | --- | --- |
 | `index.mjs` | Backend. Serves `GET /api/widget/autodj/now`, relaying AutoDJ's `/api/status` (cached 3 s, fields validated, cover URL rebuilt on the station's own host). Reads it over the LAN (`LAN_STATUS_URL`) and falls back to the public URL. |
-| `frontend.mjs` | Browser UI, loaded from `/widget-assets/autodj/frontend.mjs`. Plays `https://music.salastil.com/stream.mp3` directly in an `<audio>` element. |
+| `frontend.mjs` | Browser UI, loaded from `/widget-assets/autodj/frontend.mjs`. Plays `https://music.salastil.com/stream.opus` directly in an `<audio>` element. |
 
 ## Install
 

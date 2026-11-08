@@ -5,7 +5,7 @@
 //
 // What's shown comes from GET /api/widget/autodj/now (see index.mjs, which relays AutoDJ's
 // status because music.salastil.com sends no CORS headers). The audio is NOT relayed: an
-// <audio> element plays https://music.salastil.com/stream.mp3 directly, which needs no CORS.
+// <audio> element plays https://music.salastil.com/stream.opus directly, which needs no CORS.
 
 const VOLUME_KEY = 'homefeed:autodjWidget:volume';
 
@@ -174,7 +174,7 @@ function mount(container, ctx) {
 		buffering = true;
 		// Always set a fresh src: after a pause the element must rejoin the LIVE edge, not
 		// resume from whatever it buffered minutes ago (see stop()).
-		audio.src = data?.streamUrl ?? 'https://music.salastil.com/stream.mp3';
+		audio.src = data?.streamUrl ?? 'https://music.salastil.com/stream.opus';
 		setPlaybackUi();
 		audio.play().catch(() => {
 			// Autoplay policy or a network failure; either way, back to a clean stopped state.
