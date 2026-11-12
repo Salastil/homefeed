@@ -1106,6 +1106,61 @@ export function describePeriod(hours: PeriodHour[], isDay: boolean): { text: str
 	return { text, icon: wmoToCondition(iconCode, isDay).icon };
 }
 
+// Open-Meteo's default ("best_match") model for the continental US is NOAA's GFS, which on
+// 2026-11-13 forecast snow for Philadelphia while ECMWF, ICON, GEM and NWS's own blend all
+// said rain - GFS alone ran cold, and the widget printed that one outlier as fact. The
+// National Blend of Models is NWS's multi-model consensus, i.e. what the outlets show, so it
+// is the source for US locations.
+const NBM_MODEL = 'ncep_nbm_conus';
+
+// Generous box around the contiguous US (it takes in slivers of Canada and Mexico). The box
+// only decides whether to *try* NBM - outside its real coverage Open-Meteo answers with an
+// error, which sends the request back to the default model below.
+function inNbmCoverage(latitude: number, longitude: number): boolean {
+	return latitude >= 24 && latitude <= 50 && longitude >= -125 && longitude <= -66;
+}
+
+async function getJson(url: string): Promise<{ error?: boolean; reason?: string } & Record<string, any>> {
+	const res = await fetch(url);
+	if (!res.ok) throw new Error(`Forecast API returned ${res.status}`);
+	return (await res.json()) as any;
+}
+
+/**
+ * The forecast response for the whole widget. For US locations it comes from NBM, but NBM
+ * publishes no sea-level pressure at all and leaves visibility empty for about half the
+ * hours, so those two fields are filled from the default model (nothing the forecast's
+ * precipitation or temperature depends on). Any failure along the way - outside NBM's
+ * coverage, NBM or the fill-in unreachable - falls back to the plain default-model
+ * request, so the widget never ends up with a half-empty forecast.
+ */
+async function fetchForecastJson(baseUrl: string, latitude: number, longitude: number): Promise<unknown> {
+	if (inNbmCoverage(latitude, longitude)) {
+		try {
+			const [nbm, gap] = await Promise.all([
+				getJson(`${baseUrl}&models=${NBM_MODEL}`),
+				getJson(
+					`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
+						`&current=pressure_msl,visibility&hourly=pressure_msl,visibility&timezone=auto&forecast_days=8`
+				)
+			]);
+			if (!nbm.error && !gap.error && nbm.hourly?.time?.length && gap.hourly?.time?.length === nbm.hourly.time.length) {
+				if (nbm.current.pressure_msl == null) nbm.current.pressure_msl = gap.current.pressure_msl;
+				if (nbm.current.visibility == null) nbm.current.visibility = gap.current.visibility;
+				for (const key of ['pressure_msl', 'visibility'] as const) {
+					nbm.hourly[key] = nbm.hourly[key].map((v: number | null, i: number) => v ?? gap.hourly[key][i]);
+				}
+				return nbm;
+			}
+		} catch {
+			// fall through to the default model
+		}
+	}
+	const data = await getJson(baseUrl);
+	if (data.error) throw new Error(`Forecast API error: ${data.reason ?? 'unknown'}`);
+	return data;
+}
+
 export async function fetchForecast(
 	latitude: number,
 	longitude: number,
@@ -1115,7 +1170,7 @@ export async function fetchForecast(
 	precipUnit: PrecipUnit,
 	locationName: string | null
 ): Promise<ForecastResult> {
-	const url =
+	const baseUrl =
 		`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
 		`&current=temperature_2m,apparent_temperature,weather_code,is_day,precipitation,snowfall,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,pressure_msl,cloud_cover,visibility` +
 		// humidity/wind/pressure are per-hour duplicates of what `current` already reports for
@@ -1130,9 +1185,8 @@ export async function fetchForecast(
 		`&temperature_unit=${unit}&wind_speed_unit=${windUnit === 'kph' ? 'kmh' : 'mph'}&timezone=auto&forecast_days=8`;
 	// The ceiling lookup never throws (see fetchCeilingBlocks), so it can't fail the forecast
 	// it is fetched alongside.
-	const [res, ceilingBlocks] = await Promise.all([fetch(url), fetchCeilingBlocks(latitude, longitude)]);
-	if (!res.ok) throw new Error(`Forecast API returned ${res.status}`);
-	const data = (await res.json()) as {
+	const [forecastJson, ceilingBlocks] = await Promise.all([fetchForecastJson(baseUrl, latitude, longitude), fetchCeilingBlocks(latitude, longitude)]);
+	const data = forecastJson as {
 		utc_offset_seconds: number;
 		current: {
 			temperature_2m: number;
