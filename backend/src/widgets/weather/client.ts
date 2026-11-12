@@ -4,6 +4,7 @@
 // same separation as backend/src/telegram/ keeps between the raw client and its callers.
 
 import type { ConditionDetails, ConditionKind } from './db.js';
+import { logger } from '../../storage/db/logs.js';
 
 export interface GeocodeResult {
 	name: string;
@@ -37,6 +38,8 @@ const WMO_CONDITIONS: Record<number, WeatherCondition> = {
 	65: { text: 'Heavy rain', icon: '🌧️' },
 	66: { text: 'Light freezing rain', icon: '🌧️' },
 	67: { text: 'Heavy freezing rain', icon: '🌧️' },
+	// WMO 68, "rain and snow mixed". Open-Meteo never emits it; the blended forecast does (see blendModels).
+	68: { text: 'Wintry mix', icon: '🌨️' },
 	71: { text: 'Slight snow', icon: '🌨️' },
 	73: { text: 'Moderate snow', icon: '🌨️' },
 	75: { text: 'Heavy snow', icon: '❄️' },
@@ -79,7 +82,7 @@ export function conditionKindOfCode(code: number): ConditionKind {
 	if (code === 45 || code === 48) return 'fog';
 	if (code === 51 || code === 53 || code === 55 || code === 61 || code === 80) return 'light-rain';
 	if (code === 63 || code === 65 || code === 81 || code === 82) return 'rain';
-	if (code === 56 || code === 57 || code === 66 || code === 67) return 'freezing';
+	if (code === 56 || code === 57 || code === 66 || code === 67 || code === 68) return 'freezing';
 	if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
 	if (code === 95 || code === 96 || code === 99) return 'storm';
 	return 'cloudy';
@@ -137,6 +140,7 @@ const CONDITION_ADJECTIVES: Record<string, string> = {
 	'Heavy rain': 'rainy',
 	'Light freezing rain': 'icy',
 	'Heavy freezing rain': 'icy',
+	'Wintry mix': 'icy',
 	'Slight snow': 'snowy',
 	'Moderate snow': 'snowy',
 	'Heavy snow': 'snowy',
@@ -180,6 +184,7 @@ const PRECIP_KINDS: Record<string, PrecipKind> = {
 	'Heavy rain': { rank: 4, noun: 'heavy rain', snow: false },
 	'Light freezing rain': { rank: 3, noun: 'freezing rain', snow: false },
 	'Heavy freezing rain': { rank: 4, noun: 'heavy freezing rain', snow: false },
+	'Wintry mix': { rank: 3, noun: 'wintry mix', snow: false },
 	'Slight snow': { rank: 2, noun: 'light snow', snow: true },
 	'Moderate snow': { rank: 3, noun: 'snow', snow: true },
 	'Heavy snow': { rank: 4, noun: 'heavy snow', snow: true },
@@ -890,6 +895,7 @@ type PrecipFamily =
 	| 'showers'
 	| 'rain'
 	| 'freezing rain'
+	| 'wintry mix'
 	| 'snow showers'
 	| 'snow'
 	| 'thunderstorms';
@@ -905,6 +911,7 @@ const WMO_PRECIP: Record<number, { family: PrecipFamily; heavy: boolean }> = {
 	65: { family: 'rain', heavy: true },
 	66: { family: 'freezing rain', heavy: false },
 	67: { family: 'freezing rain', heavy: true },
+	68: { family: 'wintry mix', heavy: false },
 	71: { family: 'snow', heavy: false },
 	73: { family: 'snow', heavy: false },
 	75: { family: 'snow', heavy: true },
@@ -930,6 +937,7 @@ const PRECIP_NOUNS: Record<PrecipFamily, { singular: string | null; plural: stri
 	showers: { singular: 'shower', plural: 'showers', code: 80, heavyCode: 82 },
 	rain: { singular: null, plural: 'rain', code: 61, heavyCode: 65 },
 	'freezing rain': { singular: null, plural: 'freezing rain', code: 66, heavyCode: 67 },
+	'wintry mix': { singular: null, plural: 'wintry mix', code: 68, heavyCode: 68 },
 	'snow showers': { singular: 'snow shower', plural: 'snow showers', code: 85, heavyCode: 86 },
 	snow: { singular: null, plural: 'snow', code: 71, heavyCode: 75 },
 	thunderstorms: { singular: 'thunderstorm', plural: 'thunderstorms', code: 95, heavyCode: 95 }
@@ -1045,7 +1053,8 @@ export function describePeriod(hours: PeriodHour[], isDay: boolean): { text: str
 	// A day with both rain and snow in it is a mix, not whichever happened to win by an hour.
 	const snowy = count('snow') + count('snow showers');
 	const rainy = count('rain') + count('showers') + count('drizzle');
-	const isMix = snowy > 0 && rainy > 0;
+	// Rain and snow in one period, or hours the blend already called a wintry mix.
+	const isMix = (snowy > 0 && rainy > 0) || count('wintry mix') > 0;
 
 	// Models flip between drizzle, rain and showers codes hour to hour within one wet spell, so
 	// how MUCH it rained comes from the whole class of like precipitation, not just the single
@@ -1059,13 +1068,14 @@ export function describePeriod(hours: PeriodHour[], isDay: boolean): { text: str
 		snow: 'snow',
 		'freezing drizzle': 'freezing',
 		'freezing rain': 'freezing',
+		'wintry mix': 'mix',
 		thunderstorms: 'thunder'
 	};
 	const classHours = new Map<string, number>();
 	for (const [family, n] of counts) classHours.set(classOf[family], (classHours.get(classOf[family]) ?? 0) + n);
 
 	// Severity breaks ties, so a 50/50 day reads "thunderstorms", not "showers".
-	const severity: PrecipFamily[] = ['drizzle', 'showers', 'rain', 'snow showers', 'snow', 'freezing drizzle', 'freezing rain', 'thunderstorms'];
+	const severity: PrecipFamily[] = ['drizzle', 'showers', 'rain', 'snow showers', 'snow', 'wintry mix', 'freezing drizzle', 'freezing rain', 'thunderstorms'];
 	const bySize = (a: [PrecipFamily, number], b: [PrecipFamily, number]) =>
 		(classHours.get(classOf[b[0]]) ?? 0) - (classHours.get(classOf[a[0]]) ?? 0) || b[1] - a[1] || severity.indexOf(b[0]) - severity.indexOf(a[0]);
 	const primary = [...counts.entries()].sort(bySize)[0][0];
@@ -1076,7 +1086,7 @@ export function describePeriod(hours: PeriodHour[], isDay: boolean): { text: str
 	const segments = new Set(wet.map((h) => segmentOfHour(h.hourOfDay)));
 	const timing = segments.size === 1 ? [...segments][0] : null;
 
-	const lead = isMix ? 'rain and snow' : null;
+	const lead = isMix ? 'wintry mix' : null;
 	let main: string;
 	if (lead) {
 		main = `${wet.length <= 2 ? 'a little ' : primaryHours / total < 0.6 ? 'periods of ' : ''}${lead}${timing ? ` ${SEGMENT_TRAILING[timing]}` : ''}`;
@@ -1102,63 +1112,197 @@ export function describePeriod(hours: PeriodHour[], isDay: boolean): { text: str
 
 	// Thunder trumps everything for the icon; otherwise the headline family, in its heavy
 	// form when most of the wet hours were heavy.
-	const iconCode = count('thunderstorms') > 0 ? 95 : isMix ? 61 : heavy ? PRECIP_NOUNS[primary].heavyCode : PRECIP_NOUNS[primary].code;
+	const iconCode = count('thunderstorms') > 0 ? 95 : isMix ? 68 : heavy ? PRECIP_NOUNS[primary].heavyCode : PRECIP_NOUNS[primary].code;
 	return { text, icon: wmoToCondition(iconCode, isDay).icon };
 }
 
-// Open-Meteo's default ("best_match") model for the continental US is NOAA's GFS, which on
-// 2026-11-13 forecast snow for Philadelphia while ECMWF, ICON, GEM and NWS's own blend all
-// said rain - GFS alone ran cold, and the widget printed that one outlier as fact. The
-// National Blend of Models is NWS's multi-model consensus, i.e. what the outlets show, so it
-// is the source for US locations.
-const NBM_MODEL = 'ncep_nbm_conus';
+// The forecast is the AVERAGE of four global models rather than Open-Meteo's default pick.
+// The default ("best_match") is NOAA's GFS for most of the US, and on 2026-11-13 GFS alone
+// forecast snow for Philadelphia while ECMWF, ICON and GEM all said rain - one outlier ran
+// cold and the widget printed it as fact. Averaging the numbers (temperature, precipitation,
+// cloud, wind...) lets a lone model be outvoted. A weather *code* can't be averaged, so each
+// hour's condition is re-derived from the averaged numbers (see blendedCode).
+const FORECAST_MODELS = ['gfs_seamless', 'ecmwf_ifs025', 'icon_seamless', 'gem_seamless'] as const;
 
-// Generous box around the contiguous US (it takes in slivers of Canada and Mexico). The box
-// only decides whether to *try* NBM - outside its real coverage Open-Meteo answers with an
-// error, which sends the request back to the default model below.
-function inNbmCoverage(latitude: number, longitude: number): boolean {
-	return latitude >= 24 && latitude <= 50 && longitude >= -125 && longitude <= -66;
-}
+const CURRENT_VARS =
+	'temperature_2m,apparent_temperature,weather_code,is_day,precipitation,snowfall,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,pressure_msl,cloud_cover,visibility';
 
-async function getJson(url: string): Promise<{ error?: boolean; reason?: string } & Record<string, any>> {
+type Series = (number | string | null | undefined)[];
+type ModelResponse = { error?: boolean; reason?: string; utc_offset_seconds: number; hourly: Record<string, Series>; daily: Record<string, Series> };
+
+async function getJson<T>(url: string): Promise<T> {
 	const res = await fetch(url);
 	if (!res.ok) throw new Error(`Forecast API returned ${res.status}`);
-	return (await res.json()) as any;
+	return (await res.json()) as T;
+}
+
+/** Mean of the models that reported a value; null when none did (a model's range can end before the others'). */
+function meanOf(values: (number | string | null | undefined)[], digits = 1): number | null {
+	const nums = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+	if (!nums.length) return null;
+	const scale = 10 ** digits;
+	return Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * scale) / scale;
+}
+
+/** Average of compass bearings - 350 and 10 degrees are 20 apart, not 180. */
+function meanBearing(values: (number | string | null | undefined)[]): number | null {
+	const nums = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+	if (!nums.length) return null;
+	const x = nums.reduce((a, d) => a + Math.cos((d * Math.PI) / 180), 0);
+	const y = nums.reduce((a, d) => a + Math.sin((d * Math.PI) / 180), 0);
+	return (Math.round((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
 }
 
 /**
- * The forecast response for the whole widget. For US locations it comes from NBM, but NBM
- * publishes no sea-level pressure at all and leaves visibility empty for about half the
- * hours, so those two fields are filled from the default model (nothing the forecast's
- * precipitation or temperature depends on). Any failure along the way - outside NBM's
- * coverage, NBM or the fill-in unreachable - falls back to the plain default-model
- * request, so the widget never ends up with a half-empty forecast.
+ * One WMO code for an hour, from the models' averaged numbers.
+ *  - Wet when the averaged precipitation is at least 0.1 mm/h, so one wet model among
+ *    three dry ones doesn't make rain, but an average of real rain does.
+ *  - What falls depends on the averaged temperature: at or below 0.5C snow; up to 4C a
+ *    "wintry mix" if ANY model has snow (the models disagree on snow-versus-rain, which is
+ *    what a mix is); warmer is rain or drizzle (drizzle when most wet models say drizzle).
+ *  - Thunder and fog need half the models to agree.
+ *  - Dry hours take their sky from the averaged cloud cover.
  */
-async function fetchForecastJson(baseUrl: string, latitude: number, longitude: number): Promise<unknown> {
-	if (inNbmCoverage(latitude, longitude)) {
-		try {
-			const [nbm, gap] = await Promise.all([
-				getJson(`${baseUrl}&models=${NBM_MODEL}`),
-				getJson(
-					`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
-						`&current=pressure_msl,visibility&hourly=pressure_msl,visibility&timezone=auto&forecast_days=8`
-				)
-			]);
-			if (!nbm.error && !gap.error && nbm.hourly?.time?.length && gap.hourly?.time?.length === nbm.hourly.time.length) {
-				if (nbm.current.pressure_msl == null) nbm.current.pressure_msl = gap.current.pressure_msl;
-				if (nbm.current.visibility == null) nbm.current.visibility = gap.current.visibility;
-				for (const key of ['pressure_msl', 'visibility'] as const) {
-					nbm.hourly[key] = nbm.hourly[key].map((v: number | null, i: number) => v ?? gap.hourly[key][i]);
-				}
-				return nbm;
-			}
-		} catch {
-			// fall through to the default model
-		}
+function blendedCode(h: {
+	tempC: number;
+	precipMm: number;
+	cloud: number;
+	codes: (number | null)[];
+	anySnow: boolean;
+}): number {
+	const codes = h.codes.filter((c): c is number => c !== null);
+	const half = codes.length / 2;
+	const votes = (pred: (c: number) => boolean) => codes.filter(pred).length;
+
+	if (h.precipMm >= 0.1) {
+		if (votes((c) => c === 95 || c === 96 || c === 99) >= half && half > 0) return 95;
+		if (h.tempC <= 0.5) return h.precipMm < 0.5 ? 71 : h.precipMm < 1.5 ? 73 : 75;
+		if (h.tempC <= 4 && h.anySnow) return 68;
+		const drizzle = votes((c) => c >= 51 && c <= 57) > votes((c) => (c >= 61 && c <= 67) || (c >= 80 && c <= 82));
+		if (drizzle) return h.precipMm < 0.3 ? 51 : h.precipMm < 0.6 ? 53 : 55;
+		return h.precipMm < 1 ? 61 : h.precipMm < 4 ? 63 : 65;
 	}
-	const data = await getJson(baseUrl);
-	if (data.error) throw new Error(`Forecast API error: ${data.reason ?? 'unknown'}`);
-	return data;
+	if (half > 0 && votes((c) => c === 45 || c === 48) >= half) return 45;
+	return h.cloud < 12.5 ? 0 : h.cloud < 37.5 ? 1 : h.cloud < 62.5 ? 2 : 3;
+}
+
+/**
+ * Folds a multi-model response (every variable repeated once per model, suffixed with the
+ * model's name) into the single-model shape the rest of fetchForecast reads, including a
+ * `current` block taken from the blended hour we are in. Throws when fewer than two models
+ * came back with data, so the caller falls back to the plain default model.
+ */
+function blendModels(raw: ModelResponse, unit: 'celsius' | 'fahrenheit', precipUnit: PrecipUnit): unknown {
+	if (raw.error) throw new Error(raw.reason ?? 'forecast error');
+	const col = (group: 'hourly' | 'daily', name: string): Series[] =>
+		FORECAST_MODELS.map((m) => raw[group][`${name}_${m}`]).filter((s): s is Series => Array.isArray(s));
+	const live = col('hourly', 'temperature_2m').filter((s) => s.some((v) => typeof v === 'number'));
+	if (live.length < 2) throw new Error(`only ${live.length} forecast model(s) returned data`);
+
+	const times = raw.hourly.time as string[];
+	const n = times.length;
+	const mean = (name: string, digits = 1) => {
+		const cols = col('hourly', name);
+		return Array.from({ length: n }, (_, i) => meanOf(cols.map((c) => c[i]), digits));
+	};
+
+	const temp = mean('temperature_2m');
+	const precip = mean('precipitation', 3);
+	const cloud = mean('cloud_cover', 0);
+	const codeCols = col('hourly', 'weather_code');
+	const snowCols = col('hourly', 'snowfall');
+	const mmPerUnit = precipUnit === 'in' ? 25.4 : 1;
+	// 10:1 snow-to-liquid, the usual rule of thumb - 1 in of water is 10 in of snow, 1 mm is 1 cm.
+	const snowRatio = precipUnit === 'in' ? 10 : 1;
+
+	const weather_code: number[] = [];
+	const snowfall: number[] = [];
+	for (let i = 0; i < n; i++) {
+		const codes = codeCols.map((c) => (typeof c[i] === 'number' ? (c[i] as number) : null));
+		const anySnow =
+			snowCols.some((c) => typeof c[i] === 'number' && (c[i] as number) > 0) ||
+			codes.some((c) => c !== null && ((c >= 71 && c <= 77) || c === 85 || c === 86));
+		const code = blendedCode({
+			tempC: toCelsius(temp[i] ?? 0, unit),
+			precipMm: (precip[i] ?? 0) * mmPerUnit,
+			cloud: cloud[i] ?? 0,
+			codes,
+			anySnow
+		});
+		weather_code.push(code);
+		snowfall.push(code >= 71 && code <= 75 ? (precip[i] ?? 0) * snowRatio : 0);
+	}
+
+	const hourly: Record<string, Series> = {
+		time: times,
+		temperature_2m: temp,
+		apparent_temperature: mean('apparent_temperature'),
+		weather_code,
+		is_day: (col('hourly', 'is_day')[0] ?? []) as Series,
+		precipitation: precip.map((v) => v ?? 0),
+		snowfall,
+		precipitation_probability: mean('precipitation_probability', 0),
+		relative_humidity_2m: mean('relative_humidity_2m', 0),
+		dew_point_2m: mean('dew_point_2m'),
+		wind_speed_10m: mean('wind_speed_10m'),
+		wind_gusts_10m: mean('wind_gusts_10m'),
+		wind_direction_10m: Array.from({ length: n }, (_, i) => meanBearing(col('hourly', 'wind_direction_10m').map((c) => c[i]))),
+		pressure_msl: mean('pressure_msl'),
+		cloud_cover: cloud,
+		visibility: mean('visibility')
+	};
+
+	// Daily: extremes and chances are averaged across models; rain and snow totals are summed
+	// from the blended hours so they always agree with what the hourly strip shows.
+	const dayTimes = raw.daily.time as string[];
+	const dailyMean = (name: string, digits = 1) => {
+		const cols = col('daily', name);
+		return dayTimes.map((_, d) => meanOf(cols.map((c) => c[d]), digits));
+	};
+	const first = (name: string) => (col('daily', name)[0] ?? []) as Series;
+	const sums = (pick: (i: number) => number) =>
+		dayTimes.map((day) => {
+			let total = 0;
+			for (let i = 0; i < n; i++) if (times[i].startsWith(day)) total += pick(i);
+			return Math.round(total * 1000) / 1000;
+		});
+	const daily: Record<string, Series> = {
+		time: dayTimes,
+		temperature_2m_max: dailyMean('temperature_2m_max'),
+		temperature_2m_min: dailyMean('temperature_2m_min'),
+		// Only the fallback when a day has too few hours; midday of the blend stands in.
+		weather_code: dayTimes.map((day) => weather_code[times.findIndex((t) => t.startsWith(`${day}T12`))] ?? 3),
+		sunrise: first('sunrise'),
+		sunset: first('sunset'),
+		precipitation_probability_max: dailyMean('precipitation_probability_max', 0),
+		rain_sum: sums((i) => (snowfall[i] > 0 ? 0 : (precip[i] ?? 0))),
+		showers_sum: dayTimes.map(() => 0),
+		snowfall_sum: sums((i) => snowfall[i])
+	};
+
+	// "Now" is the blended hour we are in, so right-now conditions can't contradict the strip.
+	const nowMs = Date.now();
+	let cur = 0;
+	for (let i = 0; i < n; i++) if (new Date(withUtcOffset(times[i], raw.utc_offset_seconds)).getTime() <= nowMs) cur = i;
+	const current = Object.fromEntries(Object.entries(hourly).map(([k, v]) => [k, v[cur] ?? null]));
+
+	return { ...raw, hourly, daily, current };
+}
+
+/**
+ * The forecast response for the whole widget: the four-model blend, or - when that can't be
+ * built (a model unreachable for the location, the request failing) - Open-Meteo's own
+ * default model, so the widget never goes blank over it.
+ */
+async function fetchForecastJson(baseUrl: string, unit: 'celsius' | 'fahrenheit', precipUnit: PrecipUnit): Promise<unknown> {
+	try {
+		return blendModels(await getJson<ModelResponse>(`${baseUrl}&models=${FORECAST_MODELS.join(',')}`), unit, precipUnit);
+	} catch (err) {
+		logger.error('weather', `Four-model blend unavailable (${(err as Error).message}); using Open-Meteo's default model`);
+		const data = await getJson<{ error?: boolean; reason?: string }>(`${baseUrl}&current=${CURRENT_VARS}`);
+		if (data.error) throw new Error(`Forecast API error: ${data.reason ?? 'unknown'}`);
+		return data;
+	}
 }
 
 export async function fetchForecast(
@@ -1172,7 +1316,6 @@ export async function fetchForecast(
 ): Promise<ForecastResult> {
 	const baseUrl =
 		`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
-		`&current=temperature_2m,apparent_temperature,weather_code,is_day,precipitation,snowfall,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,pressure_msl,cloud_cover,visibility` +
 		// humidity/wind/pressure are per-hour duplicates of what `current` already reports for
 		// right now — the weather page's stat panel swaps to the hovered hour's values, so it
 		// needs the whole series, not just the current hour's.
@@ -1185,7 +1328,7 @@ export async function fetchForecast(
 		`&temperature_unit=${unit}&wind_speed_unit=${windUnit === 'kph' ? 'kmh' : 'mph'}&timezone=auto&forecast_days=8`;
 	// The ceiling lookup never throws (see fetchCeilingBlocks), so it can't fail the forecast
 	// it is fetched alongside.
-	const [forecastJson, ceilingBlocks] = await Promise.all([fetchForecastJson(baseUrl, latitude, longitude), fetchCeilingBlocks(latitude, longitude)]);
+	const [forecastJson, ceilingBlocks] = await Promise.all([fetchForecastJson(baseUrl, unit, precipUnit), fetchCeilingBlocks(latitude, longitude)]);
 	const data = forecastJson as {
 		utc_offset_seconds: number;
 		current: {
