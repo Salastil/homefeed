@@ -1131,10 +1131,25 @@ const CURRENT_VARS =
 type Series = (number | string | null | undefined)[];
 type ModelResponse = { error?: boolean; reason?: string; utc_offset_seconds: number; hourly: Record<string, Series>; daily: Record<string, Series> };
 
-async function getJson<T>(url: string): Promise<T> {
-	const res = await fetch(url);
-	if (!res.ok) throw new Error(`Forecast API returned ${res.status}`);
-	return (await res.json()) as T;
+// A poll that fails leaves the previous forecast on screen for the whole 45-minute interval,
+// and connection timeouts to Open-Meteo do happen (seen from the Unraid host), so a network
+// failure or a 5xx is retried a couple of times before it counts. A 4xx is not - that is
+// the request's fault and would fail the same way again.
+async function getJson<T>(url: string, attempts = 3): Promise<T> {
+	let lastError: Error = new Error('forecast request failed');
+	for (let attempt = 1; attempt <= attempts; attempt++) {
+		try {
+			const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+			if (res.ok) return (await res.json()) as T;
+			lastError = new Error(`Forecast API returned ${res.status}`);
+			if (res.status < 500) throw lastError;
+		} catch (err) {
+			lastError = err as Error;
+			if (lastError.message.startsWith('Forecast API returned 4')) throw lastError;
+		}
+		if (attempt < attempts) await new Promise((r) => setTimeout(r, 1000 * attempt));
+	}
+	throw lastError;
 }
 
 /** Mean of the models that reported a value; null when none did (a model's range can end before the others'). */
