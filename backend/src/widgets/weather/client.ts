@@ -82,7 +82,8 @@ export function conditionKindOfCode(code: number): ConditionKind {
 	if (code === 45 || code === 48) return 'fog';
 	if (code === 51 || code === 53 || code === 55 || code === 61 || code === 80) return 'light-rain';
 	if (code === 63 || code === 65 || code === 81 || code === 82) return 'rain';
-	if (code === 56 || code === 57 || code === 66 || code === 67 || code === 68) return 'freezing';
+	if (code === 56 || code === 57 || code === 66 || code === 67) return 'freezing';
+	if (code === 68) return 'mix';
 	if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
 	if (code === 95 || code === 96 || code === 99) return 'storm';
 	return 'cloudy';

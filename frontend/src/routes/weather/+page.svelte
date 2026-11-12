@@ -20,6 +20,7 @@
 		'light-rain': 'Light rain',
 		rain: 'Rain',
 		freezing: 'Freezing rain',
+		mix: 'Wintry mix',
 		snow: 'Snow',
 		storm: 'Thunderstorm'
 	};
@@ -638,6 +639,10 @@
 	.k-freezing {
 		--seg-bg: #6fb7c9;
 		--seg-fg: #0b2a33;
+	}
+	.k-mix {
+		--seg-bg: #98a8d8;
+		--seg-fg: #141a3d;
 	}
 	.k-snow {
 		--seg-bg: #aed6f1;

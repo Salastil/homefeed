@@ -119,7 +119,7 @@ export interface WeatherConditionDetails {
 }
 
 /** See the backend's ConditionKind: a coarse look for one hour, so neighbouring hours can merge into one stretch of the timeline bar. */
-export type WeatherConditionKind = 'clear' | 'partly' | 'cloudy' | 'fog' | 'light-rain' | 'rain' | 'freezing' | 'snow' | 'storm';
+export type WeatherConditionKind = 'clear' | 'partly' | 'cloudy' | 'fog' | 'light-rain' | 'rain' | 'freezing' | 'mix' | 'snow' | 'storm';
 
 export interface WeatherHourEntry extends WeatherConditionDetails {
 	/** Absent on a forecast cached before the field existed - until the next poll, a few seconds after a deploy. */
