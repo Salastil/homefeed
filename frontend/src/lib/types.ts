@@ -119,7 +119,7 @@ export interface WeatherConditionDetails {
 }
 
 /** See the backend's ConditionKind: a coarse look for one hour, so neighbouring hours can merge into one stretch of the timeline bar. */
-export type WeatherConditionKind = 'clear' | 'partly' | 'cloudy' | 'fog' | 'light-rain' | 'rain' | 'freezing' | 'mix' | 'snow' | 'storm';
+export type WeatherConditionKind = 'clear' | 'partly' | 'cloudy' | 'fog' | 'light-rain' | 'rain' | 'freezing' | 'sleet' | 'mix' | 'snow' | 'storm' | 'hail';
 
 export interface WeatherHourEntry extends WeatherConditionDetails {
 	/** Absent on a forecast cached before the field existed - until the next poll, a few seconds after a deploy. */
@@ -273,4 +273,102 @@ export interface WidgetsEnabled {
 	order: string[];
 	/** Enabled uploaded widgets — a lookup Sidebar.svelte uses for any `order` entry that isn't one of the 4 built-in keys; missing = disabled, skip it. */
 	pluggable: PluggableWidgetSummary[];
+	/** The widget row: one entry per position; more than one widget in a slot rotates on a timer. */
+	slots: WidgetSlot[];
+	/** Plug-in widgets shown in the top bar instead of the widget row (the search widget). */
+	topBar: string[];
+}
+
+export interface WidgetSlot {
+	widgets: string[];
+	rotateSeconds: number;
+}
+
+// ---------- storylines / board (see backend api/storylines.ts) ----------
+
+/** An article as the board polls it: no full body, an excerpt instead. */
+export interface LiteArticle {
+	id: string;
+	title: string;
+	excerpt: string;
+	heroImage: MergedArticle['heroImage'];
+	hasVideo: boolean;
+	tweet: MergedArticle['tweet'];
+	telegramMessage: MergedArticle['telegramMessage'];
+	category: string[];
+	eventId: string | null;
+	sourceName: string;
+	sourceKey: string;
+	sourceLink: string | null;
+	sourceCount: number;
+	publishedAt: string;
+	isRecap: boolean;
+}
+
+export interface StoryImage {
+	url: string;
+	credit: string;
+	at: string;
+}
+
+export interface Storyline {
+	id: string;
+	scope: string;
+	tag: string;
+	label: string;
+	labelArticleId: string | null;
+	state: 'live' | 'cooling' | 'closed';
+	closesAt: string;
+	firstItemAt: string;
+	lastItemAt: string;
+	itemCount: number;
+	sourceCount: number;
+	continuesId: string | null;
+	image: StoryImage | null;
+	score: number;
+	members: LiteArticle[];
+}
+
+export interface EventStoryline {
+	id: string;
+	name: string;
+	recapIntervalHours: number | null;
+	postCount: number;
+	channelCount: number;
+	developmentCount: number;
+	developments: Storyline[];
+	image: StoryImage | null;
+	score: number;
+}
+
+export interface StorylinesResponse {
+	settings: { rows: 1 | 2 | 3; rotateSeconds: number; jumpOnUpdate: boolean; pauseOnHover: boolean; closeHours: number };
+	storylines: Storyline[];
+	events: EventStoryline[];
+	closedToday: number;
+}
+
+export interface BoardColumn {
+	key: string;
+	kind: 'category' | 'wire' | 'general';
+	name: string;
+	categoryId: string | null;
+	isSpillover: boolean;
+	isPrivate: boolean;
+	count24h: number;
+	items: LiteArticle[];
+}
+
+export interface EventTimeline {
+	event: { id: string; name: string; recapIntervalHours: number | null; lastRecapAt: string | null };
+	hours: number;
+	developments: Storyline[];
+	singles: LiteArticle[];
+	postCount: number;
+	channelCount: number;
+}
+
+export interface ArticleContext {
+	storyline: Storyline | null;
+	related: LiteArticle[];
 }

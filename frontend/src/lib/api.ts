@@ -1,5 +1,5 @@
 import { getBackendUrl } from './config';
-import type { MergedArticle, Tag, TrackedEventPublic, Category, Weather, StockTicker, StocksFeed, BookmarksFeed, Poe2Data, WidgetsEnabled } from './types';
+import type { MergedArticle, Tag, TrackedEventPublic, Category, Weather, StockTicker, StocksFeed, BookmarksFeed, Poe2Data, WidgetsEnabled, BoardColumn, StorylinesResponse, Storyline, EventTimeline, ArticleContext } from './types';
 
 async function get<T>(path: string, fetchFn: typeof fetch = fetch): Promise<T> {
 	// credentials: 'include' so the private-access cookie (see lib/privateAccess.ts)
@@ -71,4 +71,24 @@ export function getPoe2(fetchFn?: typeof fetch): Promise<Poe2Data> {
 
 export function getWidgetsEnabled(fetchFn?: typeof fetch): Promise<WidgetsEnabled> {
 	return get<WidgetsEnabled>('/api/widgets', fetchFn);
+}
+
+export function getBoard(fetchFn?: typeof fetch): Promise<{ columns: BoardColumn[] }> {
+	return get<{ columns: BoardColumn[] }>('/api/board', fetchFn);
+}
+
+export function getStorylines(fetchFn?: typeof fetch): Promise<StorylinesResponse> {
+	return get<StorylinesResponse>('/api/storylines', fetchFn);
+}
+
+export function getStoryline(id: string, fetchFn?: typeof fetch): Promise<Storyline> {
+	return get<Storyline>(`/api/storylines/${id}`, fetchFn);
+}
+
+export function getEventTimeline(id: string, hours = 12, fetchFn?: typeof fetch): Promise<EventTimeline> {
+	return get<EventTimeline>(`/api/events/${id}/timeline?hours=${hours}`, fetchFn);
+}
+
+export function getArticleContext(id: string, fetchFn?: typeof fetch): Promise<ArticleContext> {
+	return get<ArticleContext>(`/api/article/${id}/context`, fetchFn);
 }

@@ -12,12 +12,12 @@
 </script>
 
 {#if !data.adminPanelEnabled}
-	<div class="page disabled-notice">
+	<div class="admin-page disabled-notice">
 		<p>The admin panel is disabled on this deployment.</p>
 	</div>
 {:else}
 	<div class="admin-shell">
-		<div class="page admin-inner">
+		<div class="admin-page admin-inner">
 			<div class="top-row">
 				<a class="back" href="/">← Back to site</a>
 				<button class="logout" onclick={handleLogout}>Log out</button>

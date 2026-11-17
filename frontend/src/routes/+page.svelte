@@ -1,23 +1,57 @@
 <script lang="ts">
+	/**
+	 * The board (accepted design A/B in issue #1): storyline panel over the category columns,
+	 * filling the screen under the widget row. Both halves re-poll every minute and replace
+	 * what's on screen wholesale - the server sends bounded lists, so a tab left open for
+	 * days holds the same amount of data as one opened a minute ago.
+	 */
 	import type { PageData } from './$types';
-	import InfiniteFeed from '$lib/components/InfiniteFeed.svelte';
+	import type { LiteArticle } from '$lib/types';
+	import { getBoard, getStorylines } from '$lib/api';
+	import { poll } from '$lib/live.svelte';
+	import StorylineBand from '$lib/components/board/StorylineBand.svelte';
+	import BoardColumns from '$lib/components/board/BoardColumns.svelte';
+	import DevelopmentSheet from '$lib/components/board/DevelopmentSheet.svelte';
 
 	let { data }: { data: PageData } = $props();
+
+	// svelte-ignore state_referenced_locally
+	let board = $state(data.board);
+	// svelte-ignore state_referenced_locally
+	let storylines = $state(data.storylines);
+	$effect(() => {
+		board = data.board;
+		storylines = data.storylines;
+	});
+
+	$effect(() =>
+		poll(async () => {
+			const [b, s] = await Promise.all([getBoard(), getStorylines()]);
+			board = b;
+			storylines = s;
+		}, 60_000)
+	);
+
+	let sheet = $state<{ title: string; members: LiteArticle[]; nodeId: string; color: string; scopeName: string; href: string; anchor: number } | null>(null);
 </script>
 
-<div class="head">
-	<span class="title">Top stories</span>
+<svelte:head><title>Homefeed</title></svelte:head>
+
+<div class="board">
+	<StorylineBand data={storylines} paused={!!sheet} selectedNode={sheet?.nodeId ?? null} onNode={(info) => (sheet = info)} />
+	<BoardColumns columns={board.columns} storylines={storylines.storylines} />
 </div>
 
-<InfiniteFeed initial={data.initial} filters={{}} pageSize={data.pageSize} />
+{#if sheet}
+	<DevelopmentSheet {...sheet} onClose={() => (sheet = null)} />
+{/if}
 
 <style>
-	.head {
-		margin: 24px 0 8px;
-	}
-	.title {
-		font-family: var(--font-voice);
-		font-size: 26px;
-		font-weight: 500;
+	.board {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
 	}
 </style>
