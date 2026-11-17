@@ -750,9 +750,7 @@
 		padding: 0 8px;
 		border-bottom: 1px solid var(--bd);
 	}
-	.dy:last-of-type {
-		border-bottom: 0;
-	}
+
 	.dy.today {
 		background: var(--s2);
 		border-radius: 8px;
@@ -819,7 +817,6 @@
 		flex: none;
 		margin-top: 6px;
 		padding-top: 10px;
-		border-top: 1px solid var(--bd);
 		font-size: 11.5px;
 		color: var(--tx3);
 	}
