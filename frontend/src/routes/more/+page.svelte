@@ -2,14 +2,14 @@
 	import type { PageData } from './$types';
 	import { slugify } from '$lib/format';
 	import ArticleListRow from '$lib/components/ArticleListRow.svelte';
+	import BrowsePanel from '$lib/components/shell/BrowsePanel.svelte';
 
 	let { data }: { data: PageData } = $props();
 </script>
 
-<div class="head">
-	<span class="title">More</span>
-</div>
+<svelte:head><title>More · Homefeed</title></svelte:head>
 
+<BrowsePanel title="More" color="var(--tx3)" note="Spillover categories and tracked items">
 <div class="sections">
 	{#each data.categorySections as section (section.category.id)}
 		<section class="cat-section">
@@ -40,16 +40,9 @@
 		</section>
 	{/each}
 </div>
+</BrowsePanel>
 
 <style>
-	.head {
-		margin: 24px 0 8px;
-	}
-	.title {
-		font-family: var(--font-voice);
-		font-size: 26px;
-		font-weight: 500;
-	}
 	.sections {
 		display: flex;
 		flex-direction: column;
@@ -62,9 +55,10 @@
 	}
 	.cat-name {
 		display: inline-block;
-		font-size: 16px;
-		font-weight: 500;
-		color: var(--text-primary);
+		font-family: var(--serif);
+		font-size: 19px;
+		font-weight: 600;
+		color: var(--tx);
 		margin-bottom: 10px;
 	}
 	.cat-name:hover {

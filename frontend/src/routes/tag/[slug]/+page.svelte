@@ -1,23 +1,13 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import InfiniteFeed from '$lib/components/InfiniteFeed.svelte';
+	import BrowsePanel from '$lib/components/shell/BrowsePanel.svelte';
 
 	let { data }: { data: PageData } = $props();
 </script>
 
-<div class="head">
-	<span class="title">#{data.tag.label}</span>
-</div>
+<svelte:head><title>#{data.tag.label} · Homefeed</title></svelte:head>
 
-<InfiniteFeed initial={data.initial} filters={data.filters} pageSize={data.pageSize} />
-
-<style>
-	.head {
-		margin: 24px 0 8px;
-	}
-	.title {
-		font-family: var(--font-voice);
-		font-size: 26px;
-		font-weight: 500;
-	}
-</style>
+<BrowsePanel title="#{data.tag.label}" kicker="Tag" color="var(--acc)" note="{data.tag.articleCount} articles">
+	<InfiniteFeed initial={data.initial} filters={data.filters} pageSize={data.pageSize} />
+</BrowsePanel>
