@@ -204,8 +204,9 @@ export function startScheduler() {
 			const embedding = embeddingProvider();
 			engineStatus.reachable = await embedding.isReachable();
 			if (!engineStatus.reachable) return;
-			const placed = await runStorylineCycle(embedding, settings.selectedModels.embedding, settings.storylines);
-			if (placed > 0) logger.info('storylines', `Storyline tick: placed ${placed} article(s) in storylines`);
+			const r = await runStorylineCycle(embedding, settings.selectedModels.embedding, settings.storylines);
+			if (r.placed > 0) logger.info('storylines', `Storyline tick: placed ${r.placed} article(s) in storylines`);
+			if (r.backfilled > 0) logger.info('storylines', `Historical pass: grouped ${r.backfilled} older article(s), ${r.backfillLeft} left`);
 		} catch (err) {
 			logger.error('storylines', `Storyline tick failed: ${(err as Error).message}`);
 		}

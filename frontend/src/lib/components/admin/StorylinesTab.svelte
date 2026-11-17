@@ -5,7 +5,8 @@
 	 * Saves on change, like the other tabs.
 	 */
 	import type { AdminSettings, StorylineSettings } from '$lib/adminTypes';
-	import { updateSettings } from '$lib/adminApi';
+	import { getStorylineStatus, updateSettings, type StorylineStatus } from '$lib/adminApi';
+	import { poll } from '$lib/live.svelte';
 	import SaveStatus from './SaveStatus.svelte';
 
 	let { settings }: { settings: AdminSettings } = $props();
@@ -30,6 +31,22 @@
 		}, 400);
 	}
 
+	// Engine status, refreshed every 10 s while this tab is open.
+	let st = $state<StorylineStatus | null>(null);
+	const loadStatus = async () => {
+		try {
+			st = await getStorylineStatus();
+		} catch {
+			/* keep the last reading */
+		}
+	};
+	$effect(() => {
+		loadStatus();
+		return poll(loadStatus, 10_000);
+	});
+	const eta = (m: number) => (m < 90 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`);
+	const day = (iso: string) => new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+
 	const ROTATE = [8, 10, 15, 20, 30, 45, 60];
 	const ITEMS = [2, 3, 4, 5, 6];
 	const SOURCES = [1, 2, 3, 4];
@@ -42,6 +59,32 @@
 	const hrs = (h: number) => (h < 1 ? `${h * 60} minutes` : `${h} ${h === 1 ? 'hour' : 'hours'}`);
 	const withCurrent = (list: number[], v: number) => (list.includes(v) ? list : [...list, v].sort((a, b) => a - b));
 </script>
+
+<div class="panel">
+	<span class="panel-title">Status</span>
+	{#if !st}
+		<p class="hint">Checking…</p>
+	{:else}
+		<div class="status">
+			<span class="dot" class:ok={st.reachable === true} class:bad={st.reachable === false}></span>
+			<b>{st.reachable === false ? 'Paused - the embedding service is unreachable' : st.reachable ? 'Grouping' : 'Starting'}</b>
+			<span>{st.storylines.toLocaleString()} storylines · {st.developments.toLocaleString()} event developments</span>
+		</div>
+		<p class="hint">
+			{st.recentPending ? `${st.recentPending} new article(s) waiting. ` : 'New articles are grouped within a minute. '}
+			{#if st.backfillPending}
+				<b>Historical pass:</b> {st.backfillPending.toLocaleString()} older article(s) left (from {st.backfillOldest ? day(st.backfillOldest) : '?'} on),
+				{st.backfillRatePerMin ? `about ${st.backfillRatePerMin} a minute - ${eta(st.backfillEtaMinutes ?? 0)} to go.` : 'starting.'}
+				It gets about 40% of each minute after new articles, so the server stays responsive.
+			{:else}
+				Every article has been through grouping.
+			{/if}
+		</p>
+		{#if st.backfillPending}
+			<div class="bar"><i style:width="{Math.max(1, (st.backfillDone / (st.backfillDone + st.backfillPending)) * 100)}%"></i></div>
+		{/if}
+	{/if}
+</div>
 
 <div class="panel">
 	<div class="head"><span class="panel-title">Storyline panel</span><SaveStatus {status} /></div>
@@ -315,6 +358,44 @@
 	.slider input {
 		flex: 1;
 		accent-color: var(--acc);
+	}
+	.status {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+		margin-top: 8px;
+		font-size: 12.5px;
+	}
+	.status b {
+		font-weight: 500;
+	}
+	.status span:last-child {
+		margin-left: auto;
+		color: var(--text-muted);
+		font-size: 12px;
+	}
+	.dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--text-muted);
+	}
+	.dot.ok {
+		background: var(--up);
+	}
+	.dot.bad {
+		background: var(--dn);
+	}
+	.bar {
+		height: 5px;
+		border-radius: 3px;
+		background: var(--border);
+		overflow: hidden;
+	}
+	.bar i {
+		display: block;
+		height: 100%;
+		background: var(--acc);
 	}
 	.slider b {
 		font-family: var(--mono);

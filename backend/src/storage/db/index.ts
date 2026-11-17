@@ -494,6 +494,9 @@ export function migrate() {
 		db.exec('ALTER TABLE merged_articles ADD COLUMN embedding TEXT');
 		db.exec('ALTER TABLE merged_articles ADD COLUMN storyline_checked_at TEXT');
 	}
+	// The first release marked pre-storyline articles 'skipped' and never grouped them; they
+	// are now the historical pass's queue.
+	db.exec("UPDATE merged_articles SET storyline_checked_at = 'backfill' WHERE storyline_checked_at = 'skipped'");
 	db.exec(`
 		CREATE INDEX IF NOT EXISTS idx_articles_storyline_checked ON merged_articles(storyline_checked_at);
 		CREATE INDEX IF NOT EXISTS idx_articles_event ON merged_articles(event_id, published_at);

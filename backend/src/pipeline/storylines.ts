@@ -33,9 +33,16 @@ import * as stl from '../storage/db/storylines.js';
 import { logger } from '../storage/db/logs.js';
 
 const HOUR = 3_600_000;
-/** Articles older than this when the tick first sees them are marked skipped, not embedded - the pre-storylines backlog. */
+/** Articles older than this when the tick first sees them go to the historical pass instead of the live lane. */
 const BACKLOG_HOURS = 48;
 const BATCH = 60;
+/**
+ * The historical pass gets this much of each one-minute tick, after new articles: about 40%
+ * of the embedding host's time, so a CPU-only box isn't pinned for hours - roughly 150
+ * articles a minute at nomic-embed-text's ~0.1 s per article.
+ */
+const BACKFILL_BUDGET_MS = 25_000;
+const BACKFILL_CHUNK = 20;
 const LEXICON_WINDOW_HOURS = 72;
 const LEXICON_TTL_MS = 10 * 60_000;
 /** A name in more than this share of recent articles is too common to vouch for a join. */
@@ -92,6 +99,13 @@ interface Lexicon {
 }
 
 let lexicon: Lexicon | null = null;
+/**
+ * The historical pass groups articles from weeks ago; which names are distinctive depends on
+ * what was in the news then, so while it runs the lexicon is built from the 72 hours up to
+ * the end of the article's own day (one rebuild per day of history) instead of from now.
+ */
+let anchorDay: number | null = null;
+let historical: (Lexicon & { day: number }) | null = null;
 
 interface TextRow {
 	id: string;
@@ -114,9 +128,10 @@ function rawEntities(r: TextRow, proper: Set<string>): Set<string> {
 	return out;
 }
 
-function buildLexicon(): Lexicon {
-	const since = new Date(Date.now() - LEXICON_WINDOW_HOURS * HOUR).toISOString();
-	const rows: TextRow[] = stl.recentArticleTexts(since).map((r) => {
+function buildLexicon(until?: number): Lexicon {
+	const end = until ?? Date.now();
+	const since = new Date(end - LEXICON_WINDOW_HOURS * HOUR).toISOString();
+	const rows: TextRow[] = stl.recentArticleTexts(since, until === undefined ? undefined : new Date(end).toISOString()).map((r) => {
 		const tweet = r.tweet ? JSON.parse(r.tweet) : null;
 		const telegramMessage = r.telegram_message ? JSON.parse(r.telegram_message) : null;
 		return { id: r.id, title: r.title, body: r.body, sourceKey: sourceKeyOf({ tweet, telegramMessage, sources: JSON.parse(r.sources) }) };
@@ -171,6 +186,10 @@ function buildLexicon(): Lexicon {
 }
 
 function getLexicon(): Lexicon {
+	if (anchorDay !== null) {
+		if (!historical || historical.day !== anchorDay) historical = { ...buildLexicon(anchorDay + 24 * HOUR), day: anchorDay };
+		return historical;
+	}
 	if (!lexicon || Date.now() - lexicon.builtAt > LEXICON_TTL_MS) lexicon = buildLexicon();
 	return lexicon;
 }
@@ -368,43 +387,94 @@ export function assignArticle(a: MergedArticle, v: number[], settings: Storyline
 
 // ---------- tick ----------
 
-let backlogSkipped = false;
+let backlogQueued = false;
 
-/**
- * One storyline pass: embed up to BATCH newly published articles (oldest first) and place
- * each. Returns how many were placed. Never throws on a single article - a failed embed
- * leaves it unchecked for the next pass.
- */
 /**
  * Whether the last storyline tick could reach the embedding service (null before the first
- * tick). The board uses it to say storylines are paused rather than just showing none.
+ * tick), and how the historical pass is going - read by the board ("grouping paused") and
+ * the admin Storylines tab.
  */
-export const engineStatus: { reachable: boolean | null } = { reachable: null };
+export const engineStatus: {
+	reachable: boolean | null;
+	backfillRatePerMin: number | null;
+	lastTickAt: string | null;
+} = { reachable: null, backfillRatePerMin: null, lastTickAt: null };
 
-export async function runStorylineCycle(provider: InferenceProvider, model: string, settings: StorylineSettings): Promise<number> {
-	if (!backlogSkipped) {
-		const skipped = stl.skipUncheckedBefore(new Date(Date.now() - BACKLOG_HOURS * HOUR).toISOString());
-		if (skipped > 0) logger.info('storylines', `Skipped ${skipped} article(s) older than ${BACKLOG_HOURS}h (published before storylines existed)`);
-		backlogSkipped = true;
+/** Embeds and places one article. False when the embedding call failed (leave the rest for later). */
+async function processArticle(id: string, provider: InferenceProvider, model: string, settings: StorylineSettings): Promise<{ ok: boolean; placed: boolean }> {
+	const a = articlesDb.getArticle(id);
+	if (!a) return { ok: true, placed: false };
+	let v: number[];
+	try {
+		v = normalize(await provider.embed(embedTextOf(a), { model }));
+	} catch (err) {
+		logger.error('storylines', `Embedding failed for "${a.title.slice(0, 80)}": ${(err as Error).message}`);
+		return { ok: false, placed: false };
+	}
+	stl.setArticleEmbedding(a.id, v);
+	return { ok: true, placed: !!assignArticle(a, v, settings) };
+}
+
+/**
+ * One storyline pass, once a minute. First the live lane: up to BATCH newly published
+ * articles, oldest first. Then, if that lane is clear, the historical pass gets
+ * BACKFILL_BUDGET_MS to work through the articles that predate storylines, oldest first, so
+ * the archive fills in over a few hours without starving new arrivals or pinning the CPU.
+ * Grouping is relative to each article's own publish time, so history builds the same
+ * storylines it would have built live (they're simply closed by now).
+ */
+export async function runStorylineCycle(
+	provider: InferenceProvider,
+	model: string,
+	settings: StorylineSettings
+): Promise<{ placed: number; backfilled: number; backfillLeft: number }> {
+	if (!backlogQueued) {
+		const queued = stl.queueBackfillBefore(new Date(Date.now() - BACKLOG_HOURS * HOUR).toISOString());
+		if (queued > 0) logger.info('storylines', `Queued ${queued} article(s) older than ${BACKLOG_HOURS}h for the historical pass`);
+		backlogQueued = true;
 	}
 	const removed = stl.deleteEmptyStorylines();
 	if (removed > 0) logger.info('storylines', `Removed ${removed} empty storyline(s)`);
+	engineStatus.lastTickAt = new Date().toISOString();
 
 	let placed = 0;
-	for (const id of stl.uncheckedArticleIds(BATCH)) {
-		const a = articlesDb.getArticle(id);
-		if (!a) continue;
-		let v: number[];
-		try {
-			v = normalize(await provider.embed(embedTextOf(a), { model }));
-		} catch (err) {
-			logger.error('storylines', `Embedding failed for "${a.title.slice(0, 80)}": ${(err as Error).message}`);
-			break; // the service is struggling - leave the rest for the next pass
-		}
-		stl.setArticleEmbedding(a.id, v);
-		if (assignArticle(a, v, settings)) placed++;
+	const recent = stl.uncheckedArticleIds(BATCH);
+	for (const id of recent) {
+		const r = await processArticle(id, provider, model, settings);
+		if (!r.ok) return { placed, backfilled: 0, backfillLeft: stl.pendingCounts().backfill };
+		if (r.placed) placed++;
 	}
-	return placed;
+	if (recent.length >= BATCH) return { placed, backfilled: 0, backfillLeft: stl.pendingCounts().backfill };
+
+	const started = Date.now();
+	let backfilled = 0;
+	try {
+		while (Date.now() - started < BACKFILL_BUDGET_MS) {
+			const ids = stl.backfillArticleIds(BACKFILL_CHUNK);
+			if (ids.length === 0) break;
+			for (const id of ids) {
+				const a = articlesDb.getArticle(id);
+				const t = a ? new Date(a.publishedAt).getTime() : Date.now();
+				anchorDay = Math.floor(t / (24 * HOUR)) * 24 * HOUR;
+				const r = await processArticle(id, provider, model, settings);
+				if (!r.ok) throw new Error('embedding failed');
+				backfilled++;
+				if (Date.now() - started >= BACKFILL_BUDGET_MS) break;
+			}
+		}
+	} catch {
+		// Leave the rest for the next tick.
+	} finally {
+		anchorDay = null;
+	}
+	// Ticks are a minute apart, so one tick's count is the per-minute pace.
+	if (backfilled > 0) engineStatus.backfillRatePerMin = backfilled;
+	const backfillLeft = stl.pendingCounts().backfill;
+	if (backfillLeft === 0) {
+		engineStatus.backfillRatePerMin = null;
+		historical = null;
+	}
+	return { placed, backfilled, backfillLeft };
 }
 
 // ---------- read side ----------

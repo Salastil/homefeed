@@ -155,12 +155,50 @@ export function uncheckedArticleIds(limit: number): string[] {
 	).map((r) => r.id);
 }
 
-/** Marks every unchecked article published before `before` as processed without embedding it - the backlog that predates storylines. */
-export function skipUncheckedBefore(before: string): number {
+/**
+ * Queues every unchecked article published before `before` for the historical pass
+ * ('backfill') - the articles that predate storylines, grouped after new arrivals, at a
+ * slower pace. See runStorylineCycle.
+ */
+export function queueBackfillBefore(before: string): number {
 	const res = db
-		.prepare("UPDATE merged_articles SET storyline_checked_at = 'skipped' WHERE storyline_checked_at IS NULL AND published_at < ?")
+		.prepare("UPDATE merged_articles SET storyline_checked_at = 'backfill' WHERE storyline_checked_at IS NULL AND published_at < ?")
 		.run(before);
 	return Number(res.changes);
+}
+
+/** The historical pass's next articles, oldest first. */
+export function backfillArticleIds(limit: number): string[] {
+	return (
+		db
+			.prepare("SELECT id FROM merged_articles WHERE storyline_checked_at = 'backfill' ORDER BY published_at LIMIT ?")
+			.all(limit) as { id: string }[]
+	).map((r) => r.id);
+}
+
+/** How much is waiting: new articles not yet grouped, and the historical pass's queue. */
+export function pendingCounts(): { recent: number; backfill: number; backfillOldest: string | null; backfillDone: number } {
+	const recent = (db.prepare('SELECT COUNT(*) AS n FROM merged_articles WHERE storyline_checked_at IS NULL').get() as { n: number }).n;
+	const b = db
+		.prepare("SELECT COUNT(*) AS n, MIN(published_at) AS oldest, MAX(published_at) AS newest FROM merged_articles WHERE storyline_checked_at = 'backfill'")
+		.get() as { n: number; oldest: string | null; newest: string | null };
+	// Done so far: everything already grouped that's older than the queue's newest article.
+	const done = b.newest
+		? (
+				db
+					.prepare("SELECT COUNT(*) AS n FROM merged_articles WHERE storyline_checked_at IS NOT NULL AND storyline_checked_at != 'backfill' AND published_at <= ?")
+					.get(b.newest) as { n: number }
+			).n
+		: 0;
+	return { recent, backfill: b.n, backfillOldest: b.oldest, backfillDone: done };
+}
+
+/** Storyline totals for the admin status line. */
+export function storylineCounts(): { news: number; developments: number } {
+	const r = db
+		.prepare("SELECT SUM(scope = 'news') AS news, SUM(scope LIKE 'event:%') AS dev FROM storylines")
+		.get() as { news: number | null; dev: number | null };
+	return { news: r.news ?? 0, developments: r.dev ?? 0 };
 }
 
 /**
@@ -191,7 +229,12 @@ export function storylinesEndedBetween(scope: string, from: string, to: string):
 }
 
 /** Text fields of recent articles, for the name lexicon (see pipeline/storylines.ts). */
-export function recentArticleTexts(since: string): { id: string; title: string; body: string; tweet: string | null; telegram_message: string | null; sources: string }[] {
+export function recentArticleTexts(since: string, until?: string): { id: string; title: string; body: string; tweet: string | null; telegram_message: string | null; sources: string }[] {
+	if (until) {
+		return db
+			.prepare('SELECT id, title, body, tweet, telegram_message, sources FROM merged_articles WHERE published_at >= ? AND published_at < ?')
+			.all(since, until) as any[];
+	}
 	return db
 		.prepare('SELECT id, title, body, tweet, telegram_message, sources FROM merged_articles WHERE published_at >= ?')
 		.all(since) as any[];

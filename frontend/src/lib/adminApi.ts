@@ -73,6 +73,21 @@ export async function logout(): Promise<void> {
 export const getSettings = (fetchFn?: typeof fetch) =>
 	request<AdminSettings>('/api/admin/settings', {}, fetchFn);
 
+export interface StorylineStatus {
+	reachable: boolean | null;
+	lastTickAt: string | null;
+	recentPending: number;
+	backfillPending: number;
+	backfillOldest: string | null;
+	backfillDone: number;
+	backfillRatePerMin: number | null;
+	backfillEtaMinutes: number | null;
+	storylines: number;
+	developments: number;
+}
+
+export const getStorylineStatus = (fetchFn?: typeof fetch) => request<StorylineStatus>('/api/admin/storylines/status', {}, fetchFn);
+
 export const updateSettings = (patch: Partial<AdminSettings>, fetchFn?: typeof fetch) =>
 	request<AdminSettings>('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
 

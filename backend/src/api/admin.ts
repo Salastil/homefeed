@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify';
+import * as stl from '../storage/db/storylines.js';
+import { engineStatus } from '../pipeline/storylines.js';
 import * as settingsDb from '../storage/db/settings.js';
 import * as sourcesDb from '../storage/db/sources.js';
 import * as eventsDb from '../storage/db/events.js';
@@ -71,6 +73,26 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 			}
 		}
 		return { ...settings, categoryPriority: categoriesDb.listCategories() };
+	});
+
+	// Storyline engine status for the admin Storylines tab: whether the embedder is reachable,
+	// what's waiting, and how the historical pass is going.
+	app.get('/api/admin/storylines/status', async () => {
+		const pending = stl.pendingCounts();
+		const counts = stl.storylineCounts();
+		const rate = engineStatus.backfillRatePerMin;
+		return {
+			reachable: engineStatus.reachable,
+			lastTickAt: engineStatus.lastTickAt,
+			recentPending: pending.recent,
+			backfillPending: pending.backfill,
+			backfillOldest: pending.backfillOldest,
+			backfillDone: pending.backfillDone,
+			backfillRatePerMin: rate,
+			backfillEtaMinutes: rate && pending.backfill ? Math.ceil(pending.backfill / rate) : null,
+			storylines: counts.news,
+			developments: counts.developments
+		};
 	});
 
 	// --- Categories (add/remove — reordering/privacy is via PATCH /settings above) ---
