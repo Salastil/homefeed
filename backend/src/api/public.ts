@@ -9,6 +9,8 @@ import { getKv } from '../storage/db/widgetKv.js';
 import type { WidgetReport } from '../widgets/report.js';
 import type { MergedArticle, Tag, WidgetSlot } from '../storage/db/types.js';
 
+import { hasPrivateAccess } from './privateAccess.js';
+
 /** Plug-in widgets that render in the top bar rather than the widget row. */
 export const TOP_BAR_WIDGETS = new Set(['searchbar']);
 
@@ -35,7 +37,6 @@ export function resolveWidgetSlots(saved: WidgetSlot[], enabledInOrder: string[]
 	for (const id of rowWidgets) if (!placed.has(id)) slots.push({ widgets: [id], rotateSeconds: 8 });
 	return slots.filter((s) => s.widgets.length > 0);
 }
-import { hasPrivateAccess } from './privateAccess.js';
 
 // The DB keeps article.video.url as the real upstream URL (video-proxy.ts needs it to
 // know what to fetch) — this rewrites it to the proxy route for any API response, so

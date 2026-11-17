@@ -92,6 +92,23 @@ function clampStorylines(s: GlobalSettings['storylines']): GlobalSettings['story
 	};
 }
 
+/** Widget slots from the admin panel: each a non-empty list of widget ids, no id twice. */
+function cleanSlots(slots: unknown): GlobalSettings['widgetSlots'] {
+	if (!Array.isArray(slots)) return [];
+	const seen = new Set<string>();
+	const out: GlobalSettings['widgetSlots'] = [];
+	for (const slot of slots) {
+		const ids: string[] = [];
+		for (const id of Array.isArray(slot?.widgets) ? slot.widgets : []) {
+			if (typeof id !== 'string' || !id || seen.has(id)) continue;
+			seen.add(id);
+			ids.push(id);
+		}
+		if (ids.length) out.push({ widgets: ids, rotateSeconds: clamp(slot.rotateSeconds, 5, 300, 20) });
+	}
+	return out;
+}
+
 function parseJson<T>(text: string | null | undefined, fallback: T): T {
 	if (!text) return fallback;
 	try {
@@ -115,7 +132,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		selectedModels: { ...current.selectedModels, ...(patch.selectedModels ?? {}) },
 		widgets: { ...current.widgets, ...(patch.widgets ?? {}) },
 		storylines: clampStorylines({ ...current.storylines, ...(patch.storylines ?? {}) }),
-		widgetSlots: patch.widgetSlots ?? current.widgetSlots
+		widgetSlots: patch.widgetSlots !== undefined ? cleanSlots(patch.widgetSlots) : current.widgetSlots
 	};
 
 	if (patch.widgets) {
