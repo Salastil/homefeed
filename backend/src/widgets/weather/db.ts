@@ -31,7 +31,7 @@ export interface ConditionDetails {
  * an hour. Rain is split into light and heavier because that is the distinction the bar
  * draws; the rest of the precipitation types are one colour each.
  */
-export type ConditionKind = 'clear' | 'partly' | 'cloudy' | 'fog' | 'light-rain' | 'rain' | 'freezing' | 'mix' | 'snow' | 'storm';
+export type ConditionKind = 'clear' | 'partly' | 'cloudy' | 'fog' | 'light-rain' | 'rain' | 'freezing' | 'sleet' | 'mix' | 'snow' | 'storm' | 'hail';
 
 export interface WeatherHourEntry extends ConditionDetails {
 	conditionKind: ConditionKind;

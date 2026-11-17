@@ -44,6 +44,9 @@ const WMO_CONDITIONS: Record<number, WeatherCondition> = {
 	73: { text: 'Moderate snow', icon: '🌨️' },
 	75: { text: 'Heavy snow', icon: '❄️' },
 	77: { text: 'Snow grains', icon: '❄️' },
+	// WMO 79, "ice pellets". Open-Meteo never emits it; the blended forecast does when the
+	// models split between snow and freezing rain around freezing (see blendedCode).
+	79: { text: 'Sleet', icon: '🌨️' },
 	80: { text: 'Slight rain showers', icon: '🌦️' },
 	81: { text: 'Moderate rain showers', icon: '🌦️' },
 	82: { text: 'Violent rain showers', icon: '⛈️' },
@@ -84,8 +87,10 @@ export function conditionKindOfCode(code: number): ConditionKind {
 	if (code === 63 || code === 65 || code === 81 || code === 82) return 'rain';
 	if (code === 56 || code === 57 || code === 66 || code === 67) return 'freezing';
 	if (code === 68) return 'mix';
+	if (code === 79) return 'sleet';
 	if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
-	if (code === 95 || code === 96 || code === 99) return 'storm';
+	if (code === 96 || code === 99) return 'hail';
+	if (code === 95) return 'storm';
 	return 'cloudy';
 }
 
@@ -146,6 +151,7 @@ const CONDITION_ADJECTIVES: Record<string, string> = {
 	'Moderate snow': 'snowy',
 	'Heavy snow': 'snowy',
 	'Snow grains': 'snowy',
+	Sleet: 'icy',
 	'Slight rain showers': 'showery',
 	'Moderate rain showers': 'showery',
 	'Violent rain showers': 'stormy',
@@ -190,6 +196,7 @@ const PRECIP_KINDS: Record<string, PrecipKind> = {
 	'Moderate snow': { rank: 3, noun: 'snow', snow: true },
 	'Heavy snow': { rank: 4, noun: 'heavy snow', snow: true },
 	'Snow grains': { rank: 2, noun: 'snow grains', snow: true },
+	Sleet: { rank: 3, noun: 'sleet', snow: false },
 	'Slight rain showers': { rank: 2, noun: 'light showers', snow: false },
 	'Moderate rain showers': { rank: 3, noun: 'showers', snow: false },
 	'Violent rain showers': { rank: 5, noun: 'heavy downpours', snow: false },
@@ -917,6 +924,7 @@ const WMO_PRECIP: Record<number, { family: PrecipFamily; heavy: boolean }> = {
 	73: { family: 'snow', heavy: false },
 	75: { family: 'snow', heavy: true },
 	77: { family: 'snow', heavy: false },
+	79: { family: 'wintry mix', heavy: false },
 	80: { family: 'showers', heavy: false },
 	81: { family: 'showers', heavy: false },
 	82: { family: 'showers', heavy: true },
@@ -1176,7 +1184,11 @@ function meanBearing(values: (number | string | null | undefined)[]): number | n
  *  - What falls depends on the averaged temperature: at or below 0.5C snow; up to 4C a
  *    "wintry mix" if ANY model has snow (the models disagree on snow-versus-rain, which is
  *    what a mix is); warmer is rain or drizzle (drizzle when most wet models say drizzle).
- *  - Thunder and fog need half the models to agree.
+ *  - Thunder and fog need half the models to agree; a thunderstorm is hail (96/99) when
+ *    half the models that call thunder also call hail.
+ *  - Near freezing, half the models calling freezing rain makes freezing rain, and models
+ *    split between snow and freezing rain make sleet (WMO 79) - ice pellets are exactly
+ *    what falls in the layer where that disagreement lives.
  *  - Dry hours take their sky from the averaged cloud cover.
  */
 function blendedCode(h: {
@@ -1191,7 +1203,16 @@ function blendedCode(h: {
 	const votes = (pred: (c: number) => boolean) => codes.filter(pred).length;
 
 	if (h.precipMm >= 0.1) {
-		if (votes((c) => c === 95 || c === 96 || c === 99) >= half && half > 0) return 95;
+		const thunder = votes((c) => c === 95 || c === 96 || c === 99);
+		if (thunder >= half && half > 0) {
+			const hail = votes((c) => c === 96 || c === 99);
+			if (hail * 2 >= thunder) return votes((c) => c === 99) * 2 >= hail ? 99 : 96;
+			return 95;
+		}
+		const freezing = votes((c) => c === 56 || c === 57 || c === 66 || c === 67);
+		const snowVotes = votes((c) => (c >= 71 && c <= 77) || c === 85 || c === 86);
+		if (h.tempC <= 1.5 && freezing > 0 && snowVotes > 0) return 79;
+		if (h.tempC <= 1.5 && freezing >= half && half > 0) return h.precipMm < 1 ? 66 : 67;
 		if (h.tempC <= 0.5) return h.precipMm < 0.5 ? 71 : h.precipMm < 1.5 ? 73 : 75;
 		if (h.tempC <= 4 && h.anySnow) return 68;
 		const drizzle = votes((c) => c >= 51 && c <= 57) > votes((c) => (c >= 61 && c <= 67) || (c >= 80 && c <= 82));
