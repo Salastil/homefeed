@@ -169,6 +169,22 @@ export async function downloadMessageMedia(channelUsername: string, messageId: s
 	return buffer && typeof buffer !== 'string' ? buffer : null;
 }
 
+/**
+ * Downloads the preview image Telegram stores with a video or GIF (its largest thumbnail),
+ * so feeds can show a poster without fetching the whole video. Null when there is none.
+ */
+export async function downloadMessageThumb(channelUsername: string, messageId: string): Promise<Buffer | null> {
+	if (!client) throw new Error('Telegram client not connected');
+	const entity = await client.getEntity(channelUsername);
+	const [message] = await client.getMessages(entity, { ids: [Number(messageId)] });
+	if (!message?.media) return null;
+	const media = message.media as { document?: { thumbs?: unknown[] }; photo?: { sizes?: unknown[] } };
+	const sizes = media.document?.thumbs ?? media.photo?.sizes ?? [];
+	if (sizes.length === 0) return null;
+	const buffer = await message.downloadMedia({ thumb: sizes.length - 1 });
+	return buffer && typeof buffer !== 'string' ? buffer : null;
+}
+
 /** Downloads a channel's current avatar — same on-demand, no-public-URL reasoning as downloadMessageMedia. */
 export async function downloadChannelAvatar(channelUsername: string): Promise<Buffer | null> {
 	if (!client) throw new Error('Telegram client not connected');

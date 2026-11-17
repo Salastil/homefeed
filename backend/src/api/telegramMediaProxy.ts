@@ -7,7 +7,7 @@
 // without hitting Telegram (and its rate limits) on every single page load.
 
 import type { FastifyInstance } from 'fastify';
-import { downloadMessageMedia, downloadChannelAvatar } from '../telegram/client.js';
+import { downloadMessageMedia, downloadMessageThumb, downloadChannelAvatar } from '../telegram/client.js';
 import { logger } from '../storage/db/logs.js';
 
 const CACHE_TTL_MS = 10 * 60_000;
@@ -55,7 +55,9 @@ export async function registerTelegramMediaProxy(app: FastifyInstance) {
 		if (!channel) return reply.code(400).send({ error: 'channel required' });
 		if (!avatar && !message) return reply.code(400).send({ error: 'message or avatar required' });
 
-		const cacheKey = avatar ? `avatar:${channel}` : `message:${channel}:${message}`;
+		// type=thumb is a video's preview image (see downloadMessageThumb), cached apart from the video.
+		const isThumb = type === 'thumb';
+		const cacheKey = avatar ? `avatar:${channel}` : `${isThumb ? 'thumb' : 'message'}:${channel}:${message}`;
 		const cached = cacheGet(cacheKey);
 		if (cached) {
 			reply.header('content-type', cached.contentType);
@@ -64,7 +66,11 @@ export async function registerTelegramMediaProxy(app: FastifyInstance) {
 		}
 
 		try {
-			const buffer = avatar ? await downloadChannelAvatar(channel) : await downloadMessageMedia(channel, message!);
+			const buffer = avatar
+				? await downloadChannelAvatar(channel)
+				: isThumb
+					? await downloadMessageThumb(channel, message!)
+					: await downloadMessageMedia(channel, message!);
 			if (!buffer) return reply.code(404).send();
 
 			const contentType = contentTypeFor(type);
