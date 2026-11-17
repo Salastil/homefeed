@@ -42,6 +42,27 @@ const STYLE = `
 .hf-autodj-play { flex: none; min-width: 74px; }
 .hf-autodj-volume { flex: 1; min-width: 0; accent-color: var(--border-accent); }
 .hf-autodj-note { margin: 8px 0 0; font-size: 12px; color: var(--text-muted); }
+/* Widget-row tile (ctx.layout === 'tile'): cover on the left, everything else in one column, fixed height. */
+.hf-autodj.tile { display: flex; gap: 14px; align-items: center; height: 100%; min-width: 0; }
+.hf-autodj.tile .hf-autodj-art { width: 96px; height: 96px; }
+.hf-autodj.tile .hf-autodj-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.hf-autodj.tile .hf-autodj-head { margin: 0 0 2px; justify-content: flex-start; }
+.hf-autodj.tile .hf-autodj-title { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--tx3, var(--text-muted)); }
+.hf-autodj.tile .hf-autodj-live { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.hf-autodj.tile .hf-autodj-live.on { color: var(--up, var(--text-accent)); }
+.hf-autodj.tile .hf-autodj-song { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hf-autodj.tile .hf-autodj-sub { font-size: 12px; color: var(--tx2, var(--text-secondary)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hf-autodj.tile .hf-autodj-sub > div { display: inline; font-size: inherit; color: inherit; }
+.hf-autodj.tile .hf-autodj-dot { color: var(--tx3, var(--text-muted)); }
+.hf-autodj.tile .hf-autodj-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.hf-autodj.tile .hf-autodj-play { min-width: 0; width: 26px; height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: 10px; line-height: 1;
+  background: var(--tx, var(--text-primary)); color: var(--s0, var(--surface-0)); border: 0; }
+.hf-autodj.tile .hf-autodj-bar { flex: 1; height: 3px; }
+.hf-autodj.tile .hf-autodj-fill { background: var(--acc, var(--border-accent)); }
+.hf-autodj.tile .hf-autodj-len { font-family: var(--mono, monospace); font-size: 10.5px; color: var(--tx3, var(--text-muted)); white-space: nowrap; }
+.hf-autodj.tile .hf-autodj-volume { flex: none; width: 54px; }
+.hf-autodj.tile .hf-autodj-note { margin: 2px 0 0; font-size: 11px; }
+.hf-autodj.tile .hf-autodj-note:empty { display: none; }
 `;
 
 function ensureStyle() {
@@ -137,15 +158,34 @@ function mount(container, ctx) {
 	});
 	const noteEl = el('p', { class: 'hf-autodj-note' });
 
-	const root = el(
-		'div',
-		{ class: 'hf-autodj' },
-		el('div', { class: 'hf-autodj-head' }, titleEl, liveEl),
-		el('div', { class: 'hf-autodj-body' }, artBox, el('div', { class: 'hf-autodj-text' }, songEl, artistEl, albumEl)),
-		progressEl,
-		el('div', { class: 'hf-autodj-controls' }, playBtn, volumeEl),
-		noteEl
-	);
+	// A widget-row tile is a fixed ~110px high, so it gets a compact one-column arrangement
+	// of the same elements; everything below drives either layout through the same nodes.
+	const isTile = ctx.layout === 'tile';
+	const lenEl = isTile ? el('span', { class: 'hf-autodj-len' }, elapsedEl, ' / ', lengthEl) : null;
+	const root = isTile
+		? el(
+				'div',
+				{ class: 'hf-autodj tile' },
+				artBox,
+				el(
+					'div',
+					{ class: 'hf-autodj-col' },
+					el('div', { class: 'hf-autodj-head' }, titleEl, el('span', { class: 'hf-autodj-dot', 'aria-hidden': 'true' }, '·'), liveEl),
+					songEl,
+					el('div', { class: 'hf-autodj-sub' }, artistEl, ' ', albumEl),
+					el('div', { class: 'hf-autodj-row' }, playBtn, barEl, lenEl, volumeEl),
+					noteEl
+				)
+			)
+		: el(
+				'div',
+				{ class: 'hf-autodj' },
+				el('div', { class: 'hf-autodj-head' }, titleEl, liveEl),
+				el('div', { class: 'hf-autodj-body' }, artBox, el('div', { class: 'hf-autodj-text' }, songEl, artistEl, albumEl)),
+				progressEl,
+				el('div', { class: 'hf-autodj-controls' }, playBtn, volumeEl),
+				noteEl
+			);
 	container.append(root);
 
 	// ---- audio ---------------------------------------------------------------------
@@ -161,7 +201,9 @@ function mount(container, ctx) {
 	});
 
 	function setPlaybackUi() {
-		playBtn.textContent = playing ? (buffering ? 'Loading…' : 'Pause') : 'Play';
+		const label = playing ? (buffering ? 'Loading…' : 'Pause') : 'Play';
+		playBtn.textContent = isTile ? (playing ? (buffering ? '…' : '❚❚') : '▶') : label;
+		playBtn.setAttribute('aria-label', label);
 		playBtn.setAttribute('aria-pressed', String(playing));
 		liveEl.className = `hf-autodj-live${playing && !buffering ? ' on' : ''}`;
 		liveEl.textContent = playing ? (buffering ? 'Connecting…' : 'Live') : data?.online === false ? 'Offline' : 'Stopped';
@@ -265,15 +307,20 @@ function mount(container, ctx) {
 			albumEl.textContent = '';
 			setCover(null);
 			progressEl.hidden = true;
+			barEl.hidden = isTile;
+			if (lenEl) lenEl.hidden = true;
 			setPlaybackUi();
 			return;
 		}
 
 		progressEl.hidden = false;
+		barEl.hidden = false;
+		if (lenEl) lenEl.hidden = false;
 		if (np.kind === 'track') {
 			songEl.textContent = np.title;
 			artistEl.textContent = np.artist ?? '';
 			albumEl.textContent = [np.album, np.year].filter(Boolean).join(' · ');
+			if (isTile && albumEl.textContent && artistEl.textContent) albumEl.textContent = '· ' + albumEl.textContent;
 			setCover(np.coverUrl);
 		} else {
 			// A DJ break: AutoDJ's public site deliberately shows the station, not the segment.

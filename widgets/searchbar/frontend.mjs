@@ -23,6 +23,17 @@ const STYLE = `
 .hf-search-row { display: flex; gap: 6px; }
 .hf-search-select { flex-shrink: 0; max-width: 42%; }
 .hf-search-input { flex: 1; min-width: 0; }
+/* Top-bar layout (ctx.layout === 'bar'): one pill-shaped box, engine picker at the right. */
+.hf-search.bar { height: 100%; display: flex; align-items: center; }
+.hf-search.bar .hf-search-row { position: relative; align-items: center; gap: 8px; width: 100%; height: 36px;
+  padding: 0 8px 0 34px; border: 1px solid var(--bd, var(--border)); border-radius: 9px; background: var(--s1, var(--surface-1)); }
+.hf-search.bar .hf-search-row:focus-within { border-color: var(--acc, var(--border-accent)); }
+.hf-search.bar .hf-search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--tx3, var(--text-muted)); pointer-events: none; }
+.hf-search.bar .hf-search-input { order: 1; border: 0; background: transparent; padding: 0; height: 100%; font-size: 13.5px; outline: none; box-shadow: none; }
+.hf-search.bar .hf-search-select { order: 2; width: auto; max-width: 140px; height: 24px; padding: 0 6px; font-size: 11.5px; border-radius: 6px;
+  border: 1px solid var(--bd, var(--border)); background: var(--s2, var(--surface-2)); color: var(--tx2, var(--text-secondary)); }
+.hf-search.bar .hf-search-key { order: 3; font-family: var(--mono, monospace); font-size: 11px; color: var(--tx3, var(--text-muted));
+  border: 1px solid var(--bd, var(--border)); border-radius: 5px; padding: 0 6px; line-height: 18px; }
 `;
 
 function ensureStyle() {
@@ -112,7 +123,29 @@ function mount(container, ctx) {
 		input
 	);
 
-	const root = el('div', { class: 'hf-search' }, el('span', { class: 'hf-search-title' }, 'Search'), form);
+	// In the top bar there's no title; the box says what it is, and "/" jumps to it.
+	const isBar = ctx.layout === 'bar';
+	let onKey = null;
+	if (isBar) {
+		input.placeholder = 'Search the web';
+		const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		icon.setAttribute('viewBox', '0 0 24 24');
+		icon.setAttribute('class', 'hf-search-icon');
+		icon.innerHTML = '<circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+		form.prepend(icon);
+		form.append(el('span', { class: 'hf-search-key', title: 'Press / to search' }, '/'));
+		onKey = (e) => {
+			if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+			const t = e.target;
+			if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+			e.preventDefault();
+			input.focus();
+		};
+		window.addEventListener('keydown', onKey);
+	}
+	const root = isBar
+		? el('div', { class: 'hf-search bar' }, form)
+		: el('div', { class: 'hf-search' }, el('span', { class: 'hf-search-title' }, 'Search'), form);
 	container.append(root);
 
 	// Renders with just the 3 built-ins immediately — no fetch delay before the widget is
@@ -131,6 +164,7 @@ function mount(container, ctx) {
 		});
 
 	return () => {
+		if (onKey) window.removeEventListener('keydown', onKey);
 		root.remove();
 	};
 }

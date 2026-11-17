@@ -44,11 +44,14 @@
 </script>
 
 <div class="widget layout-{layout}">
-	{#if error}
+	{#if error && layout !== 'sidebar'}
+		<!-- One quiet line in the top bar or a tile; the full message is in the tooltip. -->
+		<span class="unavail" title={error}>{displayName} unavailable</span>
+	{:else if error}
 		<div class="head"><span class="title">{displayName}</span></div>
 		<p class="empty">Failed to load: {error}</p>
 	{/if}
-	<div bind:this={container}></div>
+	<div class="mount" bind:this={container}></div>
 </div>
 
 <style>
@@ -63,6 +66,17 @@
 		border-radius: 0;
 		padding: 0;
 		height: 100%;
+	}
+	.layout-tile .mount,
+	.layout-bar .mount {
+		height: 100%;
+	}
+	.unavail {
+		display: flex;
+		align-items: center;
+		height: 100%;
+		font-size: 12px;
+		color: var(--tx3);
 	}
 	.head {
 		display: flex;
