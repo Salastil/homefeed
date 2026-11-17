@@ -34,7 +34,8 @@
 	type Node = { id: string; time: string; text: string; sub: string; title: string; members: LiteArticle[] };
 	const nodes = $derived.by((): { list: Node[]; gap: number } => {
 		if (item.kind === 'event') {
-			const devs = item.event.developments.slice(-6);
+			// Newest on the left (issue #1).
+			const devs = item.event.developments.slice(-6).reverse();
 			return {
 				gap: 0,
 				list: devs.map((d) => ({
@@ -48,7 +49,8 @@
 			};
 		}
 		const m = item.story.members;
-		const pick = m.length <= 6 ? m : [m[0], ...m.slice(-5)];
+		// Newest on the left; the first update stays at the far right, with the gap before it.
+		const pick = m.length <= 6 ? [...m].reverse() : [...m.slice(-5).reverse(), m[0]];
 		return {
 			gap: item.story.itemCount - pick.length,
 			list: pick.map((a) => ({ id: a.id, time: relTime(a.publishedAt, clock.now), text: headlineOf(a), sub: authorOf(a).handle === 'article' ? a.sourceName : authorOf(a).handle, title: headlineOf(a), members: [a] }))
@@ -81,12 +83,12 @@
 			<div class="smeta">{item.story.itemCount} updates · {item.story.sourceCount} sources · since {clockTime(item.story.firstItemAt)}</div>
 		{/if}
 	</div>
-	<div class="tl" style:grid-template-columns={nodes.list.map((_, i) => (i === 0 && nodes.gap ? '1fr 38px' : '1fr')).join(' ')}>
+	<div class="tl" style:grid-template-columns={nodes.list.map((_, i) => (i === nodes.list.length - 2 && nodes.gap ? '1fr 38px' : '1fr')).join(' ')}>
 		{#each nodes.list as n, i (n.id)}
 			<button
 				class="nd"
 				class:dev={item.kind === 'event'}
-				class:last={i === nodes.list.length - 1}
+				class:newest={i === 0}
 				class:sel={selectedNode === n.id}
 				onclick={() => onNode(n.title, n.members, n.id)}
 			>
@@ -94,7 +96,7 @@
 				<p>{n.text}</p>
 				<i>{n.sub}</i>
 			</button>
-			{#if i === 0 && nodes.gap}
+			{#if i === nodes.list.length - 2 && nodes.gap}
 				<div class="gapn"><span>+{nodes.gap}</span></div>
 			{/if}
 		{:else}
@@ -238,7 +240,7 @@
 	.nd.dev::before {
 		border-radius: 3px;
 	}
-	.nd.last::before {
+	.nd.newest::before {
 		background: var(--sc);
 		box-shadow: 0 0 0 4px color-mix(in srgb, var(--sc) 25%, transparent);
 	}
