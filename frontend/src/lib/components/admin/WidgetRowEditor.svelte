@@ -17,17 +17,31 @@
 	}: { settings: AdminSettings; installed: InstalledWidget[]; order: string[]; titles: Record<string, string> } = $props();
 
 	const TOP_BAR = new Set(['searchbar']);
-	const enabledIds = $derived(order.filter((id) => installed.find((w) => w.id === id)?.enabled && !TOP_BAR.has(id)));
+	const TICKER = new Set(['stocks', 'poe2']);
+	const EMPTY = 'empty';
+	const enabledOf = (id: string) => !!installed.find((w) => w.id === id)?.enabled;
+	const enabledIds = $derived(order.filter((id) => enabledOf(id) && !TOP_BAR.has(id) && !TICKER.has(id)));
+	const tickerOn = $derived(order.filter((id) => TICKER.has(id) && enabledOf(id)));
 
+	// Mirrors the backend's resolveWidgetSlots (api/public.ts).
 	function resolve(saved: Slot[], ids: string[]): Slot[] {
-		const on = new Set(ids);
+		const on = new Set([...ids, EMPTY]);
 		let out: Slot[];
-		if (saved.length) out = saved.map((s) => ({ widgets: s.widgets.filter((w) => on.has(w)), rotateSeconds: s.rotateSeconds || 8 }));
-		else {
+		if (saved.length) {
+			out = saved.map((s) => {
+				const kept = s.widgets.filter((w) => on.has(w));
+				const wasTicker = kept.length === 0 && s.widgets.some((w) => TICKER.has(w));
+				return { widgets: wasTicker ? [EMPTY] : kept, rotateSeconds: s.rotateSeconds || 8 };
+			});
+		} else {
 			out = [];
-			for (const id of ids) {
-				if (id === 'poe2' && on.has('stocks')) continue;
-				out.push({ widgets: id === 'stocks' && on.has('poe2') ? ['stocks', 'poe2'] : [id], rotateSeconds: 8 });
+			for (const id of order.filter(enabledOf)) {
+				if (TOP_BAR.has(id)) continue;
+				if (TICKER.has(id)) {
+					if (!out.some((s) => s.widgets[0] === EMPTY)) out.push({ widgets: [EMPTY], rotateSeconds: 8 });
+					continue;
+				}
+				out.push({ widgets: [id], rotateSeconds: 8 });
 			}
 		}
 		const placed = new Set(out.flatMap((s) => s.widgets));
@@ -86,7 +100,15 @@
 		commit(next);
 	}
 	const reset = () => commit([]);
-	const name = (id: string) => titles[id] ?? installed.find((w) => w.id === id)?.displayName ?? id;
+	function removeOpen(i: number) {
+		const next = copy();
+		next[i].widgets = next[i].widgets.filter((w) => w !== EMPTY);
+		commit(next);
+	}
+	function addOpen() {
+		commit([...copy(), { widgets: [EMPTY], rotateSeconds: 8 }]);
+	}
+	const name = (id: string) => (id === EMPTY ? 'Open slot' : titles[id]) ?? installed.find((w) => w.id === id)?.displayName ?? id;
 </script>
 
 <div class="panel">
@@ -94,7 +116,10 @@
 	<p class="hint">
 		The row of widgets under the top bar, shown on every page except this admin panel. Widgets sharing a position rotate
 		like a carousel (pausing while the pointer is over them); Markets also turns its own pages when it has more tickers than
-		fit. Search sits in the top bar. Turn widgets on or off below.
+		fit. Search sits in the top bar; Markets and PoE2 run in the ticker strip under the widget row{tickerOn.length
+			? ''
+			: ' (both are turned off right now)'}. An open slot keeps its position empty until a new widget takes it. Turn widgets on or off
+		below.
 	</p>
 	<div class="row">
 		{#each slots as slot, i (slot.widgets.join())}
@@ -109,7 +134,9 @@
 					<div class="chip">
 						<span>{name(id)}</span>
 						<span class="sp"></span>
-						{#if slot.widgets.length > 1}
+						{#if id === EMPTY}
+							<button class="txt" onclick={() => removeOpen(i)}>Remove</button>
+						{:else if slot.widgets.length > 1}
 							<button aria-label="Earlier in rotation" disabled={k === 0} onclick={() => moveWithin(i, k, -1)}>↑</button>
 							<button aria-label="Later in rotation" disabled={k === slot.widgets.length - 1} onclick={() => moveWithin(i, k, 1)}>↓</button>
 							<button class="txt" onclick={() => splitOut(i, id)}>Own position</button>
@@ -117,7 +144,7 @@
 					</div>
 				{/each}
 				<div class="sf">
-					{#if slot.widgets.length > 1 || slot.widgets.includes('stocks')}
+					{#if slot.widgets.length > 1}
 						<label>
 							Rotate every
 							<select value={slot.rotateSeconds} onchange={(e) => setRotate(i, Number(e.currentTarget.value))}>
@@ -131,7 +158,10 @@
 			</div>
 		{/each}
 	</div>
-	{#if saved.length}<button class="txt reset" onclick={reset}>Reset to the default arrangement</button>{/if}
+	<div class="foot">
+		<button class="txt" onclick={addOpen}>+ Open slot</button>
+		{#if saved.length}<button class="txt" onclick={reset}>Reset to the default arrangement</button>{/if}
+	</div>
 </div>
 
 <style>
@@ -216,7 +246,9 @@
 		font-size: 12px;
 		padding: 2px 4px;
 	}
-	.reset {
+	.foot {
+		display: flex;
+		gap: 16px;
 		margin-top: 10px;
 	}
 </style>

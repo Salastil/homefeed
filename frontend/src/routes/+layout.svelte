@@ -12,7 +12,6 @@
 	import TopBar from '$lib/components/shell/TopBar.svelte';
 	import WidgetRow from '$lib/components/shell/WidgetRow.svelte';
 	import TickerStrip from '$lib/components/shell/TickerStrip.svelte';
-	import { dev } from '$app/environment';
 	import { logoutPrivateAccess } from '$lib/privateAccess';
 	import { poll, startClock } from '$lib/live.svelte';
 	import type { LayoutData } from './$types';
@@ -35,19 +34,11 @@
 	// exception: no widgets, and an ordinary scrolling page.
 	const isAdmin = $derived($page.url.pathname.startsWith('/admin'));
 
-	// Dev-only mockup switch for the ticker strip (issue #1, comment 622): ?ticker=top|below|storylines
-	// shows the strip there and turns the Markets/PoE2 slot into an empty one. Not in production builds.
-	const tickerMock = $derived(dev ? $page.url.searchParams.get('ticker') : null);
-	const rowWidgets = $derived(
-		tickerMock
-			? {
-					...data.widgetsEnabled,
-					slots: (data.widgetsEnabled.slots ?? []).map((s) =>
-						s.widgets.some((w) => w === 'stocks' || w === 'poe2') ? { ...s, widgets: ['empty'] } : s
-					)
-				}
-			: data.widgetsEnabled
-	);
+	// Markets and PoE2 live in the ticker strip under the widget row (issue #1, comment 622,
+	// option B); each appears only while its widget is enabled.
+	const ticker = $derived(data.widgetsEnabled.ticker ?? []);
+	const tickerStocks = $derived(ticker.includes('stocks') ? data.stocks : { ...data.stocks, tickers: [] });
+	const tickerPoe2 = $derived(ticker.includes('poe2') ? data.poe2 : { ...data.poe2, entries: [] });
 
 	async function handleLockClick() {
 		if (data.privateAccess.authenticated) {
@@ -72,16 +63,15 @@
 {:else}
 	<div class="app">
 		<TopBar widgets={data.widgetsEnabled} privateAccess={data.privateAccess} adminPanelEnabled={data.adminPanelEnabled} onLock={handleLockClick} />
-		{#if tickerMock === 'top'}<TickerStrip stocks={data.stocks} poe2={data.poe2} />{/if}
 		<WidgetRow
-			widgets={rowWidgets}
+			widgets={data.widgetsEnabled}
 			weather={data.weather}
 			stocks={data.stocks}
 			bookmarks={data.bookmarks}
 			poe2={data.poe2}
 			weatherActive={$page.url.pathname.startsWith('/weather')}
 		/>
-		{#if tickerMock === 'below'}<TickerStrip stocks={data.stocks} poe2={data.poe2} />{/if}
+		{#if tickerStocks.tickers.length || tickerPoe2.entries.length}<TickerStrip stocks={tickerStocks} poe2={tickerPoe2} />{/if}
 		<main class="content">{@render children()}</main>
 	</div>
 {/if}

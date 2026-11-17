@@ -12,9 +12,6 @@
 	import StorylineBand from '$lib/components/board/StorylineBand.svelte';
 	import BoardColumns from '$lib/components/board/BoardColumns.svelte';
 	import DevelopmentSheet from '$lib/components/board/DevelopmentSheet.svelte';
-	import TickerStrip from '$lib/components/shell/TickerStrip.svelte';
-	import { dev } from '$app/environment';
-	import { page } from '$app/stores';
 
 	let { data }: { data: PageData } = $props();
 
@@ -42,7 +39,6 @@
 
 <div class="board">
 	<StorylineBand data={storylines} paused={!!sheet} selectedNode={sheet?.nodeId ?? null} onNode={(info) => (sheet = info)} />
-	{#if dev && $page.url.searchParams.get('ticker') === 'storylines'}<TickerStrip stocks={data.stocks} poe2={data.poe2} />{/if}
 	<BoardColumns columns={board.columns} storylines={storylines} />
 </div>
 

@@ -13,24 +13,38 @@ import { hasPrivateAccess } from './privateAccess.js';
 
 /** Plug-in widgets that render in the top bar rather than the widget row. */
 export const TOP_BAR_WIDGETS = new Set(['searchbar']);
+/** Widgets shown in the ticker strip under the widget row (issue #1, comment 622, option B). */
+export const TICKER_WIDGETS = new Set(['stocks', 'poe2']);
+/** A placeholder slot id: an open position in the widget row, kept until a new widget fills it. */
+export const EMPTY_SLOT = 'empty';
 
 /**
  * The widget row's slots, from the admin's layout (Widgets tab) or, when none is saved, from
- * the widget order with Stocks and PoE2 sharing a slot - the accepted default. Disabled and
- * top-bar widgets are dropped, empty slots removed, and any enabled widget the saved layout
- * doesn't mention gets a slot of its own at the end, so a newly installed widget still shows.
+ * the widget order. Top-bar and ticker widgets never take a slot; where the Markets/PoE2 slot
+ * used to be there is an open slot instead. Disabled widgets are dropped, empty slots removed
+ * (an explicit open slot stays), and any enabled widget the saved layout doesn't mention gets
+ * a slot of its own at the end, so a newly installed widget still shows.
  */
 export function resolveWidgetSlots(saved: WidgetSlot[], enabledInOrder: string[]): WidgetSlot[] {
-	const rowWidgets = enabledInOrder.filter((id) => !TOP_BAR_WIDGETS.has(id));
-	const enabled = new Set(rowWidgets);
+	const rowWidgets = enabledInOrder.filter((id) => !TOP_BAR_WIDGETS.has(id) && !TICKER_WIDGETS.has(id));
+	const enabled = new Set([...rowWidgets, EMPTY_SLOT]);
 	let slots: WidgetSlot[];
 	if (saved.length > 0) {
-		slots = saved.map((s) => ({ widgets: s.widgets.filter((w) => enabled.has(w)), rotateSeconds: s.rotateSeconds || 8 }));
+		slots = saved.map((s) => {
+			const kept = s.widgets.filter((w) => enabled.has(w));
+			// A slot that only held ticker widgets becomes the open slot.
+			const wasTicker = kept.length === 0 && s.widgets.some((w) => TICKER_WIDGETS.has(w));
+			return { widgets: wasTicker ? [EMPTY_SLOT] : kept, rotateSeconds: s.rotateSeconds || 8 };
+		});
 	} else {
 		slots = [];
-		for (const id of rowWidgets) {
-			if (id === 'poe2' && enabled.has('stocks')) continue;
-			slots.push({ widgets: id === 'stocks' && enabled.has('poe2') ? ['stocks', 'poe2'] : [id], rotateSeconds: 8 });
+		for (const id of enabledInOrder) {
+			if (TOP_BAR_WIDGETS.has(id)) continue;
+			if (TICKER_WIDGETS.has(id)) {
+				if (!slots.some((s) => s.widgets[0] === EMPTY_SLOT)) slots.push({ widgets: [EMPTY_SLOT], rotateSeconds: 8 });
+				continue;
+			}
+			slots.push({ widgets: [id], rotateSeconds: 8 });
 		}
 	}
 	const placed = new Set(slots.flatMap((s) => s.widgets));
@@ -149,7 +163,8 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 			order: widgetOrder,
 			pluggable,
 			slots: resolveWidgetSlots(widgetSlots, enabledInOrder),
-			topBar: enabledInOrder.filter((id) => TOP_BAR_WIDGETS.has(id))
+			topBar: enabledInOrder.filter((id) => TOP_BAR_WIDGETS.has(id)),
+			ticker: enabledInOrder.filter((id) => TICKER_WIDGETS.has(id))
 		};
 	});
 

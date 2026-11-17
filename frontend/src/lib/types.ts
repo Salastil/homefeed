@@ -277,6 +277,8 @@ export interface WidgetsEnabled {
 	slots: WidgetSlot[];
 	/** Plug-in widgets shown in the top bar instead of the widget row (the search widget). */
 	topBar: string[];
+	/** Built-in widgets shown in the ticker strip under the widget row ('stocks', 'poe2'). Absent from older backends. */
+	ticker?: string[];
 }
 
 export interface WidgetSlot {
