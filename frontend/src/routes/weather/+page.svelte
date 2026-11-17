@@ -275,7 +275,8 @@
 					{/if}
 					<span class="loc">{weather.locationName ?? ''}{updatedAgo !== null && !hovered ? ` · updated ${updatedAgo} min ago` : ''}</span>
 					<span class="sp"></span>
-					{#if pinned || hovered}<button class="btn" onclick={resetPreview}>Back to now</button>{/if}
+					<!-- Always laid out, only hidden, so the header never changes height (comment 626). -->
+					<button class="btn" class:hide={!(pinned || hovered)} tabindex={pinned || hovered ? 0 : -1} onclick={resetPreview}>Back to now</button>
 				</div>
 				<div class="hero">
 					<div class="big">
@@ -473,10 +474,15 @@
 	.now.previewing {
 		border-color: var(--acc);
 	}
+	/* Every part of the card keeps one size whether it shows now or a previewed hour, so
+	   hovering the slider never moves the chart below (issue #1, comment 626). */
 	.nh {
+		height: 28px;
 		display: flex;
 		align-items: center;
 		gap: 12px;
+		white-space: nowrap;
+		overflow: hidden;
 		font-size: 12px;
 		color: var(--tx3);
 	}
@@ -493,18 +499,27 @@
 		flex: 1;
 	}
 	.btn {
+		height: 26px;
+		flex: none;
 		font-size: 12px;
-		padding: 5px 11px;
+		padding: 0 11px;
 		border-radius: 7px;
 		background: transparent;
 		color: var(--acc);
 	}
+	.btn.hide {
+		visibility: hidden;
+	}
 	.hero {
+		height: 120px;
 		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
+		grid-template-columns: 300px minmax(0, 1fr);
 		gap: 28px;
 		align-items: center;
 		margin: 10px 0 14px;
+	}
+	.big {
+		min-width: 0;
 	}
 	.bt {
 		display: flex;
@@ -525,6 +540,9 @@
 		font-size: 14px;
 		color: var(--tx2);
 		margin-top: 6px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.bc b {
 		color: var(--tx);
@@ -535,7 +553,8 @@
 		border-radius: 10px;
 		padding: 12px 16px;
 		background: var(--s2);
-		min-height: 96px;
+		height: 108px;
+		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
@@ -579,11 +598,18 @@
 		margin: 8px 0 0;
 		font-size: 12.5px;
 		color: var(--tx2);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.cmp p.sum {
 		margin: 0;
 		font-size: 13.5px;
 		line-height: 1.55;
+		white-space: normal;
+		display: -webkit-box;
+		-webkit-line-clamp: 4;
+		-webkit-box-orient: vertical;
 	}
 	.stats {
 		display: grid;
