@@ -40,10 +40,15 @@ export function getStoryline(id: string): StorylineRow | null {
 }
 
 /** Storylines in a scope whose last item is at or after `lastSince` and whose first item is at or after `firstSince` - i.e. not yet closed relative to some moment. */
-export function storylinesActiveIn(scope: string, lastSince: string, firstSince: string): StorylineRow[] {
+/**
+ * Storylines in a scope that were open at a moment: last update at or after `lastSince`,
+ * started at or after `firstSince` and - so the historical pass can't join an old article to
+ * a storyline that only began later - started no later than `firstUntil`.
+ */
+export function storylinesActiveIn(scope: string, lastSince: string, firstSince: string, firstUntil: string): StorylineRow[] {
 	return db
-		.prepare('SELECT * FROM storylines WHERE scope = ? AND last_item_at >= ? AND first_item_at >= ? ORDER BY last_item_at DESC')
-		.all(scope, lastSince, firstSince)
+		.prepare('SELECT * FROM storylines WHERE scope = ? AND last_item_at >= ? AND first_item_at >= ? AND first_item_at <= ? ORDER BY last_item_at DESC')
+		.all(scope, lastSince, firstSince, firstUntil)
 		.map(rowToStoryline);
 }
 

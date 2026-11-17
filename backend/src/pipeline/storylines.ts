@@ -346,7 +346,7 @@ export function assignArticle(a: MergedArticle, v: number[], settings: Storyline
 
 	// 1. Join the most similar open storyline.
 	let best: { id: string; score: number } | null = null;
-	for (const s of stl.storylinesActiveIn(scope, iso(t - p.closeHours * HOUR), iso(t - p.maxHours * HOUR))) {
+	for (const s of stl.storylinesActiveIn(scope, iso(t - p.closeHours * HOUR), iso(t - p.maxHours * HOUR), iso(t + 5 * 60_000))) {
 		const score = dot(v, s.centroid);
 		if (score >= p.join && (!best || score > best.score)) {
 			if (guardOk(a, membersOf(s.id), score, settings)) best = { id: s.id, score };
