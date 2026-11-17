@@ -5,6 +5,7 @@
 	import RetentionTab from '$lib/components/admin/RetentionTab.svelte';
 	import EventsTab from '$lib/components/admin/EventsTab.svelte';
 	import WidgetsTab from '$lib/components/admin/WidgetsTab.svelte';
+	import StorylinesTab from '$lib/components/admin/StorylinesTab.svelte';
 	import ConnectionsTab from '$lib/components/admin/ConnectionsTab.svelte';
 	import LogsTab from '$lib/components/admin/LogsTab.svelte';
 	import BackupTab from '$lib/components/admin/BackupTab.svelte';
@@ -16,6 +17,7 @@
 		{ id: 'models', label: 'Models' },
 		{ id: 'retention', label: 'Retention' },
 		{ id: 'events', label: 'Tracked items' },
+		{ id: 'storylines', label: 'Storylines' },
 		{ id: 'widgets', label: 'Widgets' },
 		{ id: 'connections', label: 'Connections' },
 		{ id: 'logs', label: 'Logs' },
@@ -51,6 +53,8 @@
 		<RetentionTab settings={data.settings} />
 	{:else if active === 'events'}
 		<EventsTab events={data.events} sources={data.sources} />
+	{:else if active === 'storylines'}
+		<StorylinesTab settings={data.settings} />
 	{:else if active === 'widgets'}
 		<WidgetsTab
 			settings={data.settings}

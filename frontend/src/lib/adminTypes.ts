@@ -206,6 +206,29 @@ export interface AdminSettings {
 	bookmarksColumns: 1 | 2 | 3;
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
+	/** The board's storyline panel and the embedding-only grouping behind it - see the Storylines tab. */
+	storylines: StorylineSettings;
+	/** Widget positions in the widget row; several widgets in one slot rotate on a timer. Empty = the default arrangement. */
+	widgetSlots: { widgets: string[]; rotateSeconds: number }[];
+}
+
+export interface StorylineSettings {
+	rows: 1 | 2 | 3;
+	rotateSeconds: number;
+	includeEvents: boolean;
+	jumpOnUpdate: boolean;
+	pauseOnHover: boolean;
+	joinSimilarity: number;
+	minItems: number;
+	minSources: number;
+	seedWindowHours: number;
+	nameGuard: boolean;
+	coolingHours: number;
+	closeHours: number;
+	maxLifetimeHours: number;
+	eventJoinSimilarity: number;
+	eventMaxHours: number;
+	eventCloseHours: number;
 }
 
 export interface AdminSource {
