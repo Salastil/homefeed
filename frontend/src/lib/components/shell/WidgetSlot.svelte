@@ -32,7 +32,7 @@
 	} = $props();
 
 	const MARKETS_PER_PAGE = 5;
-	const BOOKMARKS_PER_PAGE = 8;
+	const BOOKMARKS_PER_PAGE = 16;
 
 	type Page =
 		| { key: string; kind: 'weather'; label: string; sub: string }
@@ -104,12 +104,6 @@
 
 	const pct = (v: number | null) => (v === null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`);
 	const price = (v: number | null) => (v === null ? '—' : v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-	const BM_COLORS = ['#e5484d', '#5aa7e8', '#e6a23c', '#53d769', '#d97757', '#6fb8a4', '#7fb04f', '#a48fe0', '#3fa9dc'];
-	const bmColor = (name: string) => {
-		let h = 0;
-		for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-		return BM_COLORS[h % BM_COLORS.length];
-	};
 	const hasHeader = (p: Page) => p.kind === 'markets' || p.kind === 'poe2' || p.kind === 'bookmarks';
 </script>
 
@@ -168,7 +162,7 @@
 			{:else if p.kind === 'bookmarks'}
 				<div class="bmg">
 					{#each bmShown as b (b.id)}
-						<a class="bmk" href={b.url} target="_blank" rel="noopener noreferrer"><i style:background={bmColor(b.name)}>{b.name[0]}</i>{b.name}</a>
+						<a class="bmk" href={b.url} target="_blank" rel="noopener noreferrer" title={b.url}>{b.name}</a>
 					{:else}
 						<p class="empty">No bookmarks yet</p>
 					{/each}
@@ -343,40 +337,30 @@
 	.bmg {
 		display: grid;
 		grid-template-columns: repeat(4, minmax(0, 1fr));
-		grid-template-rows: repeat(2, 1fr);
-		gap: 6px;
+		grid-template-rows: repeat(4, minmax(0, 1fr));
+		gap: 4px;
 		flex: 1;
 		min-height: 0;
 	}
 	.bmk {
 		display: flex;
 		align-items: center;
-		gap: 7px;
+		min-width: 0;
 		border: 1px solid var(--bd);
-		border-radius: 8px;
-		padding: 0 8px;
-		font-size: 12px;
+		border-radius: 5px;
+		padding: 0 7px;
+		font-size: 11.5px;
+		line-height: 1;
 		color: var(--tx2);
 		white-space: nowrap;
 		overflow: hidden;
+		text-overflow: ellipsis;
 		background: var(--s2);
 	}
 	.bmk:hover {
 		text-decoration: none;
 		color: var(--tx);
 		border-color: var(--tx3);
-	}
-	.bmk i {
-		flex: none;
-		width: 18px;
-		height: 18px;
-		border-radius: 5px;
-		display: grid;
-		place-items: center;
-		font-style: normal;
-		font-size: 10.5px;
-		font-weight: 700;
-		color: #14161a;
 	}
 	.prog {
 		position: absolute;
