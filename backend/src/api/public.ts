@@ -50,7 +50,7 @@ function presentArticle(article: MergedArticle): MergedArticle {
 
 export async function registerPublicRoutes(app: FastifyInstance) {
 	app.get('/api/feed', async (req) => {
-		const { category, geo, eventId, tag, before, limit } = req.query as Record<string, string | undefined>;
+		const { category, geo, eventId, tag, kind, before, limit } = req.query as Record<string, string | undefined>;
 		return articlesDb
 			.queryFeed(
 				{
@@ -58,6 +58,7 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 					geo,
 					eventId,
 					tag,
+					kind: kind === 'wire' || kind === 'general' ? kind : undefined,
 					before,
 					limit: limit ? Number(limit) : undefined
 				},

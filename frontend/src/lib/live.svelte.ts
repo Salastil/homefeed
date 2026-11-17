@@ -14,8 +14,11 @@ let tick = $state(Date.now());
 let started = false;
 
 export const clock = {
+	// The server never ticks (startClock is browser-only), and this module lives for the
+	// whole server process - so a server render reads the real time instead of the moment
+	// the module was first loaded.
 	get now() {
-		return tick;
+		return browser ? tick : Date.now();
 	}
 };
 

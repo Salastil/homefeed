@@ -22,6 +22,8 @@ export interface FeedParams {
 	geo?: string;
 	eventId?: string;
 	tag?: string;
+	/** The board's catch-all columns: uncategorised posts (wire) or articles (general). */
+	kind?: 'wire' | 'general';
 	before?: string;
 	limit?: number;
 }

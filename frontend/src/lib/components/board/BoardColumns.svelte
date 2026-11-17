@@ -2,26 +2,31 @@
 	/**
 	 * The board's columns. One per category (admin order) plus Wire and General; spillover
 	 * categories, quiet ones (nothing in 48 h) and any that don't fit the width share one
-	 * rotating column at the end. Each column shows only the rows that fit and says how many
-	 * it's hiding. Items that belong to an open storyline collapse into one storyline row.
+	 * rotating column at the end, whose header rule doubles as its carousel timer. Each column
+	 * shows exactly four items. Anything already shown in the storyline panel (a storyline's
+	 * updates, a tracked event's developments) is left out, so the column shows the next
+	 * regular item instead.
 	 */
-	import type { BoardColumn, LiteArticle, Storyline } from '$lib/types';
+	import type { BoardColumn, StorylinesResponse } from '$lib/types';
 	import { clock } from '$lib/live.svelte';
-	import { fitRows } from '$lib/actions/fitRows';
-	import { ago, authorOf, categoryColor, hhmm, imageOf, isPost, storyColor, textOf } from '$lib/text';
+	import { authorOf, categoryColor, cleanPost, imageOf, isPost, relTime, textOf } from '$lib/text';
 	import { slugify } from '$lib/format';
 
-	let { columns, storylines, rotateSeconds = 20 }: { columns: BoardColumn[]; storylines: Storyline[]; rotateSeconds?: number } = $props();
+	let { columns, storylines, rotateSeconds = 20 }: { columns: BoardColumn[]; storylines: StorylinesResponse; rotateSeconds?: number } = $props();
 
+	const PER_COLUMN = 4;
 	const MIN_COL = 240;
 	const QUIET_MS = 48 * 3_600_000;
+	const NEW_MS = 6 * 60_000;
 	let width = $state(1600);
 
-	const membership = $derived.by(() => {
-		const m = new Map<string, Storyline>();
-		for (const s of storylines) for (const a of s.members) m.set(a.id, s);
-		return m;
+	const inPanel = $derived.by(() => {
+		const ids = new Set<string>();
+		for (const s of storylines.storylines) for (const a of s.members) ids.add(a.id);
+		for (const e of storylines.events) for (const d of e.developments) for (const a of d.members) ids.add(a.id);
+		return ids;
 	});
+	const itemsOf = (c: BoardColumn) => c.items.filter((a) => !inPanel.has(a.id)).slice(0, PER_COLUMN);
 
 	const isQuiet = (c: BoardColumn) => {
 		const newest = c.items[0]?.publishedAt;
@@ -60,39 +65,22 @@
 				rotIndex = (rotIndex + 1) % layout.rotating.length;
 				rotStarted = rotNow;
 			}
-		}, 500);
+		}, 250);
 		return () => clearInterval(id);
 	});
 	const rotCurrent = $derived(layout.rotating[Math.min(rotIndex, layout.rotating.length - 1)]);
 	const rotProgress = $derived(layout.rotating.length > 1 ? Math.min(1, (rotNow - rotStarted) / (rotateSeconds * 1000)) : 0);
 
-	type Row = { kind: 'item'; item: LiteArticle } | { kind: 'story'; story: Storyline; here: number; at: string };
-	function rowsOf(c: BoardColumn): Row[] {
-		const out: Row[] = [];
-		const seen = new Set<string>();
-		for (const a of c.items) {
-			const s = membership.get(a.id);
-			if (s) {
-				if (seen.has(s.id)) continue;
-				seen.add(s.id);
-				out.push({ kind: 'story', story: s, here: c.items.filter((x) => membership.get(x.id)?.id === s.id).length, at: a.publishedAt });
-			} else out.push({ kind: 'item', item: a });
-		}
-		return out;
-	}
-
-	let hidden = $state<Record<string, number>>({});
-	const href = (c: BoardColumn) => (c.kind === 'category' ? `/category/${slugify(c.name)}` : null);
-	const NEW_MS = 6 * 60_000;
+	const href = (c: BoardColumn) => (c.kind === 'category' ? `/category/${slugify(c.name)}` : `/feed/${c.kind}`);
 </script>
 
 {#snippet column(c: BoardColumn, rotator: boolean)}
-	{@const rows = rowsOf(c)}
-	<div class="col">
+	{@const items = itemsOf(c)}
+	{@const color = categoryColor(c.name)}
+	<div class="col" class:rot={rotator && layout.rotating.length > 1} style:--cc={color}>
 		<div class="ch">
-			<i style:background={categoryColor(c.name)}></i>{c.name}
+			<a class="ttl" href={href(c)}><i></i>{c.name}<span class="arr">→</span></a>
 			{#if c.isPrivate}<span class="lockd" title="Private category">🔒</span>{/if}
-			<span>{c.count24h} today{c.items[0] ? ` · ${ago(c.items[0].publishedAt, clock.now)} ago` : ''}</span>
 		</div>
 		{#if rotator && layout.rotating.length > 1}
 			<div class="rtabs">
@@ -100,45 +88,29 @@
 					<button class:on={k === rotIndex} onclick={() => ((rotIndex = k), (rotStarted = Date.now()))}>{r.name}</button>
 				{/each}
 			</div>
-			<div class="rprog"><i style:width="{rotProgress * 100}%" style:background={categoryColor(c.name)}></i></div>
+			<div class="timer" title="Next: {layout.rotating[(rotIndex + 1) % layout.rotating.length].name}"><i style:width="{rotProgress * 100}%"></i></div>
 		{/if}
-		<div class="cb" use:fitRows={{ key: rows.map((r) => (r.kind === 'item' ? r.item.id : r.story.id)).join(), onHidden: (n) => (hidden = { ...hidden, [c.key]: n }) }}>
-			{#each rows as r (r.kind === 'item' ? r.item.id : 'stl-' + r.story.id)}
-				{#if r.kind === 'story'}
-					<a class="r sr" data-row href="/storyline/{r.story.id}" style:--sc={storyColor(r.story.id)}>
-						<span class="tm">{hhmm(r.at)}</span>
-						<div class="bd"><div class="ti"><span class="dia">◆</span> {r.story.tag || r.story.label}</div><div class="sub">storyline · {r.here} here · {r.story.itemCount} total</div></div>
-					</a>
-				{:else}
-					{@const a = r.item}
-					{@const img = imageOf(a)}
-					<a class="r" class:new={clock.now - new Date(a.publishedAt).getTime() < NEW_MS} data-row href="/article/{a.id}">
-						<span class="tm">{hhmm(a.publishedAt)}</span>
-						<div class="bd">
-							{#if isPost(a)}
-								<div class="who">{authorOf(a).handle || authorOf(a).name}</div>
-								<div class="tx">{textOf(a)}</div>
-							{:else}
-								<div class="ti">{a.title}</div>
-								<div class="sub">{a.sourceName}{a.hasVideo ? ' · ▶ video' : ''}</div>
-							{/if}
-						</div>
-						{#if img}
-							<span class="th"><img src={img.url} alt="" loading="lazy" />{#if img.isVideo}<span class="pb">▶</span>{/if}</span>
+		<div class="cb">
+			{#each items as a (a.id)}
+				{@const img = imageOf(a)}
+				{@const post = isPost(a)}
+				<a class="r" class:new={clock.now - new Date(a.publishedAt).getTime() < NEW_MS} class:post href="/article/{a.id}">
+					<div class="bd">
+						{#if post}
+							<div class="who">{authorOf(a).handle || authorOf(a).name}</div>
+							<div class="tx">{textOf(a) || cleanPost(a.title)}</div>
+						{:else}
+							<div class="ti">{a.title}</div>
 						{/if}
-					</a>
-				{/if}
+						<div class="meta"><span class="tm">{relTime(a.publishedAt, clock.now)}</span>{#if !post}<span>{a.sourceName}</span>{/if}{#if a.hasVideo}<span>▶ video</span>{/if}</div>
+					</div>
+					{#if img}
+						<span class="th"><img src={img.url} alt="" loading="lazy" />{#if img.isVideo}<span class="pb">▶</span>{/if}</span>
+					{/if}
+				</a>
 			{:else}
-				<p class="empty" data-row>Nothing here yet.</p>
+				<p class="empty">Nothing here yet.</p>
 			{/each}
-		</div>
-		<div class="cf">
-			<span>{hidden[c.key] ? `+${hidden[c.key]} older not shown` : ''}</span>
-			{#if rotator && layout.rotating.length > 1}
-				<span>next: {layout.rotating[(rotIndex + 1) % layout.rotating.length].name}</span>
-			{:else if href(c)}
-				<a href={href(c)}>open {c.name} →</a>
-			{/if}
 		</div>
 	</div>
 {/snippet}
@@ -177,147 +149,53 @@
 		gap: 8px;
 		padding: 9px 12px;
 		border-bottom: 1px solid var(--bd);
+		flex: none;
+	}
+	.col.rot .ch {
+		border-bottom: 0;
+		padding-bottom: 4px;
+	}
+	.ttl {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
 		font-size: 11.5px;
 		font-weight: 700;
 		letter-spacing: 0.07em;
 		text-transform: uppercase;
-		flex: none;
-	}
-	.ch i {
-		width: 8px;
-		height: 8px;
-		border-radius: 2px;
-	}
-	.ch span {
-		margin-left: auto;
-		font-family: var(--mono);
-		font-size: 10.5px;
-		font-weight: 400;
-		color: var(--tx3);
-		letter-spacing: 0;
-		text-transform: none;
-		white-space: nowrap;
-	}
-	.ch .lockd {
-		margin-left: 0;
-		font-size: 10px;
-	}
-	.cb {
-		flex: 1;
-		min-height: 0;
-		overflow: hidden;
-	}
-	.r {
-		display: grid;
-		grid-template-columns: 38px minmax(0, 1fr) auto;
-		gap: 8px;
-		padding: 8px 12px;
-		border-bottom: 1px solid var(--bd);
-		color: inherit;
-	}
-	.r:hover {
-		text-decoration: none;
-		background: var(--s2);
-	}
-	.r:hover .ti {
-		text-decoration: underline;
-	}
-	.tm {
-		font-family: var(--mono);
-		font-size: 10.5px;
-		color: var(--tx3);
-		padding-top: 2px;
-	}
-	.bd {
-		min-width: 0;
-	}
-	.ti {
-		font-size: 13px;
-		font-weight: 500;
-		line-height: 1.33;
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-	.sub {
-		font-size: 11px;
-		color: var(--tx3);
-		margin-top: 2px;
-	}
-	.who {
-		font-size: 11.5px;
-		font-weight: 600;
-		color: var(--c-wire);
+		color: var(--tx);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.tx {
-		font-size: 12.5px;
-		line-height: 1.38;
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
+	.ttl:hover {
+		text-decoration: none;
+		color: var(--cc);
 	}
-	.th {
-		position: relative;
-		width: 52px;
-		height: 52px;
-		border-radius: 6px;
-		overflow: hidden;
-		background: var(--s2);
-	}
-	.th img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-	}
-	.pb {
-		position: absolute;
-		right: 3px;
-		bottom: 3px;
-		width: 15px;
-		height: 15px;
-		border-radius: 50%;
-		background: rgba(10, 11, 13, 0.8);
-		color: #fff;
-		font-size: 7px;
-		display: grid;
-		place-items: center;
-	}
-	.r.new {
-		background: color-mix(in srgb, var(--acc) 8%, transparent);
-	}
-	.r.new .tm {
-		color: var(--acc);
-	}
-	.r.sr {
-		background: var(--s2);
-		grid-template-columns: 38px minmax(0, 1fr);
-	}
-	.r.sr .ti {
-		font-weight: 600;
-	}
-	.dia {
-		color: var(--sc);
-	}
-	.cf {
-		display: flex;
-		justify-content: space-between;
-		gap: 8px;
-		padding: 7px 12px;
-		font-size: 11px;
-		color: var(--tx3);
-		border-top: 1px solid var(--bd);
+	.ttl i {
 		flex: none;
+		width: 8px;
+		height: 8px;
+		border-radius: 2px;
+		background: var(--cc);
+	}
+	.arr {
+		color: var(--tx3);
+		letter-spacing: 0;
+		transition: transform 0.15s ease;
+	}
+	.ttl:hover .arr {
+		color: var(--cc);
+		transform: translateX(3px);
+	}
+	.lockd {
+		font-size: 10px;
 	}
 	.rtabs {
 		display: flex;
 		gap: 4px;
-		padding: 7px 10px 0;
+		padding: 0 10px 8px;
 		flex: none;
 		overflow: hidden;
 	}
@@ -333,17 +211,123 @@
 		color: var(--tx);
 		border-color: var(--tx3);
 	}
-	.rprog {
+	/* The header rule, filling as the rotation counts down. */
+	.timer {
 		height: 2px;
-		margin: 7px 10px 0;
-		background: var(--s3);
-		border-radius: 2px;
+		background: var(--bd);
 		flex: none;
-		overflow: hidden;
 	}
-	.rprog i {
+	.timer i {
 		display: block;
 		height: 100%;
+		background: var(--cc);
+	}
+	.cb {
+		flex: 1;
+		min-height: 0;
+		display: grid;
+		grid-template-rows: repeat(4, minmax(0, 1fr));
+	}
+	.r {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 10px;
+		align-items: center;
+		padding: 8px 12px;
+		border-bottom: 1px solid var(--bd);
+		color: inherit;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.r:last-child {
+		border-bottom: 0;
+	}
+	.r:hover {
+		text-decoration: none;
+		background: var(--s2);
+	}
+	.r:hover .ti {
+		text-decoration: underline;
+	}
+	.bd {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+	.ti {
+		font-size: 13.5px;
+		font-weight: 500;
+		line-height: 1.33;
+		display: -webkit-box;
+		-webkit-line-clamp: 4;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	.who {
+		font-size: 11.5px;
+		font-weight: 600;
+		color: var(--c-wire);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.tx {
+		font-size: 12.5px;
+		line-height: 1.38;
+		display: -webkit-box;
+		-webkit-line-clamp: 4;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	.meta {
+		display: flex;
+		gap: 6px;
+		font-size: 11px;
+		color: var(--tx3);
+		white-space: nowrap;
+		overflow: hidden;
+	}
+	.meta span + span::before {
+		content: '·';
+		margin-right: 6px;
+	}
+	.tm {
+		font-family: var(--mono);
+		font-size: 10.5px;
+	}
+	.th {
+		position: relative;
+		width: 64px;
+		height: 64px;
+		border-radius: 7px;
+		overflow: hidden;
+		background: var(--s2);
+	}
+	.th img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+	.pb {
+		position: absolute;
+		right: 3px;
+		bottom: 3px;
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		background: rgba(10, 11, 13, 0.8);
+		color: #fff;
+		font-size: 7px;
+		display: grid;
+		place-items: center;
+	}
+	.r.new {
+		background: color-mix(in srgb, var(--acc) 8%, transparent);
+	}
+	.r.new .tm {
+		color: var(--acc);
 	}
 	.empty {
 		margin: 0;

@@ -87,6 +87,8 @@ export function queryFeed(
 		geo?: string;
 		eventId?: string;
 		tag?: string;
+		/** The board's two catch-all columns: posts (wire) or articles (general) with no category and no tracked event. */
+		kind?: 'wire' | 'general';
 		before?: string;
 		limit?: number;
 	},
@@ -110,7 +112,7 @@ export function queryFeed(
 	// otherwise every ingested article from every source would flood the homepage.
 	// Any explicit filter (a real category page, Local's geo filter, a tag or event page)
 	// is unaffected — those show everything matching, regardless of this flag.
-	const isHomepage = !filters.category && !filters.geo && !filters.eventId && !filters.tag;
+	const isHomepage = !filters.category && !filters.geo && !filters.eventId && !filters.tag && !filters.kind;
 	if (isHomepage) {
 		sql += ' AND top_stories = 1';
 	}
@@ -130,6 +132,10 @@ export function queryFeed(
 	if (filters.tag) {
 		sql += ' AND tags LIKE ?';
 		params.push(`%"${filters.tag}"%`);
+	}
+	if (filters.kind) {
+		sql += filters.kind === 'wire' ? ' AND (tweet IS NOT NULL OR telegram_message IS NOT NULL)' : ' AND tweet IS NULL AND telegram_message IS NULL';
+		sql += " AND category = '[]' AND event_id IS NULL";
 	}
 	if (filters.before) {
 		sql += ' AND published_at < ?';

@@ -120,6 +120,17 @@ export function ago(iso: string, now: number): string {
 	return h < 48 ? `${h}h` : `${Math.round(h / 24)}d`;
 }
 
+/** "just now", "35m ago", "3hr ago", "4 days ago" - pass clock.now so it re-renders on the shared tick. */
+export function relTime(iso: string, now: number): string {
+	const m = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60000));
+	if (m < 1) return 'just now';
+	if (m < 60) return `${m}m ago`;
+	const h = Math.floor(m / 60);
+	if (h < 24) return `${h}hr ago`;
+	const d = Math.floor(h / 24);
+	return `${d} ${d === 1 ? 'day' : 'days'} ago`;
+}
+
 /** "1h 47m" / "28m" until a timestamp. */
 export function until(iso: string, now: number): string {
 	const m = Math.max(0, Math.round((new Date(iso).getTime() - now) / 60000));
