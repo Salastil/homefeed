@@ -2,6 +2,8 @@
 	import type { Weather } from '$lib/types';
 	import { gradientSpan, toF, tempInk } from '$lib/temp';
 	import { parseDateOnly } from '$lib/format';
+	import { clock } from '$lib/live.svelte';
+	import { alertLevel, alertWindow, sortAlerts } from '$lib/weatherAlerts';
 
 	let { weather, active = false }: { weather: Weather; active?: boolean } = $props();
 
@@ -20,6 +22,9 @@
 	const peak = $derived(temps.indexOf(hi));
 	const place = $derived((weather.locationName ?? '').split(',')[0]);
 	const days = $derived(weather.daily.slice(1, 5));
+	// The most serious active alert takes the forecast-days line, so the board shows it at a glance.
+	const alerts = $derived(sortAlerts(weather.alerts));
+	const top = $derived(alerts[0] ?? null);
 </script>
 
 {#if cur}
@@ -47,11 +52,17 @@
 					<span class="peak" style:left="{(peak / Math.max(1, hours.length - 1)) * 100}%" style:color={tempInk(toF(hi, weather.unit))}>{Math.round(hi)}°</span>
 				{/if}
 			</div>
-			<div class="days">
-				{#each days as d (d.date)}
-					<span><em>{parseDateOnly(d.date).toLocaleDateString([], { weekday: 'short' })}</em> {d.icon} {Math.round(d.tempMax)}°</span>
-				{/each}
-			</div>
+			{#if top}
+				<div class="alert lv-{alertLevel(top)}">
+					<b>⚠ {top.event}</b><span>{alertWindow(top, clock.now)}</span>{#if alerts.length > 1}<em>+{alerts.length - 1}</em>{/if}
+				</div>
+			{:else}
+				<div class="days">
+					{#each days as d (d.date)}
+						<span><em>{parseDateOnly(d.date).toLocaleDateString([], { weekday: 'short' })}</em> {d.icon} {Math.round(d.tempMax)}°</span>
+					{/each}
+				</div>
+			{/if}
 		</div>
 		{#if active}<span class="open">Forecast open</span>{/if}
 	</a>
@@ -116,6 +127,45 @@
 		margin-top: 4px;
 		white-space: nowrap;
 		overflow: hidden;
+	}
+	.alert {
+		--lv: #3fa9dc;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 4px;
+		padding: 2px 8px;
+		border-radius: 6px;
+		font-size: 11.5px;
+		white-space: nowrap;
+		overflow: hidden;
+		color: var(--tx2);
+		background: color-mix(in srgb, var(--lv) 16%, transparent);
+		box-shadow: inset 3px 0 0 var(--lv);
+	}
+	.alert.lv-warning {
+		--lv: #e5484d;
+	}
+	.alert.lv-watch {
+		--lv: #f08c3c;
+	}
+	.alert.lv-advisory {
+		--lv: #e0b030;
+	}
+	.alert b {
+		color: var(--lv);
+		font-weight: 600;
+	}
+	.alert span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.alert em {
+		margin-left: auto;
+		font-style: normal;
+		font-family: var(--mono);
+		font-size: 10.5px;
+		color: var(--tx3);
 	}
 	.days em {
 		font-style: normal;

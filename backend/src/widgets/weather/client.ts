@@ -1362,7 +1362,7 @@ export async function fetchForecast(
 		// percentage either way, unaffected. "inch" here regardless of the admin's chosen temperature/wind
 		// units — amounts follow the admin's precipUnit, snowfall arriving as cm when metric.
 		`&precipitation_unit=${precipUnit === 'in' ? 'inch' : 'mm'}` +
-		`&temperature_unit=${unit}&wind_speed_unit=${windUnit === 'kph' ? 'kmh' : 'mph'}&timezone=auto&forecast_days=8`;
+		`&temperature_unit=${unit}&wind_speed_unit=${windUnit === 'kph' ? 'kmh' : 'mph'}&timezone=auto&forecast_days=11`;
 	// The ceiling lookup never throws (see fetchCeilingBlocks), so it can't fail the forecast
 	// it is fetched alongside.
 	const [forecastJson, ceilingBlocks] = await Promise.all([fetchForecastJson(baseUrl, unit, precipUnit), fetchCeilingBlocks(latitude, longitude)]);
@@ -1544,8 +1544,9 @@ export async function fetchForecast(
 		}));
 
 	// Starts at TODAY in the location's own calendar (todayIdx), not at whatever day the API
-	// anchored to, and runs seven days from there.
-	const daily = data.daily.time.slice(todayIdx, todayIdx + 7).map((date, k) => {
+	// anchored to, and runs ten days from there (the request asks for eleven, so the tenth
+	// day's night still has the next morning to describe).
+	const daily = data.daily.time.slice(todayIdx, todayIdx + 10).map((date, k) => {
 		const d = todayIdx + k;
 		const dateIdxs = indicesForDate(date);
 		const nextDate = data.daily.time[d + 1];
@@ -1636,11 +1637,32 @@ export interface WeatherAlertResult {
 	headline: string;
 	severity: string;
 	expires: string;
+	onset: string | null;
+	ends: string | null;
+	description: string | null;
+	instruction: string | null;
+	areaDesc: string | null;
+	senderName: string | null;
 }
 
-// US National Weather Service — free, no key, no account, covers the US and territories
-// only. A non-US location will reliably fail this call; that's expected, not an error
-// (see poller.ts, which treats a failure here as "no alerts" rather than propagating it).
+/**
+ * NWS descriptions are written as "* WHAT...", "* WHERE...", "* WHEN...", "* IMPACTS..."
+ * sections. The page already shows where and when, so the short form is WHAT plus IMPACTS;
+ * a description in any other shape keeps its first paragraph.
+ */
+export function condenseAlertText(text: string | null | undefined): string | null {
+	if (!text) return null;
+	const flat = (t: string) => t.replace(/\s+/g, ' ').trim();
+	const section = (name: string) => {
+		const m = new RegExp(`\\*\\s*${name}\\.\\.\\.([\\s\\S]*?)(?=\\n\\s*\\*\\s*[A-Z ]+\\.\\.\\.|$)`).exec(text);
+		return m ? flat(m[1]) : '';
+	};
+	const what = section('WHAT');
+	const impacts = section('IMPACTS');
+	if (what || impacts) return [what, impacts].filter(Boolean).join(' ');
+	return flat(text.split(/\n\s*\n/)[0] ?? text) || null;
+}
+
 export async function fetchActiveAlerts(latitude: number, longitude: number): Promise<WeatherAlertResult[]> {
 	const url = `https://api.weather.gov/alerts/active?point=${latitude},${longitude}`;
 	const res = await fetch(url, {
@@ -1652,13 +1674,33 @@ export async function fetchActiveAlerts(latitude: number, longitude: number): Pr
 	});
 	if (!res.ok) throw new Error(`NWS alerts API returned ${res.status}`);
 	const data = (await res.json()) as {
-		features: { id: string; properties: { event: string; headline: string; severity: string; expires: string } }[];
+		features: {
+			id: string;
+			properties: {
+				event: string;
+				headline: string;
+				severity: string;
+				expires: string;
+				onset?: string | null;
+				ends?: string | null;
+				description?: string | null;
+				instruction?: string | null;
+				areaDesc?: string | null;
+				senderName?: string | null;
+			};
+		}[];
 	};
 	return data.features.map((f) => ({
 		id: f.id,
 		event: f.properties.event,
 		headline: f.properties.headline,
 		severity: f.properties.severity,
-		expires: f.properties.expires
+		expires: f.properties.expires,
+		onset: f.properties.onset ?? null,
+		ends: f.properties.ends ?? null,
+		description: condenseAlertText(f.properties.description),
+		instruction: f.properties.instruction ? f.properties.instruction.replace(/\s+/g, ' ').trim() : null,
+		areaDesc: f.properties.areaDesc ?? null,
+		senderName: f.properties.senderName ?? null
 	}));
 }

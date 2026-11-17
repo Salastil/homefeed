@@ -11,8 +11,11 @@
 	import { clock } from '$lib/live.svelte';
 	import { parseDateOnly } from '$lib/format';
 	import { gradientSpan, SCALE_CSS, tempColor, tempInk, toF } from '$lib/temp';
+	import { alertLevel, sortAlerts } from '$lib/weatherAlerts';
+	import WeatherAlertBand from '$lib/components/shell/WeatherAlertBand.svelte';
 
 	let { data }: { data: PageData } = $props();
+
 	const weather = $derived(data.weather);
 	const unitLabel = $derived(weather.unit === 'celsius' ? 'C' : 'F');
 	const hours = $derived(weather.hourly);
@@ -130,6 +133,29 @@
 			}))
 	);
 	const midnights = $derived(hours.flatMap((h, i) => (i > 0 && new Date(h.time).getHours() === 0 ? [i] : [])));
+
+	// Each alert's active window, shaded on the chart (clipped to the hours shown).
+	const alertSpans = $derived.by(() => {
+		if (!n) return [];
+		const t0 = new Date(hours[0].time).getTime();
+		const xAt = (ms: number) => Math.min(VW, Math.max(0, ((ms - t0) / 3_600_000) * (VW / n)));
+		const spans = sortAlerts(weather.alerts)
+			.map((a) => {
+				const from = a.onset ? new Date(a.onset).getTime() : clock.now;
+				const to = new Date(a.ends ?? a.expires).getTime();
+				return { id: a.id, event: a.event, level: alertLevel(a), x0: xAt(from), x1: xAt(to), lane: 0 };
+			})
+			.filter((s) => s.x1 - s.x0 > 2);
+		// Overlapping windows put their labels on separate lines.
+		const lanes: number[] = [];
+		for (const sp of [...spans].sort((a, b) => a.x0 - b.x0)) {
+			let lane = lanes.findIndex((end) => end <= sp.x0);
+			if (lane < 0) lane = lanes.length;
+			lanes[lane] = sp.x1;
+			sp.lane = lane;
+		}
+		return spans.reverse();
+	});
 
 	// ---- The slider ----------------------------------------------------------------------------
 	// Kept as the hour's timestamp so it survives `weather` being replaced by a background refresh.
@@ -265,6 +291,7 @@
 		<nav class="crumbs">
 			<a class="back" href="/">← Board</a><span>Weather</span>{#if weather.locationName}<span class="sep">›</span><span>{weather.locationName}</span>{/if}
 		</nav>
+		{#if weather.alerts.length}<WeatherAlertBand alerts={weather.alerts} />{/if}
 		<div class="wgrid">
 			<section class="card now" class:previewing={!!hovered}>
 				<div class="nh">
@@ -310,20 +337,10 @@
 						</div>
 					{/each}
 				</div>
-				{#if weather.alerts.length}
-					<div class="alerts">
-						{#each weather.alerts as al (al.id)}
-							<div class="al sev-{al.severity.toLowerCase()}">
-								<b>{al.event}</b><span>{al.headline}</span>
-								<em>until {new Date(al.expires).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</em>
-							</div>
-						{/each}
-					</div>
-				{/if}
 			</section>
 
 			<section class="card week">
-				<div class="wch">7-day forecast</div>
+				<div class="wch">10-day forecast</div>
 				{#each weather.daily as d, i (d.date)}
 					{@const tonight = i === 0 && isTonight}
 					{@const low = d.nightLow ?? d.tempMin}
@@ -381,7 +398,16 @@
 										{#each grad.stops as s}<stop offset={s.offset} stop-color={s.color} />{/each}
 									</linearGradient>
 								</defs>
+								{#each ['warning', 'watch', 'advisory', 'statement'] as lv (lv)}
+									<pattern id="wx-hatch-{lv}" class="hatch lv-{lv}" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+										<rect width="3" height="8" />
+									</pattern>
+								{/each}
 								{#each nights as nt}<rect x={nt.x} y="0" width={nt.w} height={PH} class="night" />{/each}
+								{#each alertSpans as al (al.id)}
+									<rect x={al.x0} y="0" width={al.x1 - al.x0} height={BOT} class="alw lv-{al.level}" style="fill:url(#wx-hatch-{al.level})" />
+									<rect x={al.x0} y="0" width={al.x1 - al.x0} height="3" class="alt lv-{al.level}" />
+								{/each}
 								<polygon points={area} class="tarea" style="fill:url(#wx-main)" />
 								{#if showFreeze}<line x1="0" x2={VW} y1={Y(freezing)} y2={Y(freezing)} class="fz" />{/if}
 								<polyline points={feel} class="fline" />
@@ -395,6 +421,9 @@
 							</svg>
 							{#each extremes as i (i)}
 								<span class="lab" style:left="{(X(i) / VW) * 100}%" style:top="{(Y(hours[i].temp) / PH) * 100}%" style:color={inkOf(hours[i].temp)}>{Math.round(hours[i].temp)}°</span>
+							{/each}
+							{#each alertSpans as al (al.id)}
+								<span class="allab lv-{al.level}" class:end={al.x0 > VW * 0.8} style:top="{5 + al.lane * 20}px" style:left={al.x0 > VW * 0.8 ? 'auto' : `${(al.x0 / VW) * 100}%`} style:right={al.x0 > VW * 0.8 ? `${100 - (al.x1 / VW) * 100}%` : 'auto'} style:max-width="{Math.max(14, ((al.x1 - al.x0) / VW) * 100)}%">⚠ {al.event}</span>
 							{/each}
 							{#if showFreeze}<span class="fzlab" style:top="{(Y(freezing) / PH) * 100}%">{freezing}° freezing</span>{/if}
 							{#if hovered}
@@ -653,41 +682,42 @@
 	.tone-poor {
 		color: var(--dn);
 	}
-	.alerts {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		margin-top: 10px;
+	/* Alert windows on the chart: hatched in the alert's colour, with a solid top edge. */
+	.lv-warning {
+		--lv: #e5484d;
 	}
-	.al {
-		display: flex;
-		gap: 10px;
-		align-items: baseline;
-		font-size: 12.5px;
-		border-left: 3px solid var(--tx3);
-		padding: 6px 10px;
-		background: var(--s2);
-		border-radius: 0 7px 7px 0;
+	.lv-watch {
+		--lv: #f08c3c;
 	}
-	.al span {
-		flex: 1;
-		min-width: 0;
-		color: var(--tx2);
+	.lv-advisory {
+		--lv: #e0b030;
+	}
+	.lv-statement {
+		--lv: #3fa9dc;
+	}
+	.hatch rect {
+		fill: var(--lv);
+		opacity: 0.16;
+	}
+	.alt {
+		fill: var(--lv);
+	}
+	.allab.end {
+		border-radius: 0 0 0 5px;
+	}
+	.allab {
+		position: absolute;
+		top: 5px;
+		padding: 1px 7px;
+		border-radius: 0 0 5px 0;
+		font-size: 10.5px;
+		font-weight: 600;
+		color: var(--lv);
+		background: color-mix(in srgb, var(--lv) 14%, var(--s1));
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-	.al em {
-		font-style: normal;
-		color: var(--tx3);
-		white-space: nowrap;
-	}
-	.sev-extreme,
-	.sev-severe {
-		border-left-color: var(--dn);
-	}
-	.sev-moderate {
-		border-left-color: #d9a94e;
+		pointer-events: none;
 	}
 	.week {
 		grid-row: 1 / 3;
@@ -709,13 +739,19 @@
 		color: var(--tx2);
 		margin-bottom: 10px;
 	}
+	/* Ten days share the column's height evenly, so the list fills it at any screen height. */
 	.dy {
+		flex: 1 1 0;
+		min-height: 44px;
 		display: grid;
 		grid-template-columns: 110px 40px minmax(0, 1fr) 62px 34px 110px 36px;
 		gap: 10px;
 		align-items: center;
-		padding: 10px 8px;
+		padding: 0 8px;
 		border-bottom: 1px solid var(--bd);
+	}
+	.dy:last-of-type {
+		border-bottom: 0;
 	}
 	.dy.today {
 		background: var(--s2);
@@ -740,6 +776,9 @@
 		display: block;
 		font-size: 13.5px;
 		font-weight: 500;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.dt em {
 		display: block;
@@ -777,7 +816,8 @@
 		border-radius: 3px;
 	}
 	.wfoot {
-		margin-top: auto;
+		flex: none;
+		margin-top: 6px;
 		padding-top: 10px;
 		border-top: 1px solid var(--bd);
 		font-size: 11.5px;

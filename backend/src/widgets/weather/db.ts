@@ -82,6 +82,14 @@ export interface WeatherAlert {
 	headline: string;
 	severity: string;
 	expires: string;
+	/** When it takes effect / ends (NWS onset/ends); absent on alerts cached before these were kept. */
+	onset?: string | null;
+	ends?: string | null;
+	/** What and impacts, condensed from the NWS description - see condenseAlertText. */
+	description?: string | null;
+	instruction?: string | null;
+	areaDesc?: string | null;
+	senderName?: string | null;
 }
 
 export interface WeatherConfig {

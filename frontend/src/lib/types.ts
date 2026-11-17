@@ -186,6 +186,13 @@ export interface WeatherAlert {
 	headline: string;
 	severity: string;
 	expires: string;
+	/** NWS fields the page can show when the backend sends them (older backends don't). */
+	onset?: string | null;
+	ends?: string | null;
+	description?: string | null;
+	instruction?: string | null;
+	areaDesc?: string | null;
+	senderName?: string | null;
 }
 
 export interface Weather {
