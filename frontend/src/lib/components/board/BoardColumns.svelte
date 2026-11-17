@@ -57,12 +57,15 @@
 		let pos = base.slots
 			.map((s) => ({ keys: s.columns.filter((k) => byKey.has(k)), rotateSeconds: s.rotateSeconds }))
 			.filter((p) => p.keys.length > 0);
-		// The position quiet and folded columns join: the last rotating one, else a new one at the end.
+		// The position quiet and folded columns join: the last rotating one, else one created at
+		// the end - created once and then reused, even while it still holds a single column.
+		let made: { keys: string[]; rotateSeconds: number } | null = null;
 		const target = () => {
+			if (made) return made;
 			for (let i = pos.length - 1; i >= 0; i--) if (pos[i].keys.length > 1) return pos[i];
-			const p = { keys: [] as string[], rotateSeconds: 20 };
-			pos.push(p);
-			return p;
+			made = { keys: [] as string[], rotateSeconds: 20 };
+			pos.push(made);
+			return made;
 		};
 		if (base.autoRotateQuiet) {
 			const quiet = pos.filter((p) => p.keys.length === 1 && byKey.get(p.keys[0])!.kind === 'category' && isQuiet(byKey.get(p.keys[0])!));
@@ -74,7 +77,8 @@
 		}
 		if (base.autoFold) {
 			const room = Math.max(2, Math.floor((width + 10) / (MIN_COL + 10)));
-			while (pos.length > room) {
+			// Every pass removes one position, so this ends; the cap is a second guard.
+			for (let guard = 0; pos.length > room && guard < 100; guard++) {
 				const t = target();
 				// Right-most single category first; Wire and General fold last.
 				const singles = pos.filter((p) => p !== t && p.keys.length === 1);
