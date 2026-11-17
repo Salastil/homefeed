@@ -39,7 +39,8 @@
 		| { key: string; kind: 'markets'; label: string; sub: string; tickers: StocksFeed['tickers'] }
 		| { key: string; kind: 'poe2'; label: string; sub: string }
 		| { key: string; kind: 'bookmarks'; label: string; sub: string }
-		| { key: string; kind: 'plug'; label: string; sub: string; widget: PluggableWidgetSummary };
+		| { key: string; kind: 'plug'; label: string; sub: string; widget: PluggableWidgetSummary }
+		| { key: string; kind: 'empty'; label: string; sub: string };
 
 	const pages = $derived.by(() => {
 		const out: Page[] = [];
@@ -58,6 +59,7 @@
 				}
 			} else if (id === 'poe2') out.push({ key: 'poe2', kind: 'poe2', label: 'PoE2', sub: poe2.leagueName ?? '' });
 			else if (id === 'bookmarks') out.push({ key: 'bookmarks', kind: 'bookmarks', label: 'Bookmarks', sub: '' });
+			else if (id === 'empty') out.push({ key: 'empty', kind: 'empty', label: '', sub: '' });
 			else {
 				const w = pluggable.find((p) => p.id === id);
 				if (w) out.push({ key: `plug-${id}`, kind: 'plug', label: w.displayName, sub: '', widget: w });
@@ -167,6 +169,8 @@
 						<p class="empty">No bookmarks yet</p>
 					{/each}
 				</div>
+			{:else if p.kind === 'empty'}
+				<div class="emptyslot">Open slot — a new widget goes here</div>
 			{:else if p.kind === 'plug'}
 				{#if p.widget.frontendEntry}
 					<DynamicWidgetSlot id={p.widget.id} displayName={p.widget.displayName} frontendEntry={p.widget.frontendEntry} layout="tile" />
@@ -376,6 +380,15 @@
 		display: block;
 		height: 100%;
 		background: var(--acc);
+	}
+	.emptyslot {
+		flex: 1;
+		display: grid;
+		place-items: center;
+		border: 1px dashed var(--bd);
+		border-radius: 8px;
+		font-size: 12px;
+		color: var(--tx3);
 	}
 	.empty {
 		margin: 0;

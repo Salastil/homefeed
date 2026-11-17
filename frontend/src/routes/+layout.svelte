@@ -11,6 +11,8 @@
 	import PrivateAccessModal from '$lib/components/PrivateAccessModal.svelte';
 	import TopBar from '$lib/components/shell/TopBar.svelte';
 	import WidgetRow from '$lib/components/shell/WidgetRow.svelte';
+	import TickerStrip from '$lib/components/shell/TickerStrip.svelte';
+	import { dev } from '$app/environment';
 	import { logoutPrivateAccess } from '$lib/privateAccess';
 	import { poll, startClock } from '$lib/live.svelte';
 	import type { LayoutData } from './$types';
@@ -32,6 +34,20 @@
 	// never scrolls - each page fills the space under them. The admin panel is the one
 	// exception: no widgets, and an ordinary scrolling page.
 	const isAdmin = $derived($page.url.pathname.startsWith('/admin'));
+
+	// Dev-only mockup switch for the ticker strip (issue #1, comment 622): ?ticker=top|below|storylines
+	// shows the strip there and turns the Markets/PoE2 slot into an empty one. Not in production builds.
+	const tickerMock = $derived(dev ? $page.url.searchParams.get('ticker') : null);
+	const rowWidgets = $derived(
+		tickerMock
+			? {
+					...data.widgetsEnabled,
+					slots: (data.widgetsEnabled.slots ?? []).map((s) =>
+						s.widgets.some((w) => w === 'stocks' || w === 'poe2') ? { ...s, widgets: ['empty'] } : s
+					)
+				}
+			: data.widgetsEnabled
+	);
 
 	async function handleLockClick() {
 		if (data.privateAccess.authenticated) {
@@ -56,14 +72,16 @@
 {:else}
 	<div class="app">
 		<TopBar widgets={data.widgetsEnabled} privateAccess={data.privateAccess} adminPanelEnabled={data.adminPanelEnabled} onLock={handleLockClick} />
+		{#if tickerMock === 'top'}<TickerStrip stocks={data.stocks} poe2={data.poe2} />{/if}
 		<WidgetRow
-			widgets={data.widgetsEnabled}
+			widgets={rowWidgets}
 			weather={data.weather}
 			stocks={data.stocks}
 			bookmarks={data.bookmarks}
 			poe2={data.poe2}
 			weatherActive={$page.url.pathname.startsWith('/weather')}
 		/>
+		{#if tickerMock === 'below'}<TickerStrip stocks={data.stocks} poe2={data.poe2} />{/if}
 		<main class="content">{@render children()}</main>
 	</div>
 {/if}
