@@ -1,172 +1,204 @@
 <script lang="ts">
+	/**
+	 * Weather page (accepted pane I). Left: the conditions card and, under it, the hourly
+	 * chart - temperature line coloured by temperature, feels-like, precipitation chance
+	 * coloured by type, night shading, and the condition strip. The chart is the old hourly
+	 * slider: hovering (or dragging, or arrow keys) previews that hour in the card, a touch
+	 * or click pins it until "Back to now". Right: the 7-day list.
+	 */
 	import type { PageData } from './$types';
-	import { timeAgo, formatDayHeading } from '$lib/format';
-	import type { WeatherHourEntry, WeatherCurrentConditions } from '$lib/types';
+	import type { WeatherCurrentConditions, WeatherHourEntry } from '$lib/types';
+	import { clock } from '$lib/live.svelte';
+	import { parseDateOnly } from '$lib/format';
+	import { gradientSpan, SCALE_CSS, tempColor, tempInk, toF } from '$lib/temp';
 
 	let { data }: { data: PageData } = $props();
 	const weather = $derived(data.weather);
 	const unitLabel = $derived(weather.unit === 'celsius' ? 'C' : 'F');
+	const hours = $derived(weather.hourly);
+	const n = $derived(hours.length);
+	const colorOf = (t: number) => tempColor(toF(t, weather.unit));
+	const inkOf = (t: number) => tempInk(toF(t, weather.unit));
 
-	// ---- Timeline bar ------------------------------------------------------------------
-	// One bar for the whole hourly forecast (today's remaining hours through the end of
-	// tomorrow - see weather/client.ts), the way MerrySky draws it: consecutive hours that
-	// look alike merge into a single labelled stretch, with the time and temperature on an
-	// axis underneath. Moving along it previews that hour in the card above.
-	const KIND_LABELS: Record<string, string> = {
-		clear: 'Clear',
-		partly: 'Partly cloudy',
-		cloudy: 'Cloudy',
-		fog: 'Fog',
-		'light-rain': 'Light rain',
-		rain: 'Rain',
-		freezing: 'Freezing rain',
-		mix: 'Wintry mix',
-		snow: 'Snow',
-		storm: 'Thunderstorm'
+	// ---- Day / night -----------------------------------------------------------------------
+	// Only today's sunrise and sunset are known; other days use the same times of day, which
+	// is within a few minutes across a two-day window.
+	const minutesOf = (iso: string) => {
+		const d = new Date(iso);
+		return d.getHours() * 60 + d.getMinutes();
+	};
+	const sunriseMin = $derived(weather.current ? minutesOf(weather.current.sunrise) : 7 * 60);
+	const sunsetMin = $derived(weather.current ? minutesOf(weather.current.sunset) : 17 * 60);
+	const isDay = (iso: string) => {
+		const m = minutesOf(iso) + 30;
+		return m >= sunriseMin && m < sunsetMin + 30;
 	};
 
-	const hourCount = $derived(weather.hourly.length);
+	// The backend has one 'clear' kind; the page splits it into Sunny / Clear (night).
+	type DKind = 'sunny' | 'clear' | 'partly' | 'cloudy' | 'fog' | 'light-rain' | 'rain' | 'storm' | 'hail' | 'freezing' | 'sleet' | 'mix' | 'snow' | 'unknown';
+	const KINDS: [DKind, string][] = [
+		['sunny', 'Sunny'],
+		['clear', 'Clear (night)'],
+		['partly', 'Partly cloudy'],
+		['cloudy', 'Cloudy'],
+		['fog', 'Fog'],
+		['light-rain', 'Light rain'],
+		['rain', 'Rain'],
+		['storm', 'Thunderstorm'],
+		['hail', 'Hail'],
+		['freezing', 'Freezing rain'],
+		['sleet', 'Sleet'],
+		['mix', 'Wintry mix'],
+		['snow', 'Snow']
+	];
+	const LABEL = Object.fromEntries(KINDS) as Record<DKind, string>;
+	const dkind = (h: WeatherHourEntry): DKind => {
+		const k = h.conditionKind;
+		if (!k) return 'unknown';
+		if (k === 'clear') return isDay(h.time) ? 'sunny' : 'clear';
+		return k;
+	};
+	const PCOL: Partial<Record<DKind, string>> = { snow: '#cfe0f5', mix: '#a6b8e8', sleet: '#7fb5c4', freezing: '#5fc6d6', hail: '#b9a3e3', storm: '#8a5cd0' };
 
-	// Every local midnight inside the window, whether or not it earned a tick label - the
-	// label can be skipped for crowding, but the day change should still show on the bar.
-	const midnights = $derived(
-		weather.hourly.flatMap((hour, index) => (index > 0 && new Date(hour.time).getHours() === 0 ? [index] : []))
-	);
-
-	// `unknown` only exists for the few seconds after a deploy, before the first poll refills
-	// a cache that predates conditionKind - drawn as a neutral, unlabelled stretch rather
-	// than claiming a sky it doesn't know.
-	const segments = $derived.by(() => {
-		const out: { kind: string; count: number }[] = [];
-		for (const hour of weather.hourly) {
-			const kind = hour.conditionKind ?? 'unknown';
-			const last = out[out.length - 1];
-			if (last && last.kind === kind) last.count++;
-			else out.push({ kind, count: 1 });
-		}
-		return out;
-	});
-
-	// A label every six hours, with midnight shown as the weekday so it doubles as the "which
-	// day is this" marker the old Today/Tomorrow headings were for. Hours near either end are
-	// skipped so a label never collides with "Now" or runs off the right edge.
-	const ticks = $derived.by(() => {
-		const out: { index: number; label: string; temp: number; isNow: boolean; midnight: boolean; minor: boolean }[] = [];
-		weather.hourly.forEach((hour, index) => {
-			const at = new Date(hour.time);
-			const hourOfDay = at.getHours();
-			if (index === 0) {
-				out.push({ index, label: 'Now', temp: hour.temp, isNow: true, midnight: false, minor: false });
-			} else if (hourOfDay % 6 === 0 && index >= 2 && index < hourCount - 1) {
-				const midnight = hourOfDay === 0;
-				out.push({
-					index,
-					label: midnight ? at.toLocaleDateString([], { weekday: 'short' }) : at.toLocaleTimeString([], { hour: 'numeric' }),
-					temp: hour.temp,
-					isNow: false,
-					midnight,
-					// On a phone only every twelfth hour has room for a label.
-					minor: hourOfDay % 12 !== 0
-				});
-			}
+	const runs = $derived.by(() => {
+		const out: { kind: DKind; from: number; count: number }[] = [];
+		hours.forEach((h, i) => {
+			const k = dkind(h);
+			const last = out.at(-1);
+			if (last && last.kind === k) last.count++;
+			else out.push({ kind: k, from: i, count: 1 });
 		});
 		return out;
 	});
+	const kindsPresent = $derived(new Set(runs.map((r) => r.kind)));
 
-	// Hovering an hour previews THAT hour's numbers in the stat panel; leaving the strip
-	// falls back to live current conditions. Kept as the hour's timestamp rather than the
-	// object itself so it survives `weather` being replaced by a background refresh
-	// mid-hover (the same object identity wouldn't).
+	// ---- Chart geometry ----------------------------------------------------------------------
+	const VW = 1000;
+	const PH = 210;
+	const TOP = 26;
+	const BOT = 150;
+	const PB0 = 166;
+	const PB1 = 206;
+	const temps = $derived(hours.flatMap((h) => [h.temp, h.feelsLike]));
+	const lo = $derived(temps.length ? Math.floor(Math.min(...temps)) - 2 : 0);
+	const hi = $derived(temps.length ? Math.ceil(Math.max(...temps)) + 2 : 1);
+	const X = (i: number) => ((i + 0.5) * VW) / Math.max(1, n);
+	const Y = (v: number) => TOP + (BOT - TOP) * (1 - (v - lo) / Math.max(1, hi - lo));
+	const line = $derived(hours.map((h, i) => `${X(i).toFixed(1)},${Y(h.temp).toFixed(1)}`).join(' '));
+	const feel = $derived(hours.map((h, i) => `${X(i).toFixed(1)},${Y(h.feelsLike).toFixed(1)}`).join(' '));
+	const area = $derived(n ? `${X(0).toFixed(1)},${BOT} ${line} ${X(n - 1).toFixed(1)},${BOT}` : '');
+	const grad = $derived(gradientSpan(Y, weather.unit));
+	const freezing = $derived(weather.unit === 'celsius' ? 0 : 32);
+	const showFreeze = $derived(lo < freezing && freezing < hi);
+	const nights = $derived.by(() => {
+		const out: { x: number; w: number }[] = [];
+		let i = 0;
+		while (i < n) {
+			if (!isDay(hours[i].time)) {
+				let j = i;
+				while (j + 1 < n && !isDay(hours[j + 1].time)) j++;
+				const x0 = Math.max(0, X(i) - VW / n / 2);
+				const x1 = Math.min(VW, X(j) + VW / n / 2);
+				out.push({ x: x0, w: x1 - x0 });
+				i = j + 1;
+			} else i++;
+		}
+		return out;
+	});
+	const extremes = $derived.by(() => {
+		if (!n) return [];
+		let imax = 0;
+		let imin = 0;
+		hours.forEach((h, i) => {
+			if (h.temp > hours[imax].temp) imax = i;
+			if (h.temp < hours[imin].temp) imin = i;
+		});
+		return [...new Set([0, imax, imin])].sort((a, b) => a - b);
+	});
+	const DEG: Record<string, number> = { N: 180, NE: 225, E: 270, SE: 315, S: 0, SW: 45, W: 90, NW: 135 };
+	const ticks = $derived(
+		hours
+			.map((h, i) => ({ h, i, d: new Date(h.time) }))
+			.filter(({ d, i }) => d.getHours() % 3 === 0 && i < n - 1)
+			.map(({ h, i, d }) => ({
+				i,
+				day: d.getHours() === 0,
+				label: d.getHours() === 0 ? d.toLocaleDateString([], { weekday: 'short' }) : d.toLocaleTimeString([], { hour: 'numeric' }).replace(' ', '').toLowerCase(),
+				temp: h.temp,
+				wind: h.windSpeed,
+				deg: DEG[h.windDirection] ?? 0
+			}))
+	);
+	const midnights = $derived(hours.flatMap((h, i) => (i > 0 && new Date(h.time).getHours() === 0 ? [i] : [])));
+
+	// ---- The slider ----------------------------------------------------------------------------
+	// Kept as the hour's timestamp so it survives `weather` being replaced by a background refresh.
 	let hoveredTime = $state<string | null>(null);
-	const hoveredHour = $derived(hoveredTime ? (weather.hourly.find((h) => h.time === hoveredTime) ?? null) : null);
-
-	const cursorIndex = $derived(hoveredTime ? weather.hourly.findIndex((h) => h.time === hoveredTime) : -1);
-
-	let trackEl = $state<HTMLElement | null>(null);
-	// Not rendered, so a plain variable rather than state.
-	let scrubbing = false;
-	// A finger lifting off the bar would otherwise snap straight back to "now" and leave no
-	// time to read what it landed on, so touch and pen selections stay put until dismissed.
 	let pinned = $state(false);
+	let scrubbing = false;
+	let sliderEl = $state<HTMLElement | null>(null);
+	const hovered = $derived(hoveredTime ? (hours.find((h) => h.time === hoveredTime) ?? null) : null);
+	const cursor = $derived(hoveredTime ? hours.findIndex((h) => h.time === hoveredTime) : -1);
 
 	function resetPreview() {
 		hoveredTime = null;
 		pinned = false;
 	}
-
 	function previewAt(clientX: number) {
-		if (!trackEl || hourCount === 0) return;
-		const rect = trackEl.getBoundingClientRect();
-		const index = Math.min(hourCount - 1, Math.max(0, Math.floor(((clientX - rect.left) / rect.width) * hourCount)));
-		hoveredTime = weather.hourly[index].time;
+		if (!sliderEl || !n) return;
+		const r = sliderEl.getBoundingClientRect();
+		const i = Math.min(n - 1, Math.max(0, Math.floor(((clientX - r.left) / r.width) * n)));
+		hoveredTime = hours[i].time;
 	}
-
-	function onTrackPointerDown(event: PointerEvent) {
-		if (event.pointerType === 'mouse' && event.button !== 0) return;
+	function onDown(e: PointerEvent) {
+		if (e.pointerType === 'mouse' && e.button !== 0) return;
 		scrubbing = true;
-		// Keeps the drag tracking after the pointer leaves the bar, which a thumb will. It throws
-		// if the pointer has already gone inactive, which just means no capture - not an error
-		// worth losing the preview over.
 		try {
-			trackEl?.setPointerCapture(event.pointerId);
+			sliderEl?.setPointerCapture(e.pointerId);
 		} catch {
 			/* no capture */
 		}
-		previewAt(event.clientX);
+		previewAt(e.clientX);
 	}
-
-	function onTrackPointerMove(event: PointerEvent) {
-		// A mouse previews on plain hover; touch and pen only while pressed, otherwise a finger
-		// that is just scrolling the page past the bar would scrub it too.
-		if (event.pointerType === 'mouse' || scrubbing) previewAt(event.clientX);
+	function onMove(e: PointerEvent) {
+		if (e.pointerType === 'mouse' || scrubbing) previewAt(e.clientX);
 	}
-
-	function onTrackPointerEnd(event: PointerEvent) {
+	function onUp() {
 		if (!scrubbing) return;
 		scrubbing = false;
-		if (event.pointerType !== 'mouse') pinned = true;
+		// A click or a touch pins the hour, so there's time to read it.
+		pinned = true;
 	}
-
-	function onTrackPointerLeave(event: PointerEvent) {
-		if (event.pointerType === 'mouse' && !scrubbing && !pinned) hoveredTime = null;
+	function onLeave(e: PointerEvent) {
+		if (e.pointerType === 'mouse' && !scrubbing && !pinned) hoveredTime = null;
 	}
-
-	// Left/right step an hour, page keys six, Home/End jump to the ends, Escape returns to now -
-	// the keyboard route to what the old row of per-hour buttons made reachable by Tab.
-	function onTrackKeydown(event: KeyboardEvent) {
-		const last = hourCount - 1;
+	function onKey(e: KeyboardEvent) {
+		const last = n - 1;
 		if (last < 0) return;
-		const current = Math.max(0, cursorIndex);
+		const c = Math.max(0, cursor);
 		let next: number;
-		if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = Math.min(last, current + 1);
-		else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = Math.max(0, current - 1);
-		else if (event.key === 'PageUp') next = Math.min(last, current + 6);
-		else if (event.key === 'PageDown') next = Math.max(0, current - 6);
-		else if (event.key === 'Home') next = 0;
-		else if (event.key === 'End') next = last;
-		else if (event.key === 'Escape') {
-			resetPreview();
-			return;
-		} else return;
-		event.preventDefault();
-		hoveredTime = weather.hourly[next].time;
+		if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = Math.min(last, c + 1);
+		else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = Math.max(0, c - 1);
+		else if (e.key === 'PageUp') next = Math.min(last, c + 6);
+		else if (e.key === 'PageDown') next = Math.max(0, c - 6);
+		else if (e.key === 'Home') next = 0;
+		else if (e.key === 'End') next = last;
+		else if (e.key === 'Escape') return resetPreview();
+		else return;
+		e.preventDefault();
+		hoveredTime = hours[next].time;
+		pinned = true;
 	}
 
-	function onTrackBlur() {
-		if (!pinned) hoveredTime = null;
-	}
+	// ---- The card -------------------------------------------------------------------------------
+	const src = $derived<WeatherHourEntry | WeatherCurrentConditions | null>(hovered ?? weather.current);
+	const hourName = (iso: string) => new Date(iso).toLocaleTimeString([], { weekday: 'short', hour: 'numeric' });
+	const inHours = $derived(hovered ? Math.max(0, Math.round((new Date(hovered.time).getTime() - clock.now) / 3_600_000)) : 0);
 
-	// Snow depth is conventionally centimetres where rain is millimetres, so the label
-	// depends on WHAT is falling, not just the configured unit. Imperial uses inches for both.
-	function precipUnitLabel(isSnow: boolean): string {
+	function precipUnit(isSnow: boolean): string {
 		if (weather.precipUnit !== 'mm') return 'in';
 		return isSnow ? 'cm' : 'mm';
 	}
-
-	// Hundredths for inches and centimetres (0.05" of rain is a real reading); whole
-	// millimetres, where a decimal is below the forecast's own resolution. Anything that
-	// would round to zero while the row still says rain is falling is shown as "<" the
-	// smallest step instead - "0.0 in" beside a drizzle icon reads as a contradiction.
 	function formatPrecip(amount: number, isSnow: boolean): string {
 		if (weather.precipUnit === 'mm' && !isSnow) {
 			const mm = Math.round(amount);
@@ -175,704 +207,912 @@
 		if (amount < 0.01) return '<0.01';
 		return amount.toFixed(2).replace(/0$/, '');
 	}
-
-	// Past ~10 miles visibility stops mattering for comfort, and the forecast model will
-	// happily report 40+. Capping the display matches how observations are conventionally
-	// reported ("10 mi") and keeps it from looking inflated next to the other sources
-	// people compare this against.
-	const visibilityCap = $derived(weather.windUnit === 'mph' ? 10 : 16);
-	function formatVisibility(value: number | null | undefined): string {
-		if (value === null || value === undefined) return '—';
-		const unit = weather.windUnit === 'mph' ? 'mi' : 'km';
-		return value >= visibilityCap ? `${visibilityCap}+ ${unit}` : `${value} ${unit}`;
+	const visCap = $derived(weather.windUnit === 'mph' ? 10 : 16);
+	function formatVisibility(v: number | null | undefined): string {
+		if (v === null || v === undefined) return '—';
+		const u = weather.windUnit === 'mph' ? 'mi' : 'km';
+		return v >= visCap ? `${visCap}+ ${u}` : `${v} ${u}`;
 	}
-
-	// NWS tops its ceiling forecast out at 25,000 ft, so that figure means "nothing lower
-	// than this", not "exactly 25,000".
-	function formatCeiling(feet: number | null | undefined): string {
-		if (feet === null || feet === undefined) return '—';
-		return feet >= 25_000 ? '25,000+ ft' : `${feet.toLocaleString()} ft`;
+	// NWS reports a sky with no ceiling as a negative or 25,000+ ft figure.
+	function formatCeiling(ft: number | null | undefined): string | null {
+		if (ft === null || ft === undefined) return null;
+		if (ft < 0 || ft >= 25_000) return 'No ceiling';
+		return `${ft.toLocaleString()} ft ceiling`;
 	}
-
-	// The ceiling comes from NWS, so it only exists for US locations. Elsewhere every hour is
-	// null and a row of dashes would be worse than no row at all — but where it DOES exist,
-	// the row stays put for every hour (showing a dash for any gap) so the grid doesn't
-	// reshuffle underneath the pointer as it moves across the strip.
-	const hasCeilingData = $derived(
-		(weather.current?.cloudCeilingFt ?? null) !== null || weather.hourly.some((h) => (h.cloudCeilingFt ?? null) !== null)
-	);
-
-	function humidityTone(level: number | undefined): 'ideal' | 'mild' | 'poor' {
-		const distance = Math.abs(level ?? 0);
-		return distance === 0 ? 'ideal' : distance <= 2 ? 'mild' : 'poor';
-	}
-
-	// Once the sun is down the first row's day is over, so it reads "Tonight" and shows only
-	// the night - the same way AccuWeather's list opens - instead of describing hours that have
-	// already happened. Today's row is the first (the backend lists days from today), and
-	// current.sunset is today's sunset.
-	const isTonight = $derived(weather.current ? Date.now() >= new Date(weather.current.sunset).getTime() : false);
-
-	// The card shows either a forecast hour or the live reading. Both carry every field it
-	// renders (the backend builds them with one shared function), so the markup below is a
-	// single branchless block rather than two near-duplicate copies. `?.` and `?? ` throughout
-	// are for the window right after a deploy, when the cached forecast predates these fields
-	// and has to render as dashes rather than "NaN" until the next poll refills it.
-	const view = $derived.by(() => {
-		const src: WeatherHourEntry | WeatherCurrentConditions | null = hoveredHour ?? weather.current;
-		return {
-			isForecast: hoveredHour !== null,
-			heading: hoveredHour
-				? new Date(hoveredHour.time).toLocaleTimeString([], { weekday: 'short', hour: 'numeric' })
-				: 'Now',
-			icon: src?.icon ?? '',
-			temp: src?.temp ?? null,
-			feelsLike: src?.feelsLike ?? null,
-			conditionText: src?.conditionText ?? '',
-			humidity: src?.humidity ?? null,
-			precipitationChance: src?.precipitationChance ?? null,
-			precipAmount: src?.precipAmount ?? 0,
-			precipIsSnow: src?.precipIsSnow ?? false,
-			windSpeed: src?.windSpeed ?? null,
-			windGust: src?.windGust ?? null,
-			windDirection: src?.windDirection ?? '',
-			pressure: src?.pressure ?? null,
-			cloudCover: src?.cloudCover ?? null,
-			visibility: src?.visibility ?? null,
-			dewPoint: src?.dewPoint ?? null,
-			indoorHumidity: src?.indoorHumidity ?? null,
-			indoorHumidityLabel: src?.indoorHumidityLabel ?? '',
-			indoorHumidityLevel: src?.indoorHumidityLevel,
-			cloudCeilingFt: src?.cloudCeilingFt ?? null
-		};
-	});
-
-	const dash = (value: number | null, format: (n: number) => string): string => (value === null ? '—' : format(value));
+	const timeOf = (iso: string | undefined) => (iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/ ?[AP]M/i, '') : '—');
+	const tone = (level: number | undefined) => {
+		const d = Math.abs(level ?? 0);
+		return d === 0 ? 'ideal' : d <= 2 ? 'mild' : 'poor';
+	};
 
 	const stats = $derived.by(() => {
-		const v = view;
-		const rows: { label: string; value: string; note?: string; tone?: string; wide?: boolean }[] = [
-			{ label: 'Wind', value: v.windSpeed === null ? '—' : `${v.windDirection} ${Math.round(v.windSpeed)} ${weather.windUnit}` },
-			{ label: 'Wind gusts', value: dash(v.windGust, (n) => `${Math.round(n)} ${weather.windUnit}`) },
-			// Indoor humidity is two columns wide, so it sits after an even number of items: on the
-			// 4-column desktop grid it then fills the rest of the first row, and on the 2-column
-			// phone grid it gets a row of its own with nothing stranded beside it.
+		const v = src;
+		if (!v) return [];
+		const ceiling = formatCeiling(v.cloudCeilingFt);
+		return [
+			{ k: 'Wind', v: `${v.windDirection} ${Math.round(v.windSpeed)} ${weather.windUnit}`, s: `gusts ${Math.round(v.windGust)}` },
+			{ k: 'Humidity', v: `${v.humidity}%`, s: `dew point ${Math.round(v.dewPoint)}°` },
+			{ k: 'Indoor humidity', v: `${v.indoorHumidity}%`, s: v.indoorHumidityLabel, tone: tone(v.indoorHumidityLevel) },
+			{ k: 'Pressure', v: `${v.pressure} ${weather.pressureUnit}`, s: '' },
+			{ k: 'Cloud cover', v: `${v.cloudCover}%`, s: ceiling ?? '' },
+			{ k: 'Visibility', v: formatVisibility(v.visibility), s: '' },
 			{
-				label: 'Indoor humidity',
-				value: dash(v.indoorHumidity, (n) => `${n}%`),
-				note: v.indoorHumidityLabel,
-				tone: humidityTone(v.indoorHumidityLevel),
-				wide: true
+				k: 'Precipitation',
+				v: `${v.precipitationChance}%`,
+				s: v.precipAmount > 0 ? `${formatPrecip(v.precipAmount, v.precipIsSnow)} ${precipUnit(v.precipIsSnow)} ${v.precipIsSnow ? 'snow' : ''}`.trim() : 'none expected'
 			},
-			{ label: 'Humidity', value: dash(v.humidity, (n) => `${n}%`) },
-			{ label: 'Dew point', value: dash(v.dewPoint, (n) => `${Math.round(n)}°${unitLabel}`) },
-			{ label: 'Pressure', value: dash(v.pressure, (n) => `${n} ${weather.pressureUnit}`) },
-			{ label: 'Cloud cover', value: dash(v.cloudCover, (n) => `${n}%`) },
-			{ label: 'Visibility', value: formatVisibility(v.visibility) }
+			{ k: 'Sun', v: `${timeOf(weather.current?.sunrise)} – ${timeOf(weather.current?.sunset)}`, s: 'today' }
 		];
-		if (hasCeilingData) rows.push({ label: 'Cloud ceiling', value: formatCeiling(v.cloudCeilingFt) });
-		rows.push(
-			{ label: 'Precip. chance', value: dash(v.precipitationChance, (n) => `${n}%`) },
-			// Always present, "None" when dry, rather than appearing only when something falls —
-			// a row that comes and goes shifts everything after it as the pointer crosses hours.
-			{
-				label: v.precipIsSnow ? 'Snowfall' : 'Rainfall',
-				value: v.precipAmount > 0 ? `${formatPrecip(v.precipAmount, v.precipIsSnow)} ${precipUnitLabel(v.precipIsSnow)}` : 'None'
-			},
-			// Sunrise/sunset are properties of the day, not of an hour — they stay put while
-			// the hovered-hour values change, rather than blanking out.
-			{ label: 'Sunrise', value: formatTime(weather.current?.sunrise) },
-			{ label: 'Sunset', value: formatTime(weather.current?.sunset) }
-		);
-		return rows;
 	});
 
-	function formatTime(iso: string | undefined): string {
-		return iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—';
-	}
+	// ---- 7 days ---------------------------------------------------------------------------------
+	const isTonight = $derived(weather.current ? clock.now >= new Date(weather.current.sunset).getTime() : false);
+	const wlo = $derived(weather.daily.length ? Math.min(...weather.daily.map((d) => d.nightLow ?? d.tempMin)) : 0);
+	const whi = $derived(weather.daily.length ? Math.max(...weather.daily.map((d) => d.tempMax)) : 1);
+	const pos = (t: number) => ((t - wlo) / Math.max(1, whi - wlo)) * 100;
+	const updatedAgo = $derived(weather.updatedAt ? Math.max(0, Math.round((clock.now - new Date(weather.updatedAt).getTime()) / 60000)) : null);
 </script>
 
+<svelte:head><title>Weather · Homefeed</title></svelte:head>
+
 {#if !weather.current}
-	<div class="head">
-		<span class="title">Weather</span>
-		{#if weather.locationName}
-			<span class="location">{weather.locationName}</span>
-		{/if}
+	<div class="wpage">
+		<p class="empty card">Not configured yet — set a location in the admin panel's Weather tab.</p>
 	</div>
-	<p class="empty">Not configured yet — set a location in the admin panel's Weather tab.</p>
 {:else}
-	<!-- One card for both the live reading and the hour being pointed at: hovering a cell in
-	     the hourly strip below swaps every number here, header included, and leaving the
-	     strip restores the live reading. -->
-	<section class="weather-card" class:previewing={view.isForecast} aria-label="Weather conditions">
-		<div class="head">
-			<span class="title">Weather</span>
-			{#if weather.locationName}
-				<span class="location">{weather.locationName}</span>
-			{/if}
-			<span class="when">
-				{#if view.isForecast}{view.heading} · forecast{:else}Updated {timeAgo(weather.updatedAt ?? '')}{/if}
-			</span>
-		</div>
-		<div class="current">
-			<span class="icon">{view.icon}</span>
-			<div class="readout">
-				<div class="temp-row">
-					<span class="temp">{view.temp === null ? '—' : Math.round(view.temp)}°{unitLabel}</span>
-					{#if view.feelsLike !== null}
-						<span class="feels-like">Feels like {Math.round(view.feelsLike)}°</span>
+	{@const cur = weather.current}
+	<div class="wpage">
+		<nav class="crumbs">
+			<a class="back" href="/">← Board</a><span>Weather</span>{#if weather.locationName}<span class="sep">›</span><span>{weather.locationName}</span>{/if}
+		</nav>
+		<div class="wgrid">
+			<section class="card now" class:previewing={!!hovered}>
+				<div class="nh">
+					{#if hovered}
+						<span class="pill fc">FORECAST</span><b>{hourName(hovered.time).toUpperCase()}</b>
+					{:else}
+						<span class="pill live"><i></i>NOW</span>
 					{/if}
+					<span class="loc">{weather.locationName ?? ''}{updatedAgo !== null && !hovered ? ` · updated ${updatedAgo} min ago` : ''}</span>
+					<span class="sp"></span>
+					{#if pinned || hovered}<button class="btn" onclick={resetPreview}>Back to now</button>{/if}
 				</div>
-				<span class="condition">{view.conditionText}</span>
-			</div>
-		</div>
-		{#if hourCount > 0}
-			<div class="timeline">
-				<div class="timeline-head">
-					<span>Next {hourCount} hours</span>
-					{#if pinned}
-						<button type="button" class="timeline-reset" onclick={resetPreview}>Back to now</button>
-					{/if}
-				</div>
-				<div class="timeline-body">
-					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-					<div
-						class="track"
-						bind:this={trackEl}
-						role="slider"
-						tabindex="0"
-						aria-label="Hourly forecast timeline"
-						aria-orientation="horizontal"
-						aria-valuemin={0}
-						aria-valuemax={hourCount - 1}
-						aria-valuenow={Math.max(0, cursorIndex)}
-						aria-valuetext={cursorIndex >= 0 && view.temp !== null
-							? `${view.heading}, ${view.conditionText}, ${Math.round(view.temp)} degrees`
-							: 'Now'}
-						onpointerdown={onTrackPointerDown}
-						onpointermove={onTrackPointerMove}
-						onpointerup={onTrackPointerEnd}
-						onpointercancel={onTrackPointerEnd}
-						onpointerleave={onTrackPointerLeave}
-						onkeydown={onTrackKeydown}
-						onblur={onTrackBlur}
-					>
-						{#each segments as segment}
-							<div class="segment k-{segment.kind}" style:flex-grow={segment.count}>
-								<!-- A single hour is too narrow to carry a word. -->
-								{segment.count >= 2 ? (KIND_LABELS[segment.kind] ?? '') : ''}
-							</div>
-						{/each}
-						{#each midnights as index (index)}
-							<span class="divider" style:left="{(index / hourCount) * 100}%"></span>
-						{/each}
-					</div>
-					{#if cursorIndex >= 0}
-						<span class="cursor" style:left="{((cursorIndex + 0.5) / hourCount) * 100}%"></span>
-					{/if}
-					<div class="axis" aria-hidden="true">
-						{#each ticks as tick (tick.index)}
-							<span class="tick" class:now={tick.isNow} class:minor={tick.minor} style:left="{(tick.index / hourCount) * 100}%">
-								<span class="tick-label">{tick.label}</span>
-								<span class="tick-temp">{Math.round(tick.temp)}°</span>
-							</span>
-						{/each}
-					</div>
-				</div>
-			</div>
-		{/if}
-		<div class="conditions-grid">
-			{#each stats as stat (stat.label)}
-				<div class="stat" class:wide={stat.wide}>
-					<span class="stat-label">{stat.label}</span>
-					<span class="stat-value">
-						{stat.value}{#if stat.note}<span class="stat-note tone-{stat.tone}">· {stat.note}</span>{/if}
-					</span>
-				</div>
-			{/each}
-		</div>
-	</section>
-
-	{#if weather.summary}
-		<p class="summary">{weather.summary}</p>
-	{/if}
-
-	{#if weather.alerts.length > 0}
-		<div class="section">
-			<span class="section-title">Weather alerts</span>
-			<div class="alerts-list">
-				{#each weather.alerts as alert (alert.id)}
-					<div class="alert-row severity-{alert.severity.toLowerCase()}">
-						<div class="alert-head">
-							<span class="alert-event">{alert.event}</span>
-							<span class="alert-expires">Until {new Date(alert.expires).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+				<div class="hero">
+					<div class="big">
+						<div class="bt"><span class="ic">{src?.icon}</span><span class="deg" style:color={hovered ? inkOf(hovered.temp) : undefined}>{Math.round(src?.temp ?? 0)}°</span></div>
+						<div class="bc">
+							<b>{src?.conditionText}</b> · feels like {Math.round(src?.feelsLike ?? 0)}°{hovered ? ` · in ${inHours} ${inHours === 1 ? 'hour' : 'hours'}` : ''}
 						</div>
-						<p class="alert-headline">{alert.headline}</p>
 					</div>
-				{/each}
-			</div>
-		</div>
-	{/if}
-
-	<div class="section">
-		<span class="section-title">7-day forecast</span>
-		<div class="daily-list">
-			{#each weather.daily as day, i (day.date)}
-				{@const tonight = i === 0 && isTonight}
-				{@const low = day.nightLow ?? day.tempMin}
-				{@const chance = tonight ? day.nightPrecipitationChance : day.precipitationChance}
-				<div class="day-row">
-					<div class="day-top">
-						<span class="day-name">
-							{tonight ? 'Tonight' : formatDayHeading(day.date)}
-							{#if tonight}<span class="day-date">{formatDayHeading(day.date)}</span>{/if}
-						</span>
-						<span class="day-range">
-							{#if tonight}{Math.round(low)}° Lo{:else}{Math.round(day.tempMax)}° / {Math.round(low)}°{/if}
-						</span>
-						{#if chance !== null && chance !== undefined}
-							<span class="day-precip" title="Chance of precipitation">💧 {chance}%</span>
+					<div class="cmp">
+						{#if hovered}
+							<div class="cmpr">
+								<div><em>NOW</em><span class="ci">{cur.icon}</span><b>{Math.round(cur.temp)}°</b><i>{cur.conditionText}</i></div>
+								<span class="arrow">→</span>
+								<div><em>{hourName(hovered.time).toUpperCase()}</em><span class="ci">{hovered.icon}</span><b style:color={inkOf(hovered.temp)}>{Math.round(hovered.temp)}°</b><i>{hovered.conditionText}</i></div>
+							</div>
+							<p>
+								{hovered.temp - cur.temp >= 0 ? '+' : '−'}{Math.abs(Math.round(hovered.temp - cur.temp))}° from now · wind {hovered.windDirection}
+								{Math.round(hovered.windSpeed)} {weather.windUnit} · {hovered.precipitationChance}% chance of precipitation
+							</p>
+						{:else if weather.summary}
+							<p class="sum">{weather.summary}</p>
 						{/if}
 					</div>
-					{#if !tonight}
-						<div class="day-line">
-							<span class="day-icon">{day.icon}</span>
-							<span class="day-text">{day.conditionText}</span>
-						</div>
-					{/if}
-					<!-- Empty on a forecast cached before nights were described; the row then just
-					     shows its day line until the next poll, a few seconds after any deploy. -->
-					{#if day.nightDescription}
-						<div class="day-line night">
-							<span class="day-icon">{day.nightIcon}</span>
-							<span class="day-text">{tonight ? '' : 'Night: '}{day.nightDescription}</span>
-						</div>
-					{/if}
 				</div>
-			{/each}
+				<div class="stats">
+					{#each stats as s (s.k)}
+						<div class="st">
+							<span class="sk">{s.k}</span>
+							<b>{s.v}</b>
+							<span class="ss tone-{s.tone ?? ''}">{s.s}</span>
+						</div>
+					{/each}
+				</div>
+				{#if weather.alerts.length}
+					<div class="alerts">
+						{#each weather.alerts as al (al.id)}
+							<div class="al sev-{al.severity.toLowerCase()}">
+								<b>{al.event}</b><span>{al.headline}</span>
+								<em>until {new Date(al.expires).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</em>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</section>
+
+			<section class="card week">
+				<div class="wch">7-day forecast</div>
+				{#each weather.daily as d, i (d.date)}
+					{@const tonight = i === 0 && isTonight}
+					{@const low = d.nightLow ?? d.tempMin}
+					{@const pc = Math.max(d.precipitationChance ?? 0, d.nightPrecipitationChance ?? 0)}
+					<div class="dy" class:today={i === 0}>
+						<div class="dn">
+							<b>{tonight ? 'Tonight' : i === 0 ? 'Today' : parseDateOnly(d.date).toLocaleDateString([], { weekday: 'long' })}</b>
+							<em>{parseDateOnly(d.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}</em>
+						</div>
+						<span class="di">{tonight ? d.nightIcon : d.icon}</span>
+						<div class="dt">
+							<b>{tonight ? d.nightDescription : d.conditionText}</b>
+							{#if !tonight && d.nightDescription}<em>Night: {d.nightDescription} {d.nightIcon}</em>{/if}
+						</div>
+						<span class="dp" class:wet={pc >= 20}>{pc ? `💧 ${pc}%` : '—'}</span>
+						<span class="lo" style:color={inkOf(low)}>{Math.round(low)}°</span>
+						<span class="rg"><i style:left="{pos(low)}%" style:width="{Math.max(2, pos(d.tempMax) - pos(low))}%" style:background="linear-gradient(90deg, {colorOf(low)}, {colorOf(d.tempMax)})"></i></span>
+						<span class="hi" style:color={inkOf(d.tempMax)}>{tonight ? '' : `${Math.round(d.tempMax)}°`}</span>
+					</div>
+				{/each}
+				<div class="wfoot">Average of four models (GFS, ECMWF, ICON, GEM) · NWS National Blend for US locations</div>
+			</section>
+
+			{#if n}
+				<section class="card hours">
+					<div class="wch">
+						Next {n} hours
+						<span class="tscale">{weather.unit === 'celsius' ? '0°' : '32°'}<i style:background={SCALE_CSS}></i>{weather.unit === 'celsius' ? '38°' : '100°'}</span>
+						<span class="legend">
+							<span><i class="lt"></i>Temperature</span><span><i class="lf"></i>Feels like</span><span><i class="lp"></i>Precip chance (coloured by type)</span><span>Shaded = night</span>
+						</span>
+					</div>
+					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+					<div
+						class="slider"
+						bind:this={sliderEl}
+						role="slider"
+						tabindex="0"
+						aria-label="Hourly forecast"
+						aria-valuemin={0}
+						aria-valuemax={n - 1}
+						aria-valuenow={Math.max(0, cursor)}
+						aria-valuetext={hovered ? `${hourName(hovered.time)}, ${hovered.conditionText}, ${Math.round(hovered.temp)} degrees` : 'Now'}
+						onpointerdown={onDown}
+						onpointermove={onMove}
+						onpointerup={onUp}
+						onpointercancel={onUp}
+						onpointerleave={onLeave}
+						onkeydown={onKey}
+					>
+						<div class="plot">
+							<svg viewBox="0 0 {VW} {PH}" preserveAspectRatio="none" aria-hidden="true">
+								<defs>
+									<linearGradient id="wx-main" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1={grad.y1} y2={grad.y2}>
+										{#each grad.stops as s}<stop offset={s.offset} stop-color={s.color} />{/each}
+									</linearGradient>
+								</defs>
+								{#each nights as nt}<rect x={nt.x} y="0" width={nt.w} height={PH} class="night" />{/each}
+								<polygon points={area} class="tarea" style="fill:url(#wx-main)" />
+								{#if showFreeze}<line x1="0" x2={VW} y1={Y(freezing)} y2={Y(freezing)} class="fz" />{/if}
+								<polyline points={feel} class="fline" />
+								<polyline points={line} class="tcase" />
+								<polyline points={line} class="tline" style="stroke:url(#wx-main)" />
+								<line x1="0" x2={VW} y1={PB1} y2={PB1} class="pbase" />
+								{#each hours as h, i (h.time)}
+									{@const ph = ((PB1 - PB0) * h.precipitationChance) / 100}
+									{#if ph > 0}<rect x={X(i) - 7} y={PB1 - ph} width="14" height={ph} rx="2" fill={PCOL[dkind(h)] ?? '#3f7fd0'} />{/if}
+								{/each}
+							</svg>
+							{#each extremes as i (i)}
+								<span class="lab" style:left="{(X(i) / VW) * 100}%" style:top="{(Y(hours[i].temp) / PH) * 100}%" style:color={inkOf(hours[i].temp)}>{Math.round(hours[i].temp)}°</span>
+							{/each}
+							{#if showFreeze}<span class="fzlab" style:top="{(Y(freezing) / PH) * 100}%">{freezing}° freezing</span>{/if}
+							{#if hovered}
+								<span class="cdot" style:left="{(X(cursor) / VW) * 100}%" style:top="{(Y(hovered.temp) / PH) * 100}%" style:border-color={colorOf(hovered.temp)}></span>
+								<span class="ctag" class:right={cursor > n * 0.8} class:left={cursor < n * 0.2} style:left="{(X(cursor) / VW) * 100}%" style:box-shadow="inset 0 -3px 0 {colorOf(hovered.temp)}">
+									{hourName(hovered.time)} · {LABEL[dkind(hovered)] ?? hovered.conditionText} · {Math.round(hovered.temp)}°
+								</span>
+							{/if}
+						</div>
+						<div class="strip">
+							{#each runs as r (r.from)}
+								<div class="seg k-{r.kind}" style:flex-grow={r.count} title={LABEL[r.kind] ?? ''}><span>{r.count >= 2 ? (LABEL[r.kind] ?? '') : ''}</span></div>
+							{/each}
+							{#each midnights as i (i)}<span class="mid" style:left="{(i / n) * 100}%"></span>{/each}
+						</div>
+						<div class="ticks">
+							{#each ticks as t (t.i)}
+								<span class="tk" class:day={t.day} style:left="{(X(t.i) / VW) * 100}%">
+									<b>{t.label}</b><em style:color={inkOf(t.temp)}>{Math.round(t.temp)}°</em><i style:transform="rotate({t.deg}deg)">↓</i><u>{Math.round(t.wind)}</u>
+								</span>
+							{/each}
+						</div>
+						{#if cursor >= 0}<span class="cur" style:left="{((cursor + 0.5) / n) * 100}%"></span>{/if}
+					</div>
+					<div class="key">
+						{#each KINDS.filter(([k]) => kindsPresent.has(k)) as [k, l] (k)}
+							<span class="kk"><i class="sw k-{k}"></i>{l}</span>
+						{/each}
+						<span class="hint">Hover to preview an hour · click or drag to pin · ← → step · Esc for now</span>
+					</div>
+				</section>
+			{/if}
 		</div>
 	</div>
 {/if}
 
 <style>
-	.head {
+	.wpage {
+		flex: 1;
+		min-height: 0;
 		display: flex;
-		align-items: baseline;
-		flex-wrap: wrap;
-		gap: 4px 12px;
-		margin: 24px 0 8px;
+		flex-direction: column;
+		gap: 8px;
 	}
-	.title {
-		font-family: var(--font-voice);
-		font-size: 26px;
-		font-weight: 500;
-	}
-	.location {
-		font-size: 14px;
-		color: var(--text-muted);
-	}
-	.empty {
-		font-size: 13px;
-		color: var(--text-muted);
-	}
-	/* Blue is this page's own accent for "the hour you're pointing at", deliberately distinct
-	   from the app-wide bronze --*-accent that marks the CURRENT hour — the two mark
-	   different things and are frequently on screen together, so they can't share a color.
-	   Scoped here rather than added to the global palette since nothing else uses them. */
-	.weather-card {
-		--hour-hover-bg: #e8f0fb;
-		--hour-hover-border: #4a7fc1;
-		--hour-hover-text: #2c5c96;
-	}
-	:global(:root[data-theme='dark']) .weather-card {
-		--hour-hover-bg: #22303f;
-		--hour-hover-border: #5b8fd0;
-		--hour-hover-text: #8fb8e8;
-	}
-	.weather-card {
-		margin: 20px 0 20px;
-		padding: 16px;
-		background: var(--surface-1);
-		border-radius: 12px;
-		border: 1.5px solid transparent;
-		transition: border-color 0.12s ease;
-	}
-	.weather-card.previewing {
-		border-color: var(--hour-hover-border);
-	}
-	/* The title row lives inside the card now, so it drops the page-level top margin and
-	   the title steps down a size to sit comfortably in a card rather than over a page. */
-	.weather-card .head {
-		margin: 0 0 14px;
-	}
-	.weather-card .title {
-		font-size: 22px;
-	}
-	/* Pushed to the far edge so it reads as the card's status, not part of the title. While
-	   previewing it names the hour being shown, in the same blue as the card's border. */
-	.when {
-		margin-left: auto;
-		font-size: 12px;
-		color: var(--text-muted);
-	}
-	.weather-card.previewing .when {
-		color: var(--hour-hover-text);
-		font-weight: 500;
-	}
-	.current {
+	.crumbs {
 		display: flex;
 		align-items: center;
-		gap: 16px;
-		margin: 0 0 18px;
+		gap: 10px;
+		font-size: 12.5px;
+		color: var(--tx3);
+		flex: none;
 	}
-	.summary {
-		font-size: 14px;
-		color: var(--text-secondary);
-		line-height: 1.6;
-		margin: 0 0 28px;
+	.back {
+		border: 1px solid var(--bd);
+		border-radius: 7px;
+		padding: 4px 10px;
 	}
-	.icon {
+	.empty {
+		padding: 20px;
+		color: var(--tx3);
+	}
+	.wgrid {
+		flex: 1;
+		min-height: 0;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 0.62fr);
+		grid-template-rows: auto minmax(0, 1fr);
+		gap: 12px;
+	}
+	.now {
+		padding: 14px 20px 16px;
+		border: 1px solid var(--bd);
+		transition: border-color 0.12s ease;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.now.previewing {
+		border-color: var(--acc);
+	}
+	.nh {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		font-size: 12px;
+		color: var(--tx3);
+	}
+	.nh b {
+		color: var(--tx2);
+		letter-spacing: 0.06em;
+		font-size: 12px;
+	}
+	.pill.fc {
+		background: var(--acc);
+		color: var(--s0);
+	}
+	.sp {
+		flex: 1;
+	}
+	.btn {
+		font-size: 12px;
+		padding: 5px 11px;
+		border-radius: 7px;
+		background: transparent;
+		color: var(--acc);
+	}
+	.hero {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		gap: 28px;
+		align-items: center;
+		margin: 10px 0 14px;
+	}
+	.bt {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+	}
+	.ic {
 		font-size: 64px;
 		line-height: 1;
 	}
-	.readout {
+	.deg {
+		font-size: 76px;
+		font-weight: 600;
+		letter-spacing: -3px;
+		line-height: 1;
+	}
+	.bc {
+		font-size: 14px;
+		color: var(--tx2);
+		margin-top: 6px;
+	}
+	.bc b {
+		color: var(--tx);
+		font-weight: 600;
+	}
+	.cmp {
+		border: 1px solid var(--bd);
+		border-radius: 10px;
+		padding: 12px 16px;
+		background: var(--s2);
+		min-height: 96px;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+	}
+	.cmpr {
+		display: flex;
+		align-items: center;
+		gap: 34px;
+	}
+	.cmpr div {
+		display: grid;
+		grid-template-columns: auto auto;
+		column-gap: 8px;
+		align-items: center;
+	}
+	.cmpr em {
+		grid-column: 1 / 3;
+		font-style: normal;
+		font-size: 10.5px;
+		letter-spacing: 0.08em;
+		color: var(--tx3);
+	}
+	.ci {
+		font-size: 24px;
+	}
+	.cmpr b {
+		font-size: 26px;
+		font-weight: 600;
+	}
+	.cmpr i {
+		grid-column: 1 / 3;
+		font-style: normal;
+		font-size: 12.5px;
+		color: var(--tx2);
+	}
+	.arrow {
+		color: var(--tx3);
+		font-size: 20px;
+	}
+	.cmp p {
+		margin: 8px 0 0;
+		font-size: 12.5px;
+		color: var(--tx2);
+	}
+	.cmp p.sum {
+		margin: 0;
+		font-size: 13.5px;
+		line-height: 1.55;
+	}
+	.stats {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 10px;
+	}
+	.st {
+		border: 1px solid var(--bd);
+		border-radius: 9px;
+		padding: 9px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+	.st .sk {
+		font-size: 10.5px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--tx3);
+	}
+	.st b {
+		font-size: 18px;
+		font-weight: 600;
+		white-space: nowrap;
+	}
+	.ss {
+		font-size: 11.5px;
+		color: var(--tx3);
+		min-height: 1em;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.tone-ideal {
+		color: var(--up);
+	}
+	.tone-mild {
+		color: #d9a94e;
+	}
+	.tone-poor {
+		color: var(--dn);
+	}
+	.alerts {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		margin-top: 10px;
+	}
+	.al {
+		display: flex;
+		gap: 10px;
+		align-items: baseline;
+		font-size: 12.5px;
+		border-left: 3px solid var(--tx3);
+		padding: 6px 10px;
+		background: var(--s2);
+		border-radius: 0 7px 7px 0;
+	}
+	.al span {
+		flex: 1;
+		min-width: 0;
+		color: var(--tx2);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.al em {
+		font-style: normal;
+		color: var(--tx3);
+		white-space: nowrap;
+	}
+	.sev-extreme,
+	.sev-severe {
+		border-left-color: var(--dn);
+	}
+	.sev-moderate {
+		border-left-color: #d9a94e;
+	}
+	.week {
+		grid-row: 1 / 3;
+		grid-column: 2;
+		padding: 14px 18px;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.wch {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 11.5px;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--tx2);
+		margin-bottom: 10px;
+	}
+	.dy {
+		display: grid;
+		grid-template-columns: 110px 40px minmax(0, 1fr) 62px 34px 110px 36px;
+		gap: 10px;
+		align-items: center;
+		padding: 10px 8px;
+		border-bottom: 1px solid var(--bd);
+	}
+	.dy.today {
+		background: var(--s2);
+		border-radius: 8px;
+	}
+	.dn b {
+		display: block;
+		font-size: 14.5px;
+		font-weight: 600;
+	}
+	.dn em,
+	.dt em {
+		font-style: normal;
+		font-size: 11.5px;
+		color: var(--tx3);
+	}
+	.di {
+		font-size: 26px;
+		text-align: center;
+	}
+	.dt b {
+		display: block;
+		font-size: 13.5px;
+		font-weight: 500;
+	}
+	.dt em {
+		display: block;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.dp {
+		font-size: 12px;
+		color: var(--tx3);
+		text-align: right;
+	}
+	.dp.wet {
+		color: #5aa7e8;
+		font-weight: 600;
+	}
+	.lo,
+	.hi {
+		font-family: var(--mono);
+		font-size: 13px;
+	}
+	.lo {
+		text-align: right;
+	}
+	.rg {
+		position: relative;
+		height: 5px;
+		border-radius: 3px;
+		background: var(--s3);
+	}
+	.rg i {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		border-radius: 3px;
+	}
+	.wfoot {
+		margin-top: auto;
+		padding-top: 10px;
+		border-top: 1px solid var(--bd);
+		font-size: 11.5px;
+		color: var(--tx3);
+	}
+	.hours {
+		padding: 14px 20px 12px;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
 	}
-	.temp-row {
+	.tscale {
 		display: flex;
-		align-items: baseline;
-		gap: 10px;
+		align-items: center;
+		gap: 8px;
+		margin-left: 14px;
+		font-family: var(--mono);
+		font-size: 10.5px;
+		font-weight: 400;
+		letter-spacing: 0;
+		color: var(--tx3);
 	}
-	.temp {
-		font-size: 40px;
-		font-weight: 500;
+	.tscale i {
+		display: block;
+		width: 120px;
+		height: 6px;
+		border-radius: 3px;
 	}
-	.feels-like {
-		font-size: 13px;
-		color: var(--text-muted);
-	}
-	.condition {
-		font-size: 15px;
-		color: var(--text-secondary);
-	}
-	.timeline {
-		margin: 0 0 20px;
-	}
-	.timeline-head {
+	.legend {
+		margin-left: auto;
 		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		margin-bottom: 6px;
+		gap: 16px;
 		font-size: 11px;
-		color: var(--text-muted);
+		font-weight: 400;
+		letter-spacing: 0;
+		text-transform: none;
+		color: var(--tx3);
 	}
-	.timeline-reset {
-		font-size: 11px;
-		padding: 0;
-		background: none;
-		border: none;
-		color: var(--hour-hover-text);
-		text-decoration: underline;
-		cursor: pointer;
-	}
-	.timeline-body {
-		position: relative;
-	}
-	.track {
-		position: relative;
+	.legend span {
 		display: flex;
-		height: 40px;
-		border-radius: 8px;
-		overflow: hidden;
+		align-items: center;
+		gap: 6px;
+	}
+	.legend i {
+		display: inline-block;
+		width: 16px;
+		height: 3px;
+		border-radius: 2px;
+	}
+	.legend .lt {
+		background: linear-gradient(90deg, #3d7fe0, #f2f0ea, #e0402c);
+	}
+	.legend .lf {
+		background: var(--tx3);
+	}
+	.legend .lp {
+		width: 8px;
+		height: 8px;
+		background: #3f7fd0;
+	}
+	.slider {
+		position: relative;
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
 		cursor: crosshair;
 		user-select: none;
-		-webkit-user-select: none;
-		/* Horizontal drags belong to the scrubber, vertical ones still scroll the page. */
 		touch-action: pan-y;
-		box-shadow: inset 0 0 0 0.5px var(--border);
+		outline: none;
 	}
-	.track:focus-visible {
-		outline: 2px solid var(--hour-hover-border);
-		outline-offset: 2px;
+	.slider:focus-visible {
+		box-shadow: 0 0 0 2px var(--acc);
+		border-radius: 6px;
 	}
-	.segment {
+	.plot {
+		position: relative;
+		flex: 1;
+		min-height: 120px;
+	}
+	.plot svg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+	}
+	.night {
+		fill: var(--tx);
+		opacity: 0.05;
+	}
+	.tarea {
+		opacity: 0.2;
+	}
+	.tcase {
+		fill: none;
+		stroke: var(--temp-case);
+		stroke-width: 5;
+		vector-effect: non-scaling-stroke;
+		stroke-linejoin: round;
+	}
+	.tline {
+		fill: none;
+		stroke-width: 3;
+		vector-effect: non-scaling-stroke;
+		stroke-linejoin: round;
+	}
+	.fline {
+		fill: none;
+		stroke: var(--tx3);
+		stroke-width: 1.4;
+		stroke-dasharray: 4 3;
+		vector-effect: non-scaling-stroke;
+	}
+	.fz {
+		stroke: #5fc6d6;
+		stroke-width: 1;
+		stroke-dasharray: 6 4;
+		vector-effect: non-scaling-stroke;
+		opacity: 0.8;
+	}
+	.pbase {
+		stroke: var(--bd);
+		stroke-width: 1;
+		vector-effect: non-scaling-stroke;
+	}
+	.lab {
+		position: absolute;
+		transform: translate(-50%, -140%);
+		font-family: var(--mono);
+		font-size: 11.5px;
+		font-weight: 600;
+		pointer-events: none;
+	}
+	.fzlab {
+		position: absolute;
+		right: 4px;
+		transform: translateY(-120%);
+		font-family: var(--mono);
+		font-size: 10.5px;
+		color: #5fc6d6;
+		pointer-events: none;
+	}
+	.cdot {
+		position: absolute;
+		width: 12px;
+		height: 12px;
+		margin: -6px 0 0 -6px;
+		border-radius: 50%;
+		background: var(--s1);
+		border: 3px solid;
+		pointer-events: none;
+	}
+	.ctag {
+		position: absolute;
+		top: 0;
+		transform: translateX(-50%);
+		font-family: var(--mono);
+		font-size: 11.5px;
+		font-weight: 600;
+		white-space: nowrap;
+		background: var(--s1);
+		border: 1px solid var(--bd);
+		border-radius: 6px;
+		padding: 3px 8px;
+		pointer-events: none;
+		z-index: 2;
+	}
+	.ctag.right {
+		transform: translateX(-100%);
+	}
+	.ctag.left {
+		transform: none;
+	}
+	.strip {
+		position: relative;
+		display: flex;
+		height: 28px;
+		margin-top: 6px;
+		border-radius: 6px;
+		overflow: hidden;
+		flex: none;
+	}
+	.seg {
+		position: relative;
 		flex: 0 1 0;
 		min-width: 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: 0 4px;
 		font-size: 11px;
 		white-space: nowrap;
 		overflow: hidden;
+		border-right: 1px solid rgba(0, 0, 0, 0.28);
+	}
+	.seg span {
+		position: relative;
+		z-index: 1;
+		padding: 1px 5px;
+		border-radius: 4px;
+		overflow: hidden;
 		text-overflow: ellipsis;
-		color: var(--seg-fg);
-		background: var(--seg-bg);
 	}
-	/* Same palette in light and dark: the bar is a data colour scale, and these are chosen so
-	   each pairs with its own text colour rather than with the surface behind it. */
-	.k-clear {
-		--seg-bg: #f2f4f8;
-		--seg-fg: #3c4452;
-	}
-	.k-partly {
-		--seg-bg: #d9dee7;
-		--seg-fg: #3c4452;
-	}
-	.k-cloudy {
-		--seg-bg: #b8c0cd;
-		--seg-fg: #2f3745;
-	}
-	.k-fog {
-		--seg-bg: #cdd6d4;
-		--seg-fg: #34403e;
-	}
-	.k-light-rain {
-		--seg-bg: #86a9dd;
-		--seg-fg: #0f2340;
-	}
-	.k-rain {
-		--seg-bg: #3f76c0;
-		--seg-fg: #ffffff;
-	}
-	.k-freezing {
-		--seg-bg: #6fb7c9;
-		--seg-fg: #0b2a33;
-	}
-	.k-mix {
-		--seg-bg: #98a8d8;
-		--seg-fg: #141a3d;
-	}
-	.k-snow {
-		--seg-bg: #aed6f1;
-		--seg-fg: #123b5a;
-	}
-	.k-storm {
-		--seg-bg: #6a56b3;
-		--seg-fg: #ffffff;
-	}
-	.k-unknown {
-		--seg-bg: #cdd2db;
-		--seg-fg: transparent;
-	}
-	/* Midnight, so the day change is visible on the bar itself. */
-	.divider {
+	.mid {
 		position: absolute;
 		top: 0;
 		bottom: 0;
-		width: 1px;
-		background: rgba(0, 0, 0, 0.3);
-		pointer-events: none;
-	}
-	/* White with a dark outline: a hover-blue line would vanish against the blue rain segments. */
-	.cursor {
-		position: absolute;
-		top: -3px;
-		height: 46px;
 		width: 2px;
-		margin-left: -1px;
-		border-radius: 1px;
-		background: #ffffff;
-		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+		background: rgba(0, 0, 0, 0.45);
 		pointer-events: none;
 	}
-	.axis {
-		position: relative;
-		height: 42px;
-		margin-top: 4px;
+	/* Condition colours, the same in light and dark: a data colour scale with its own text colours. */
+	.k-sunny {
+		background: #f2c14e;
+		color: #3a2a05;
 	}
-	.tick {
+	.k-clear {
+		background: #33406b;
+		color: #dfe5ff;
+	}
+	.k-partly {
+		background: #cdbb8b;
+		color: #2f2a1a;
+	}
+	.k-cloudy {
+		background: #8a8f99;
+		color: #15171b;
+	}
+	.k-fog {
+		background: repeating-linear-gradient(0deg, #a9adb8 0 3px, #959aa6 3px 6px);
+		color: #1d2026;
+	}
+	.k-light-rain {
+		background: #8fb8e0;
+		color: #0e2338;
+	}
+	.k-rain {
+		background: #2f6fc4;
+		color: #fff;
+	}
+	.k-storm {
+		background: #6b3fc0;
+		color: #fff;
+	}
+	.k-hail {
+		background:
+			radial-gradient(circle, #f4f1ff 0 1.8px, transparent 2.3px) 0 0 / 7px 7px,
+			#8a6bd6;
+		color: #fff;
+	}
+	.k-hail span {
+		background: rgba(60, 30, 120, 0.75);
+	}
+	.k-freezing {
+		background: linear-gradient(135deg, #2bb3c9, #7fe0ec);
+		color: #06323a;
+	}
+	.k-sleet {
+		background:
+			radial-gradient(circle, #e8f6fa 0 1.4px, transparent 1.9px) 0 0 / 6px 6px,
+			#4f97ad;
+		color: #fff;
+	}
+	.k-sleet span {
+		background: rgba(20, 70, 85, 0.75);
+	}
+	.k-mix {
+		background: repeating-linear-gradient(135deg, #5b8fd6 0 6px, #e8eef6 6px 12px);
+		color: #0e2338;
+	}
+	.k-mix span {
+		background: rgba(240, 244, 250, 0.92);
+	}
+	.k-snow {
+		background: #eef3f9;
+		color: #24324a;
+	}
+	.k-unknown {
+		background: #8a8f99;
+		color: transparent;
+	}
+	.ticks {
+		position: relative;
+		height: 62px;
+		flex: none;
+	}
+	.tk {
 		position: absolute;
-		top: 0;
+		top: 6px;
 		transform: translateX(-50%);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		font-size: 11px;
-		line-height: 1.3;
+		font-family: var(--mono);
+		font-size: 10.5px;
+		line-height: 1.35;
+		color: var(--tx3);
 		white-space: nowrap;
 	}
-	.tick::before {
-		content: '';
-		width: 1px;
-		height: 5px;
-		margin-bottom: 3px;
-		background: var(--border);
+	.tk b {
+		font-weight: 500;
+		color: var(--tx2);
 	}
-	.tick.now {
-		transform: none;
-		align-items: flex-start;
+	.tk.day b {
+		color: var(--acc);
 	}
-	.tick.now::before {
-		background: var(--border-accent);
+	.tk em {
+		font-style: normal;
+	}
+	.tk i {
+		font-style: normal;
+		display: inline-block;
+	}
+	.tk u {
+		text-decoration: none;
+	}
+	.cur {
+		position: absolute;
+		top: 0;
+		bottom: 62px;
 		width: 2px;
+		margin-left: -1px;
+		background: #fff;
+		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+		pointer-events: none;
 	}
-	.tick.now .tick-label {
-		color: var(--text-accent);
-		font-weight: 500;
-	}
-	.tick-label {
-		color: var(--text-muted);
-	}
-	.tick-temp {
-		font-size: 12px;
-		color: var(--text-secondary);
-	}
-	@media (max-width: 520px) {
-		.tick.minor {
-			display: none;
-		}
-	}
-	.conditions-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-		/* The two-wide indoor-humidity cell can land at the end of a row with one column left;
-		   dense packing backfills that hole with the next cell instead of leaving a gap. */
-		grid-auto-flow: dense;
-		gap: 16px;
-	}
-	.stat {
+	.key {
 		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-	/* Indoor humidity carries a description after its number, which needs the room. */
-	.stat.wide {
-		grid-column: span 2;
-	}
-	.stat-label {
-		font-size: 11px;
-		color: var(--text-muted);
-	}
-	.stat-value {
-		font-size: 15px;
-		font-weight: 500;
-	}
-	/* Svelte trims leading whitespace inside an element, so a literal space here would vanish —
-	   the gap after the number has to be margin. */
-	.stat-note {
-		font-size: 13px;
-		margin-left: 6px;
-	}
-	.tone-ideal {
-		color: var(--text-success);
-	}
-	.tone-mild {
-		color: var(--text-accent);
-	}
-	.tone-poor {
-		color: var(--text-danger);
-	}
-	.section {
-		margin-bottom: 28px;
-	}
-	.section-title {
-		display: block;
-		font-size: 14px;
-		font-weight: 500;
-		margin-bottom: 12px;
-	}
-	.alerts-list {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-	.alert-row {
-		border-left: 3px solid var(--text-muted);
-		background: var(--surface-1);
-		border-radius: 0 var(--radius) var(--radius) 0;
-		padding: 10px 14px;
-	}
-	.alert-row.severity-extreme,
-	.alert-row.severity-severe {
-		border-left-color: var(--text-danger);
-	}
-	.alert-row.severity-moderate {
-		border-left-color: var(--border-accent);
-	}
-	.alert-head {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 10px;
-	}
-	.alert-event {
-		font-size: 13px;
-		font-weight: 500;
-	}
-	.alert-expires {
-		font-size: 11px;
-		color: var(--text-muted);
-		white-space: nowrap;
-	}
-	.alert-headline {
-		font-size: 12px;
-		color: var(--text-secondary);
-		margin: 4px 0 0;
-	}
-	.daily-list {
-		display: flex;
-		flex-direction: column;
-	}
-	.day-row {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding: 12px 0;
-		border-top: 0.5px solid var(--border);
-	}
-	.day-row:first-child {
-		border-top: none;
-	}
-	.day-top {
-		display: flex;
-		align-items: baseline;
 		flex-wrap: wrap;
-		gap: 4px 14px;
+		gap: 6px 14px;
+		padding-top: 6px;
+		font-size: 11.5px;
+		color: var(--tx2);
+		flex: none;
 	}
-	.day-name {
-		font-size: 13px;
-		font-weight: 500;
-		flex: 1 1 auto;
-	}
-	.day-date {
-		font-weight: 400;
-		color: var(--text-muted);
-		margin-left: 8px;
-	}
-	.day-range {
-		font-size: 13px;
-		color: var(--text-muted);
-		white-space: nowrap;
-	}
-	.day-precip {
-		font-size: 12px;
-		color: var(--text-muted);
-		white-space: nowrap;
-		min-width: 54px;
-		text-align: right;
-	}
-	.day-line {
+	.kk {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: 6px;
 	}
-	.day-icon {
-		font-size: 20px;
-		width: 28px;
-		text-align: center;
-		flex-shrink: 0;
+	.sw {
+		display: inline-block;
+		width: 22px;
+		height: 12px;
+		border-radius: 3px;
+		border: 1px solid rgba(0, 0, 0, 0.3);
 	}
-	.day-text {
-		font-size: 13px;
-		color: var(--text-secondary);
+	.hint {
+		margin-left: auto;
+		color: var(--tx3);
 	}
-	/* The night line is the quieter of the two. */
-	.day-line.night .day-icon {
-		font-size: 16px;
-	}
-	.day-line.night .day-text {
-		color: var(--text-muted);
+	@media (max-width: 1100px) {
+		.wgrid {
+			grid-template-columns: 1fr;
+			grid-template-rows: none;
+		}
+		.week {
+			grid-row: auto;
+			grid-column: auto;
+		}
+		.stats {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
 	}
 </style>
