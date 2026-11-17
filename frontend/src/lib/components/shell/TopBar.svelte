@@ -33,7 +33,6 @@
 		{/each}
 	</div>
 	<div class="ctl">
-		<span class="live" title="This page updates itself"><span class="dot"></span>live</span>
 		<ThemeToggle />
 		{#if privateAccess?.configured}
 			<button
@@ -104,19 +103,6 @@
 		align-items: center;
 		color: var(--tx2);
 		flex: none;
-	}
-	.live {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 11.5px;
-	}
-	.dot {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		background: var(--up);
-		box-shadow: 0 0 0 3px color-mix(in srgb, var(--up) 25%, transparent);
 	}
 	.icon {
 		display: flex;

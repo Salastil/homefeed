@@ -7,7 +7,7 @@
 	import type { EventStoryline, LiteArticle, Storyline } from '$lib/types';
 	import { resolveMediaUrl } from '$lib/config';
 	import { clock } from '$lib/live.svelte';
-	import { authorOf, clockTime, hhmm, headlineOf } from '$lib/text';
+	import { authorOf, clockTime, headlineOf, relTime } from '$lib/text';
 
 	type Item = { kind: 'story'; color: string; story: Storyline } | { kind: 'event'; color: string; event: EventStoryline };
 
@@ -39,7 +39,7 @@
 				gap: 0,
 				list: devs.map((d) => ({
 					id: d.id,
-					time: hhmm(d.lastItemAt),
+					time: relTime(d.lastItemAt, clock.now),
 					text: d.members.length ? headlineOf(d.members.find((m) => m.id === d.labelArticleId) ?? d.members[0]) : d.label,
 					sub: `${d.itemCount} posts · ${d.sourceCount} channels`,
 					title: d.members.length ? headlineOf(d.members.find((m) => m.id === d.labelArticleId) ?? d.members[0]) : d.label,
@@ -51,7 +51,7 @@
 		const pick = m.length <= 6 ? m : [m[0], ...m.slice(-5)];
 		return {
 			gap: item.story.itemCount - pick.length,
-			list: pick.map((a) => ({ id: a.id, time: hhmm(a.publishedAt), text: headlineOf(a), sub: authorOf(a).handle === 'article' ? a.sourceName : authorOf(a).handle, title: headlineOf(a), members: [a] }))
+			list: pick.map((a) => ({ id: a.id, time: relTime(a.publishedAt, clock.now), text: headlineOf(a), sub: authorOf(a).handle === 'article' ? a.sourceName : authorOf(a).handle, title: headlineOf(a), members: [a] }))
 		};
 	});
 </script>

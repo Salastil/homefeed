@@ -28,6 +28,7 @@
 </script>
 
 {#snippet items()}
+	{#if stocks.tickers.length}<span class="grp first">Markets</span>{/if}
 	{#each stocks.tickers as t (t.id)}
 		{@const up = (t.lastChangePercent ?? 0) >= 0}
 		<span class="it"><b>{t.label}</b><span class="p">{price(t.lastPrice)}</span><span class="c" class:up class:dn={!up}>{up ? '▲' : '▼'} {pct(t.lastChangePercent)}</span></span>
@@ -109,6 +110,10 @@
 	}
 	.dn {
 		color: var(--dn);
+	}
+	.grp.first {
+		padding-left: 0;
+		border-left: 0;
 	}
 	.grp {
 		padding-left: 26px;
