@@ -60,7 +60,6 @@
 	<a class="thumb" class:none={!image} {href}>
 		{#if image}
 			<img src={resolveMediaUrl(image.url)} alt="" loading="lazy" />
-			<span>{image.credit} · {hhmm(image.at)}</span>
 		{:else}
 			<span>no image yet</span>
 		{/if}
