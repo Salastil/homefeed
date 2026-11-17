@@ -1,5 +1,5 @@
 import { db } from './index.js';
-import type { GlobalSettings } from './types.js';
+import { DEFAULT_STORYLINE_SETTINGS, type GlobalSettings } from './types.js';
 import * as installedWidgetsDb from './installedWidgets.js';
 
 const BUILTIN_WIDGET_IDS = ['weather', 'stocks', 'bookmarks', 'poe2'] as const;
@@ -52,6 +52,8 @@ function rowToSettings(row: any): GlobalSettings {
 		synthesisDisableThinking: !!row.synthesis_disable_thinking,
 		synthesisLanguage: row.synthesis_language,
 		...widgetsAndOrder(),
+		widgetSlots: parseJson(row.widget_slots, []),
+		storylines: { ...DEFAULT_STORYLINE_SETTINGS, ...parseJson(row.storyline_settings, {}) },
 		retention: {
 			publishedArticleMaxAgeDays: row.published_article_max_age_days,
 			rawItemMaxAgeDays: row.raw_item_max_age_days,
@@ -60,6 +62,43 @@ function rowToSettings(row: any): GlobalSettings {
 			storageCapUnit: row.storage_cap_unit
 		}
 	};
+}
+
+const clamp = (v: unknown, lo: number, hi: number, fallback: number) => {
+	const n = Number(v);
+	return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
+};
+
+/** Keeps admin input inside ranges the engine and the board can actually use. */
+function clampStorylines(s: GlobalSettings['storylines']): GlobalSettings['storylines'] {
+	const d = DEFAULT_STORYLINE_SETTINGS;
+	return {
+		rows: clamp(s.rows, 1, 3, d.rows) as 1 | 2 | 3,
+		rotateSeconds: clamp(s.rotateSeconds, 5, 120, d.rotateSeconds),
+		includeEvents: !!s.includeEvents,
+		jumpOnUpdate: !!s.jumpOnUpdate,
+		pauseOnHover: !!s.pauseOnHover,
+		joinSimilarity: clamp(s.joinSimilarity, 0.5, 0.95, d.joinSimilarity),
+		minItems: clamp(s.minItems, 2, 10, d.minItems),
+		minSources: clamp(s.minSources, 1, 10, d.minSources),
+		seedWindowHours: clamp(s.seedWindowHours, 1, 24, d.seedWindowHours),
+		nameGuard: !!s.nameGuard,
+		coolingHours: clamp(s.coolingHours, 0.5, 24, d.coolingHours),
+		closeHours: clamp(s.closeHours, 1, 48, d.closeHours),
+		maxLifetimeHours: clamp(s.maxLifetimeHours, 2, 168, d.maxLifetimeHours),
+		eventJoinSimilarity: clamp(s.eventJoinSimilarity, 0.5, 0.95, d.eventJoinSimilarity),
+		eventMaxHours: clamp(s.eventMaxHours, 1, 24, d.eventMaxHours),
+		eventCloseHours: clamp(s.eventCloseHours, 0.5, 24, d.eventCloseHours)
+	};
+}
+
+function parseJson<T>(text: string | null | undefined, fallback: T): T {
+	if (!text) return fallback;
+	try {
+		return JSON.parse(text) as T;
+	} catch {
+		return fallback;
+	}
 }
 
 export function getSettings(): GlobalSettings {
@@ -74,7 +113,9 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		...patch,
 		retention: { ...current.retention, ...(patch.retention ?? {}) },
 		selectedModels: { ...current.selectedModels, ...(patch.selectedModels ?? {}) },
-		widgets: { ...current.widgets, ...(patch.widgets ?? {}) }
+		widgets: { ...current.widgets, ...(patch.widgets ?? {}) },
+		storylines: clampStorylines({ ...current.storylines, ...(patch.storylines ?? {}) }),
+		widgetSlots: patch.widgetSlots ?? current.widgetSlots
 	};
 
 	if (patch.widgets) {
@@ -104,7 +145,8 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			synthesis_num_ctx=$synthesis_num_ctx, synthesis_num_predict=$synthesis_num_predict,
 			synthesis_disable_thinking=$synthesis_disable_thinking, synthesis_language=$synthesis_language,
 			published_article_max_age_days=$published_article_max_age_days, raw_item_max_age_days=$raw_item_max_age_days,
-			storage_cap_enabled=$storage_cap_enabled, storage_cap_value=$storage_cap_value, storage_cap_unit=$storage_cap_unit
+			storage_cap_enabled=$storage_cap_enabled, storage_cap_value=$storage_cap_value, storage_cap_unit=$storage_cap_unit,
+			storyline_settings=$storyline_settings, widget_slots=$widget_slots
 		 WHERE id = 1`
 	).run({
 		$merge_strictness: merged.mergeStrictness,
@@ -132,7 +174,9 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		$raw_item_max_age_days: merged.retention.rawItemMaxAgeDays,
 		$storage_cap_enabled: merged.retention.storageCapEnabled ? 1 : 0,
 		$storage_cap_value: merged.retention.storageCapValue,
-		$storage_cap_unit: merged.retention.storageCapUnit
+		$storage_cap_unit: merged.retention.storageCapUnit,
+		$storyline_settings: JSON.stringify(merged.storylines),
+		$widget_slots: JSON.stringify(merged.widgetSlots)
 	});
 	return getSettings();
 }

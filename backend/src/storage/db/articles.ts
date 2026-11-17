@@ -168,6 +168,31 @@ export function findRecentArticleByTags(tagIds: string[], sinceDays: number): Me
 	return null;
 }
 
+/**
+ * Newest-first articles matching a raw SQL predicate - for the board's Wire/General columns,
+ * which select on shape (post vs. article, no category) rather than any one filter queryFeed
+ * offers. `where` is always a fixed string from api/storylines.ts, never user input.
+ */
+export function queryWhere(where: string, params: unknown[], limit: number): MergedArticle[] {
+	return db
+		.prepare(`SELECT * FROM merged_articles WHERE ${where} ORDER BY published_at DESC LIMIT ?`)
+		.all(...(params as any[]), limit)
+		.map(rowToArticle);
+}
+
+export function countWhere(where: string, params: unknown[]): number {
+	const row = db.prepare(`SELECT COUNT(*) AS c FROM merged_articles WHERE ${where}`).get(...(params as any[])) as { c: number };
+	return row.c;
+}
+
+export function getArticles(ids: string[]): MergedArticle[] {
+	if (ids.length === 0) return [];
+	return db
+		.prepare(`SELECT * FROM merged_articles WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY published_at`)
+		.all(...ids)
+		.map(rowToArticle);
+}
+
 export function deleteArticle(id: string) {
 	db.prepare('DELETE FROM merged_articles WHERE id = ?').run(id);
 }

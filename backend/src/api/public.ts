@@ -7,7 +7,34 @@ import * as settingsDb from '../storage/db/settings.js';
 import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
 import { getKv } from '../storage/db/widgetKv.js';
 import type { WidgetReport } from '../widgets/report.js';
-import type { MergedArticle, Tag } from '../storage/db/types.js';
+import type { MergedArticle, Tag, WidgetSlot } from '../storage/db/types.js';
+
+/** Plug-in widgets that render in the top bar rather than the widget row. */
+export const TOP_BAR_WIDGETS = new Set(['searchbar']);
+
+/**
+ * The widget row's slots, from the admin's layout (Widgets tab) or, when none is saved, from
+ * the widget order with Stocks and PoE2 sharing a slot - the accepted default. Disabled and
+ * top-bar widgets are dropped, empty slots removed, and any enabled widget the saved layout
+ * doesn't mention gets a slot of its own at the end, so a newly installed widget still shows.
+ */
+export function resolveWidgetSlots(saved: WidgetSlot[], enabledInOrder: string[]): WidgetSlot[] {
+	const rowWidgets = enabledInOrder.filter((id) => !TOP_BAR_WIDGETS.has(id));
+	const enabled = new Set(rowWidgets);
+	let slots: WidgetSlot[];
+	if (saved.length > 0) {
+		slots = saved.map((s) => ({ widgets: s.widgets.filter((w) => enabled.has(w)), rotateSeconds: s.rotateSeconds || 8 }));
+	} else {
+		slots = [];
+		for (const id of rowWidgets) {
+			if (id === 'poe2' && enabled.has('stocks')) continue;
+			slots.push({ widgets: id === 'stocks' && enabled.has('poe2') ? ['stocks', 'poe2'] : [id], rotateSeconds: 8 });
+		}
+	}
+	const placed = new Set(slots.flatMap((s) => s.widgets));
+	for (const id of rowWidgets) if (!placed.has(id)) slots.push({ widgets: [id], rotateSeconds: 8 });
+	return slots.filter((s) => s.widgets.length > 0);
+}
 import { hasPrivateAccess } from './privateAccess.js';
 
 // The DB keeps article.video.url as the real upstream URL (video-proxy.ts needs it to
@@ -109,12 +136,19 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 	// looks an id up there when it isn't one of the 4 built-in keys, and skips it entirely
 	// if not found (disabled) — see widgets/registry.ts, GenericWidgetCard/DynamicWidgetSlot.
 	app.get('/api/widgets', async () => {
-		const { widgets, widgetOrder } = settingsDb.getSettings();
-		const pluggable = installedWidgetsDb
-			.listInstalled()
+		const { widgets, widgetOrder, widgetSlots } = settingsDb.getSettings();
+		const installed = installedWidgetsDb.listInstalled();
+		const pluggable = installed
 			.filter((w) => w.source === 'uploaded' && w.enabled)
 			.map((w) => ({ id: w.id, displayName: w.displayName, frontendEntry: w.frontendEntry }));
-		return { ...widgets, order: widgetOrder, pluggable };
+		const enabledInOrder = installed.filter((w) => w.enabled).map((w) => w.id);
+		return {
+			...widgets,
+			order: widgetOrder,
+			pluggable,
+			slots: resolveWidgetSlots(widgetSlots, enabledInOrder),
+			topBar: enabledInOrder.filter((id) => TOP_BAR_WIDGETS.has(id))
+		};
 	});
 
 	// Generic live-data feed any widget (built-in or uploaded) can publish to via

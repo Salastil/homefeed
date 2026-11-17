@@ -2,6 +2,7 @@ import { pollDueSources } from '../ingestion/poller.js';
 import { runSynthesisCycle, runPassthroughCycle, runDirectPublishCycle } from './priorityQueue.js';
 import { runEventRecaps } from './eventsRecap.js';
 import { runRetentionSweep } from './retention.js';
+import { runStorylineCycle } from '../pipeline/storylines.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import * as settingsDb from '../storage/db/settings.js';
 import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
@@ -18,11 +19,13 @@ const POLL_STALL_MS = 5 * 60_000;
 const DIRECT_PUBLISH_STALL_MS = 10 * 60_000;
 const SYNTHESIS_STALL_MS = 45 * 60_000;
 const RETENTION_STALL_MS = 10 * 60_000;
+const STORYLINE_STALL_MS = 10 * 60_000;
 
 const POLL_TICK_MS = 60_000; // checks which sources are due every minute; each source's own interval governs actual fetch frequency
 const DIRECT_PUBLISH_TICK_MS = 60_000;
 const SYNTHESIS_TICK_MS = 60_000;
 const RETENTION_TICK_MS = 60 * 60_000; // hourly
+const STORYLINE_TICK_MS = 60_000; // matches the publish ticks, so a new article joins its storyline within a minute
 
 /**
  * Runs fn on every tick, but skips a tick outright if the previous one is still in
@@ -192,6 +195,21 @@ export function startScheduler() {
 		}
 	}, 'synthesis', SYNTHESIS_STALL_MS);
 
+	// Storylines need only the embedding connection - never the synthesis one - so they keep
+	// working with the AI writer off. Skipped quietly while embedding is unreachable; the
+	// unchecked articles simply wait for the next pass.
+	everyTickSkippingOverlap(STORYLINE_TICK_MS, async () => {
+		try {
+			const settings = settingsDb.getSettings();
+			const embedding = embeddingProvider();
+			if (!(await embedding.isReachable())) return;
+			const placed = await runStorylineCycle(embedding, settings.selectedModels.embedding, settings.storylines);
+			if (placed > 0) logger.info('storylines', `Storyline tick: placed ${placed} article(s) in storylines`);
+		} catch (err) {
+			logger.error('storylines', `Storyline tick failed: ${(err as Error).message}`);
+		}
+	}, 'storylines', STORYLINE_STALL_MS);
+
 	everyTickSkippingOverlap(RETENTION_TICK_MS, async () => {
 		try {
 			runRetentionSweep(settingsDb.getSettings());
@@ -207,6 +225,6 @@ export function startScheduler() {
 
 	logger.info(
 		'scheduler',
-		`Started: poll every 1m, direct-publish every 1m, synthesis every 1m, retention every 1h, ${loadedWidgets.size} widget(s) polling on their own intervals`
+		`Started: poll every 1m, direct-publish every 1m, synthesis every 1m, storylines every 1m, retention every 1h, ${loadedWidgets.size} widget(s) polling on their own intervals`
 	);
 }

@@ -485,6 +485,53 @@ export function migrate() {
 		db.exec('ALTER TABLE tracked_events ADD COLUMN last_recap_attempt_at TEXT');
 	}
 
+	// Storylines (see pipeline/storylines.ts). Each published article is embedded once, by
+	// the storyline tick, and the vector kept on the article itself - so storylines work
+	// whether or not the AI writer runs (content_items.embedding is only ever filled on the
+	// synthesis path). storyline_checked_at marks an article as processed either way, so the
+	// tick never re-embeds it.
+	if (!hasColumn('merged_articles', 'embedding')) {
+		db.exec('ALTER TABLE merged_articles ADD COLUMN embedding TEXT');
+		db.exec('ALTER TABLE merged_articles ADD COLUMN storyline_checked_at TEXT');
+	}
+	db.exec(`
+		CREATE INDEX IF NOT EXISTS idx_articles_storyline_checked ON merged_articles(storyline_checked_at);
+		CREATE INDEX IF NOT EXISTS idx_articles_event ON merged_articles(event_id, published_at);
+
+		-- scope is 'news' for ordinary storylines, or 'event:<trackedEventId>' for a tracked
+		-- event's developments. State (live / cooling / closed) isn't stored: it follows from
+		-- first_item_at / last_item_at and the admin's lifecycle settings at read time.
+		CREATE TABLE IF NOT EXISTS storylines (
+			id TEXT PRIMARY KEY,
+			scope TEXT NOT NULL,
+			tag TEXT NOT NULL DEFAULT '',
+			label_article_id TEXT,
+			centroid TEXT NOT NULL, -- JSON float array, normalised
+			first_item_at TEXT NOT NULL,
+			last_item_at TEXT NOT NULL,
+			item_count INTEGER NOT NULL DEFAULT 0,
+			source_count INTEGER NOT NULL DEFAULT 0,
+			continues_id TEXT, -- the closed storyline this one picked up from, if any
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_storylines_scope_last ON storylines(scope, last_item_at);
+
+		-- An article belongs to at most one storyline. Deleting the article (retention)
+		-- drops its membership; the storyline tick removes storylines left empty.
+		CREATE TABLE IF NOT EXISTS storyline_items (
+			article_id TEXT PRIMARY KEY REFERENCES merged_articles(id) ON DELETE CASCADE,
+			storyline_id TEXT NOT NULL REFERENCES storylines(id) ON DELETE CASCADE,
+			similarity REAL NOT NULL,
+			added_at TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_storyline_items_storyline ON storyline_items(storyline_id);
+	`);
+	if (!hasColumn('global_settings', 'storyline_settings')) {
+		db.exec("ALTER TABLE global_settings ADD COLUMN storyline_settings TEXT NOT NULL DEFAULT '{}'");
+		db.exec("ALTER TABLE global_settings ADD COLUMN widget_slots TEXT NOT NULL DEFAULT '[]'");
+	}
+
 	// Seed default categories if none exist yet. "News" sits right under "Top stories" —
 	// general news sources belong here, not on "Top stories" itself, which isn't a real
 	// filterable tag: it's the homepage view, now scoped to only the articles whose

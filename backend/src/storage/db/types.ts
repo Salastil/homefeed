@@ -277,6 +277,67 @@ export interface Bookmark {
 	createdAt: string;
 }
 
+/**
+ * Storylines (see pipeline/storylines.ts): how articles are grouped into live storylines
+ * and tracked-event developments, and how the board's storyline panel shows them. Stored
+ * as one JSON column so a new knob never needs a migration; missing keys fall back to
+ * DEFAULT_STORYLINE_SETTINGS. The similarity numbers are tuned for nomic-embed-text
+ * (benchmarked 2026-11-17 against hand-labelled stories) - another embedding model has
+ * its own similarity scale and needs them re-tuned.
+ */
+export interface StorylineSettings {
+	/** Storylines shown at once on the board's panel; the rest rotate through. */
+	rows: 1 | 2 | 3;
+	rotateSeconds: number;
+	/** Tracked events take part in the rotation as pinned storylines. */
+	includeEvents: boolean;
+	/** A storyline that gets a new update moves to the front at the next rotation. */
+	jumpOnUpdate: boolean;
+	pauseOnHover: boolean;
+	/** Cosine similarity an article needs to a storyline's centroid to join it. Two loose articles start one at this + 0.04. */
+	joinSimilarity: number;
+	/** A storyline shows on the board once it has this many articles... */
+	minItems: number;
+	/** ...from at least this many distinct sources (each X / Telegram account counts as its own source). */
+	minSources: number;
+	/** How far back a new article looks for a loose article to start a storyline with. */
+	seedWindowHours: number;
+	/** Also require a shared specific name (place, person, organisation, route number) to join - stops look-alike stories from merging. */
+	nameGuard: boolean;
+	coolingHours: number;
+	closeHours: number;
+	maxLifetimeHours: number;
+	/** Tracked-event developments: stricter join, and a short life so a busy stream can't chain into one blob. */
+	eventJoinSimilarity: number;
+	eventMaxHours: number;
+	eventCloseHours: number;
+}
+
+export const DEFAULT_STORYLINE_SETTINGS: StorylineSettings = {
+	rows: 2,
+	rotateSeconds: 15,
+	includeEvents: true,
+	jumpOnUpdate: true,
+	pauseOnHover: true,
+	joinSimilarity: 0.74,
+	minItems: 3,
+	minSources: 2,
+	seedWindowHours: 6,
+	nameGuard: true,
+	coolingHours: 2,
+	closeHours: 5,
+	maxLifetimeHours: 30,
+	eventJoinSimilarity: 0.78,
+	eventMaxHours: 3,
+	eventCloseHours: 2
+};
+
+/** One position in the widget row. More than one widget in a slot rotates through them on a timer. */
+export interface WidgetSlot {
+	widgets: string[];
+	rotateSeconds: number;
+}
+
 export interface GlobalSettings {
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	holdBeforePublishMinutes: number;
@@ -320,6 +381,9 @@ export interface GlobalSettings {
 	};
 	/** Sidebar widget display order (every installed widget, built-in or uploaded), admin-sortable via the Widgets tab's up/down arrows — mirrors installed_widgets.priority_rank exactly, mirrored exactly by Sidebar.svelte. */
 	widgetOrder: string[];
+	/** Widget row layout. Empty means "derive from widgetOrder" (see api/public.ts's resolveWidgetSlots). */
+	widgetSlots: WidgetSlot[];
+	storylines: StorylineSettings;
 	retention: {
 		publishedArticleMaxAgeDays: number | null;
 		rawItemMaxAgeDays: number | null;
