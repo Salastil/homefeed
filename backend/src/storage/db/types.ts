@@ -313,6 +313,30 @@ export interface StorylineSettings {
 	eventCloseHours: number;
 }
 
+/**
+ * One board position. Column keys are 'cat:<categoryId>', 'wire' or 'general'; a slot with
+ * several keys is one column that rotates through them every `rotateSeconds`.
+ */
+export interface BoardSlot {
+	columns: string[];
+	rotateSeconds: number;
+}
+
+export interface BoardLayout {
+	/** Left to right. Empty means "not arranged yet" - the board derives the old default. */
+	slots: BoardSlot[];
+	/** Columns kept off the board (still reachable from their own page). */
+	hidden: string[];
+	/** Column colour overrides, by column key. */
+	colors: Record<string, string>;
+	/** A column with nothing new in 48 h joins the rotating column until something arrives. */
+	autoRotateQuiet: boolean;
+	/** Columns that don't fit the screen fold into the rotating column, right-most first. */
+	autoFold: boolean;
+}
+
+export const DEFAULT_BOARD_LAYOUT: BoardLayout = { slots: [], hidden: [], colors: {}, autoRotateQuiet: true, autoFold: true };
+
 export const DEFAULT_STORYLINE_SETTINGS: StorylineSettings = {
 	rows: 2,
 	rotateSeconds: 15,
@@ -384,6 +408,8 @@ export interface GlobalSettings {
 	/** Widget row layout. Empty means "derive from widgetOrder" (see api/public.ts's resolveWidgetSlots). */
 	widgetSlots: WidgetSlot[];
 	storylines: StorylineSettings;
+	/** The home board's columns: order, which rotate together, colours, what's hidden - the admin Board tab. */
+	boardLayout: BoardLayout;
 	retention: {
 		publishedArticleMaxAgeDays: number | null;
 		rawItemMaxAgeDays: number | null;

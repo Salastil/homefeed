@@ -235,11 +235,6 @@
 				</label>
 			{/each}
 		</div>
-		<label class="top-stories-check">
-			<input type="checkbox" bind:checked={form.pushToTopStories} />
-			Push to Top Stories?
-			<span class="hint">Off by default — keeps the homepage from being flooded by every source.</span>
-		</label>
 		<div class="add-actions">
 			<button onclick={cancelForm}>Cancel</button>
 			<button class="primary" onclick={handleSubmit}>{editingId ? 'Save' : 'Add'}</button>
@@ -292,14 +287,6 @@
 			<span class="cat">{source.category.join(', ')}</span>
 			<span class="cat">{source.pollIntervalMinutes} min</span>
 			<div class="actions">
-				<button
-					class="icon-btn"
-					class:starred={source.pushToTopStories}
-					onclick={() => toggleTopStories(source)}
-					title={source.pushToTopStories ? 'Pushing to Top Stories — click to stop' : 'Not pushed to Top Stories — click to enable'}
-				>
-					{source.pushToTopStories ? '★' : '☆'}
-				</button>
 				<button class="icon-btn" onclick={() => startEdit(source)} title="Edit">✎</button>
 				<button class="icon-btn" onclick={() => toggleEnabled(source)} title={source.enabled ? 'Disable' : 'Enable'}>
 					{source.enabled ? '⏸' : '▶'}

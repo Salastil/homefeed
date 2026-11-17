@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import * as stl from '../storage/db/storylines.js';
 import { engineStatus } from '../pipeline/storylines.js';
+import { boardCategories, resolveBoardLayout } from './storylines.js';
 import * as settingsDb from '../storage/db/settings.js';
 import * as sourcesDb from '../storage/db/sources.js';
 import * as eventsDb from '../storage/db/events.js';
@@ -42,6 +43,65 @@ function withStorageUsed(settings: ReturnType<typeof settingsDb.getSettings>) {
 	return { ...settings, retention: { ...settings.retention, storageUsedMB: Math.round(totalStorageBytes() / (1024 * 1024)) } };
 }
 
+/**
+ * The board order is also the AI writer's queue order (it used to be the category priority
+ * list): ranks follow the board left to right, then hidden columns; "Top stories" stays
+ * first. A category that shares a rotating column is marked spillover, which the More page
+ * still uses.
+ */
+function syncCategoriesToBoard(saved: GlobalSettings['boardLayout']) {
+	const cats = boardCategories();
+	const layout = resolveBoardLayout(saved, cats);
+	const ids = (keys: string[]) => keys.filter((k) => k.startsWith('cat:')).map((k) => k.slice(4));
+	const top = categoriesDb.listCategories().filter((c) => c.name.toLowerCase() === 'top stories').map((c) => c.id);
+	categoriesDb.setPriorityOrder([...top, ...ids(layout.slots.flatMap((s) => s.columns)), ...ids(layout.hidden)]);
+	const rotating = new Set(ids(layout.slots.filter((s) => s.columns.length > 1).flatMap((s) => s.columns)));
+	for (const c of cats) if (c.isSpillover !== rotating.has(c.id)) categoriesDb.updateCategory(c.id, { isSpillover: rotating.has(c.id) });
+}
+
+function boardOverview() {
+	const settings = settingsDb.getSettings();
+	const cats = boardCategories();
+	const layout = resolveBoardLayout(settings.boardLayout, cats);
+	const sources = sourcesDb.listSources();
+	const named = new Set(cats.map((c) => c.name));
+	const columns = [
+		...cats.map((c) => ({
+			key: `cat:${c.id}`,
+			kind: 'category' as const,
+			id: c.id,
+			name: c.name,
+			isPrivate: c.isPrivate,
+			disableAi: c.disableAi,
+			sources: sources.filter((s) => s.category.includes(c.name)).map((s) => s.name)
+		})),
+		{
+			key: 'wire',
+			kind: 'wire' as const,
+			id: null,
+			name: 'Wire',
+			isPrivate: false,
+			disableAi: false,
+			sources: sources.filter((s) => (s.type === 'nitter' || s.type === 'telegram') && !s.category.some((c) => named.has(c))).map((s) => s.name)
+		},
+		{
+			key: 'general',
+			kind: 'general' as const,
+			id: null,
+			name: 'General',
+			isPrivate: false,
+			disableAi: false,
+			sources: sources.filter((s) => s.type !== 'nitter' && s.type !== 'telegram' && !s.category.some((c) => named.has(c))).map((s) => s.name)
+		}
+	];
+	return {
+		layout,
+		saved: settings.boardLayout.slots.length > 0,
+		columns,
+		sources: sources.map((s) => ({ id: s.id, name: s.name, type: s.type, category: s.category, enabled: s.enabled }))
+	};
+}
+
 export async function registerAdminRoutes(app: FastifyInstance) {
 	// --- Settings ---
 	app.get('/api/admin/settings', async () => {
@@ -57,6 +117,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		}
 		const before = settingsDb.getSettings();
 		const settings = withStorageUsed(settingsDb.updateSettings(body));
+		if (body.boardLayout) syncCategoriesToBoard(settings.boardLayout);
 		if (body.widgets) {
 			// Re-enabling a widget (see the Widgets tab) should show fresh data right away
 			// instead of waiting out its normal cadence — scheduler.ts skips polling
@@ -93,6 +154,19 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 			storylines: counts.news,
 			developments: counts.developments
 		};
+	});
+
+	// The Board tab: the resolved layout (hidden columns included), every column with what
+	// feeds it, and the sources list for assigning sources from a column's panel.
+	app.get('/api/admin/board', async () => boardOverview());
+
+	app.patch('/api/admin/categories/:id', async (req, reply) => {
+		const { id } = req.params as { id: string };
+		const { name, isPrivate, disableAi } = req.body as { name?: string; isPrivate?: boolean; disableAi?: boolean };
+		const r = categoriesDb.updateCategory(id, { name, isPrivate, disableAi });
+		if (r === null) return reply.code(404).send({ error: 'not found' });
+		if (r === 'taken') return reply.code(409).send({ error: 'Another category already has that name' });
+		return boardOverview();
 	});
 
 	// --- Categories (add/remove — reordering/privacy is via PATCH /settings above) ---

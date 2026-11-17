@@ -105,6 +105,38 @@ export const createCategory = (
 		fetchFn
 	);
 
+export interface BoardSlotCfg {
+	columns: string[];
+	rotateSeconds: number;
+}
+export interface BoardLayoutCfg {
+	slots: BoardSlotCfg[];
+	hidden: string[];
+	colors: Record<string, string>;
+	autoRotateQuiet: boolean;
+	autoFold: boolean;
+}
+export interface BoardColumnInfo {
+	key: string;
+	kind: 'category' | 'wire' | 'general';
+	id: string | null;
+	name: string;
+	isPrivate: boolean;
+	disableAi: boolean;
+	sources: string[];
+}
+export interface BoardOverview {
+	layout: BoardLayoutCfg;
+	saved: boolean;
+	columns: BoardColumnInfo[];
+	sources: { id: string; name: string; type: string; category: string[]; enabled: boolean }[];
+}
+
+export const getBoardOverview = (fetchFn?: typeof fetch) => request<BoardOverview>('/api/admin/board', {}, fetchFn);
+
+export const updateCategory = (id: string, patch: { name?: string; isPrivate?: boolean; disableAi?: boolean }, fetchFn?: typeof fetch) =>
+	request<BoardOverview>(`/api/admin/categories/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
+
 export const deleteCategory = (id: string, fetchFn?: typeof fetch) =>
 	request<void>(`/api/admin/categories/${id}`, { method: 'DELETE' }, fetchFn);
 

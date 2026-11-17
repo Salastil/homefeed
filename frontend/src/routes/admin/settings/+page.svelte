@@ -1,11 +1,13 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import { page } from '$app/stores';
 	import MergeTab from '$lib/components/admin/MergeTab.svelte';
 	import ModelsTab from '$lib/components/admin/ModelsTab.svelte';
 	import RetentionTab from '$lib/components/admin/RetentionTab.svelte';
 	import EventsTab from '$lib/components/admin/EventsTab.svelte';
 	import WidgetsTab from '$lib/components/admin/WidgetsTab.svelte';
 	import StorylinesTab from '$lib/components/admin/StorylinesTab.svelte';
+	import BoardTab from '$lib/components/admin/BoardTab.svelte';
 	import ConnectionsTab from '$lib/components/admin/ConnectionsTab.svelte';
 	import LogsTab from '$lib/components/admin/LogsTab.svelte';
 	import BackupTab from '$lib/components/admin/BackupTab.svelte';
@@ -17,6 +19,7 @@
 		{ id: 'models', label: 'Models' },
 		{ id: 'retention', label: 'Retention' },
 		{ id: 'events', label: 'Tracked items' },
+		{ id: 'board', label: 'Board' },
 		{ id: 'storylines', label: 'Storylines' },
 		{ id: 'widgets', label: 'Widgets' },
 		{ id: 'connections', label: 'Connections' },
@@ -24,7 +27,9 @@
 		{ id: 'backup', label: 'Backup' }
 	];
 
-	let active = $state('merge');
+	// ?tab=<id> opens a given tab (e.g. a link straight to the Board tab).
+	// svelte-ignore state_referenced_locally
+	let active = $state(tabs.some((t) => t.id === $page.url.searchParams.get('tab')) ? $page.url.searchParams.get('tab')! : 'merge');
 </script>
 
 <div class="head">
@@ -38,7 +43,7 @@
 	</nav>
 </div>
 
-<div class="content">
+<div class="content" class:wide={active === 'board'}>
 	{#if active === 'merge'}
 		<MergeTab settings={data.settings} sources={data.sources} />
 	{:else if active === 'models'}
@@ -53,6 +58,8 @@
 		<RetentionTab settings={data.settings} />
 	{:else if active === 'events'}
 		<EventsTab events={data.events} sources={data.sources} />
+	{:else if active === 'board'}
+		<BoardTab />
 	{:else if active === 'storylines'}
 		<StorylinesTab settings={data.settings} />
 	{:else if active === 'widgets'}
@@ -114,5 +121,9 @@
 	}
 	.content {
 		max-width: 720px;
+	}
+	/* The Board tab is a wide table with a side panel. */
+	.content.wide {
+		max-width: none;
 	}
 </style>

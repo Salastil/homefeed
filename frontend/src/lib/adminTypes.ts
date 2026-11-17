@@ -210,6 +210,7 @@ export interface AdminSettings {
 	storylines: StorylineSettings;
 	/** Widget positions in the widget row; several widgets in one slot rotate on a timer. Empty = the default arrangement. */
 	widgetSlots: { widgets: string[]; rotateSeconds: number }[];
+	boardLayout: import('./adminApi').BoardLayoutCfg;
 }
 
 export interface StorylineSettings {

@@ -1,5 +1,5 @@
 import { db } from './index.js';
-import { DEFAULT_STORYLINE_SETTINGS, type GlobalSettings } from './types.js';
+import { DEFAULT_BOARD_LAYOUT, DEFAULT_STORYLINE_SETTINGS, type GlobalSettings } from './types.js';
 import * as installedWidgetsDb from './installedWidgets.js';
 
 const BUILTIN_WIDGET_IDS = ['weather', 'stocks', 'bookmarks', 'poe2'] as const;
@@ -54,6 +54,7 @@ function rowToSettings(row: any): GlobalSettings {
 		...widgetsAndOrder(),
 		widgetSlots: parseJson(row.widget_slots, []),
 		storylines: { ...DEFAULT_STORYLINE_SETTINGS, ...parseJson(row.storyline_settings, {}) },
+		boardLayout: cleanBoardLayout({ ...DEFAULT_BOARD_LAYOUT, ...parseJson(row.board_layout, {}) }),
 		retention: {
 			publishedArticleMaxAgeDays: row.published_article_max_age_days,
 			rawItemMaxAgeDays: row.raw_item_max_age_days,
@@ -109,6 +110,32 @@ function cleanSlots(slots: unknown): GlobalSettings['widgetSlots'] {
 	return out;
 }
 
+const COLUMN_KEY = /^(cat:[\w.-]+|wire|general)$/;
+// A theme colour token (c-news, c-local, ...) so light and dark each get their own shade, or a hex colour.
+const COLOR = /^(#[0-9a-fA-F]{6}|c-[a-z]+)$/;
+
+/** Board layout from the admin panel: known key shapes only, no column twice, sane timers. */
+function cleanBoardLayout(raw: unknown): GlobalSettings['boardLayout'] {
+	const r = (raw ?? {}) as Partial<GlobalSettings['boardLayout']>;
+	const seen = new Set<string>();
+	const take = (k: unknown): k is string => typeof k === 'string' && COLUMN_KEY.test(k) && !seen.has(k) && (seen.add(k), true);
+	const slots: GlobalSettings['boardLayout']['slots'] = [];
+	for (const slot of Array.isArray(r.slots) ? r.slots : []) {
+		const cols = (Array.isArray(slot?.columns) ? slot.columns : []).filter(take);
+		if (cols.length) slots.push({ columns: cols, rotateSeconds: clamp(slot.rotateSeconds, 5, 300, 20) });
+	}
+	const hidden = (Array.isArray(r.hidden) ? r.hidden : []).filter(take);
+	const colors: Record<string, string> = {};
+	for (const [k, v] of Object.entries(r.colors ?? {})) if (COLUMN_KEY.test(k) && typeof v === 'string' && COLOR.test(v)) colors[k] = v;
+	return {
+		slots,
+		hidden,
+		colors,
+		autoRotateQuiet: r.autoRotateQuiet !== false,
+		autoFold: r.autoFold !== false
+	};
+}
+
 function parseJson<T>(text: string | null | undefined, fallback: T): T {
 	if (!text) return fallback;
 	try {
@@ -132,7 +159,8 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		selectedModels: { ...current.selectedModels, ...(patch.selectedModels ?? {}) },
 		widgets: { ...current.widgets, ...(patch.widgets ?? {}) },
 		storylines: clampStorylines({ ...current.storylines, ...(patch.storylines ?? {}) }),
-		widgetSlots: patch.widgetSlots !== undefined ? cleanSlots(patch.widgetSlots) : current.widgetSlots
+		widgetSlots: patch.widgetSlots !== undefined ? cleanSlots(patch.widgetSlots) : current.widgetSlots,
+		boardLayout: patch.boardLayout !== undefined ? cleanBoardLayout({ ...current.boardLayout, ...patch.boardLayout }) : current.boardLayout
 	};
 
 	if (patch.widgets) {
@@ -163,7 +191,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 			synthesis_disable_thinking=$synthesis_disable_thinking, synthesis_language=$synthesis_language,
 			published_article_max_age_days=$published_article_max_age_days, raw_item_max_age_days=$raw_item_max_age_days,
 			storage_cap_enabled=$storage_cap_enabled, storage_cap_value=$storage_cap_value, storage_cap_unit=$storage_cap_unit,
-			storyline_settings=$storyline_settings, widget_slots=$widget_slots
+			storyline_settings=$storyline_settings, widget_slots=$widget_slots, board_layout=$board_layout
 		 WHERE id = 1`
 	).run({
 		$merge_strictness: merged.mergeStrictness,
@@ -193,7 +221,8 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 		$storage_cap_value: merged.retention.storageCapValue,
 		$storage_cap_unit: merged.retention.storageCapUnit,
 		$storyline_settings: JSON.stringify(merged.storylines),
-		$widget_slots: JSON.stringify(merged.widgetSlots)
+		$widget_slots: JSON.stringify(merged.widgetSlots),
+		$board_layout: JSON.stringify(merged.boardLayout)
 	});
 	return getSettings();
 }

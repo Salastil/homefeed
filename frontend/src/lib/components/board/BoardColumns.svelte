@@ -1,18 +1,22 @@
 <script lang="ts">
 	/**
-	 * The board's columns. One per category (admin order) plus Wire and General; spillover
-	 * categories, quiet ones (nothing in 48 h) and any that don't fit the width share one
-	 * rotating column at the end, whose header rule doubles as its carousel timer. Each column
-	 * shows exactly four items. Anything already shown in the storyline panel (a storyline's
-	 * updates, a tracked event's developments) is left out, so the column shows the next
-	 * regular item instead.
+	 * The board's columns, in the admin's Board layout (admin → Board): positions left to
+	 * right, where a position holding several columns rotates through them on its own timer
+	 * (its header rule is the countdown). Quiet columns (nothing in 48 h) can join the rotating
+	 * position, and positions that don't fit the width fold into it, right-most first - both
+	 * admin switches. Each column shows exactly four items; anything already in the storyline
+	 * panel is left out so the next regular item shows instead.
 	 */
-	import type { BoardColumn, StorylinesResponse } from '$lib/types';
+	import type { BoardColumn, BoardLayout, StorylinesResponse } from '$lib/types';
 	import { clock } from '$lib/live.svelte';
-	import { authorOf, categoryColor, cleanPost, imageOf, isPost, relTime, textOf } from '$lib/text';
+	import { authorOf, cleanPost, columnColor, imageOf, isPost, relTime, textOf } from '$lib/text';
 	import { slugify } from '$lib/format';
 
-	let { columns, storylines, rotateSeconds = 20 }: { columns: BoardColumn[]; storylines: StorylinesResponse; rotateSeconds?: number } = $props();
+	let {
+		columns,
+		layout = undefined,
+		storylines
+	}: { columns: BoardColumn[]; layout?: BoardLayout; storylines: StorylinesResponse } = $props();
 
 	const PER_COLUMN = 4;
 	const MIN_COL = 240;
@@ -27,68 +31,101 @@
 		return ids;
 	});
 	const itemsOf = (c: BoardColumn) => c.items.filter((a) => !inPanel.has(a.id)).slice(0, PER_COLUMN);
+	const byKey = $derived(new Map(columns.map((c) => [c.key, c])));
 
 	const isQuiet = (c: BoardColumn) => {
 		const newest = c.items[0]?.publishedAt;
 		return !newest || clock.now - new Date(newest).getTime() > QUIET_MS;
 	};
 
-	const layout = $derived.by(() => {
+	// The saved layout, or (older backend) the earlier arrangement: categories in order with
+	// Wire third and General last, spillover categories sharing one rotating position.
+	const base = $derived.by((): BoardLayout => {
+		if (layout) return layout;
 		const cats = columns.filter((c) => c.kind === 'category');
-		const wire = columns.find((c) => c.kind === 'wire');
-		const general = columns.find((c) => c.kind === 'general');
-		const main = cats.filter((c) => !c.isSpillover && !isQuiet(c));
-		const rotating = cats.filter((c) => c.isSpillover || isQuiet(c));
-		const ordered = [...main];
-		if (wire) ordered.splice(Math.min(2, ordered.length), 0, wire);
-		if (general) ordered.push(general);
-		const slots = Math.max(2, Math.floor((width + 10) / (MIN_COL + 10)));
-		const room = rotating.length ? slots - 1 : slots;
-		while (ordered.length > room) {
-			// Fold the lowest-priority category first; Wire and General stay put longest.
-			const idx = ordered.map((c) => c.kind).lastIndexOf('category');
-			const victim = ordered.splice(idx >= 0 ? idx : ordered.length - 1, 1)[0];
-			rotating.unshift(victim);
-		}
-		return { fixed: ordered, rotating };
+		const main = cats.filter((c) => !c.isSpillover).map((c) => c.key);
+		if (byKey.has('wire')) main.splice(Math.min(2, main.length), 0, 'wire');
+		if (byKey.has('general')) main.push('general');
+		const slots = main.map((k) => ({ columns: [k], rotateSeconds: 20 }));
+		const more = cats.filter((c) => c.isSpillover).map((c) => c.key);
+		if (more.length) slots.push({ columns: more, rotateSeconds: 20 });
+		return { slots, autoRotateQuiet: true, autoFold: true };
 	});
 
-	let rotIndex = $state(0);
-	let rotStarted = $state(Date.now());
-	let rotNow = $state(Date.now());
-	$effect(() => {
-		if (layout.rotating.length < 2) return;
-		const ms = rotateSeconds * 1000;
-		const id = setInterval(() => {
-			rotNow = Date.now();
-			if (rotNow - rotStarted >= ms) {
-				rotIndex = (rotIndex + 1) % layout.rotating.length;
-				rotStarted = rotNow;
+	type Position = { id: string; keys: string[]; rotateSeconds: number };
+	const positions = $derived.by((): Position[] => {
+		let pos = base.slots
+			.map((s) => ({ keys: s.columns.filter((k) => byKey.has(k)), rotateSeconds: s.rotateSeconds }))
+			.filter((p) => p.keys.length > 0);
+		// The position quiet and folded columns join: the last rotating one, else a new one at the end.
+		const target = () => {
+			for (let i = pos.length - 1; i >= 0; i--) if (pos[i].keys.length > 1) return pos[i];
+			const p = { keys: [] as string[], rotateSeconds: 20 };
+			pos.push(p);
+			return p;
+		};
+		if (base.autoRotateQuiet) {
+			const quiet = pos.filter((p) => p.keys.length === 1 && byKey.get(p.keys[0])!.kind === 'category' && isQuiet(byKey.get(p.keys[0])!));
+			if (quiet.length) {
+				pos = pos.filter((p) => !quiet.includes(p));
+				const t = target();
+				t.keys.push(...quiet.flatMap((p) => p.keys));
 			}
+		}
+		if (base.autoFold) {
+			const room = Math.max(2, Math.floor((width + 10) / (MIN_COL + 10)));
+			while (pos.length > room) {
+				const t = target();
+				// Right-most single category first; Wire and General fold last.
+				const singles = pos.filter((p) => p !== t && p.keys.length === 1);
+				const victim = [...singles].reverse().find((p) => byKey.get(p.keys[0])!.kind === 'category') ?? singles.at(-1);
+				if (!victim) break;
+				pos = pos.filter((p) => p !== victim);
+				t.keys.unshift(...victim.keys);
+			}
+		}
+		return pos.filter((p) => p.keys.length > 0).map((p) => ({ ...p, id: p.keys.join('+') }));
+	});
+
+	// One interval drives every rotating position's timer.
+	let now = $state(Date.now());
+	let rot = $state<Record<string, { i: number; t: number }>>({});
+	const rotOf = (p: Position) => rot[p.id] ?? { i: 0, t: now };
+	$effect(() => {
+		if (!positions.some((p) => p.keys.length > 1)) return;
+		const id = setInterval(() => {
+			now = Date.now();
+			const next: Record<string, { i: number; t: number }> = {};
+			for (const p of positions) {
+				if (p.keys.length < 2) continue;
+				const r = rot[p.id] ?? { i: 0, t: now };
+				next[p.id] = now - r.t >= p.rotateSeconds * 1000 ? { i: (r.i + 1) % p.keys.length, t: now } : { i: r.i % p.keys.length, t: r.t };
+			}
+			rot = next;
 		}, 250);
 		return () => clearInterval(id);
 	});
-	const rotCurrent = $derived(layout.rotating[Math.min(rotIndex, layout.rotating.length - 1)]);
-	const rotProgress = $derived(layout.rotating.length > 1 ? Math.min(1, (rotNow - rotStarted) / (rotateSeconds * 1000)) : 0);
+	const pick = (p: Position, i: number) => (rot = { ...rot, [p.id]: { i, t: Date.now() } });
 
 	const href = (c: BoardColumn) => (c.kind === 'category' ? `/category/${slugify(c.name)}` : `/feed/${c.kind}`);
 </script>
 
-{#snippet column(c: BoardColumn, rotator: boolean)}
+{#snippet column(c: BoardColumn, p: Position)}
 	{@const items = itemsOf(c)}
-	{@const color = categoryColor(c.name)}
-	<div class="col" class:rot={rotator && layout.rotating.length > 1} style:--cc={color}>
+	{@const color = columnColor(c.name, c.color)}
+	{@const r = rotOf(p)}
+	<div class="col" class:rot={p.keys.length > 1} style:--cc={color}>
 		<div class="ch">
 			<a class="ttl" href={href(c)}><i></i>{c.name}<span class="arr">→</span></a>
 			{#if c.isPrivate}<span class="lockd" title="Private category">🔒</span>{/if}
 		</div>
-		{#if rotator && layout.rotating.length > 1}
+		{#if p.keys.length > 1}
 			<div class="rtabs">
-				{#each layout.rotating as r, k (r.key)}
-					<button class:on={k === rotIndex} onclick={() => ((rotIndex = k), (rotStarted = Date.now()))}>{r.name}</button>
+				{#each p.keys as k, n (k)}
+					<button class:on={n === r.i} onclick={() => pick(p, n)}>{byKey.get(k)?.name}</button>
 				{/each}
 			</div>
-			<div class="timer" title="Next: {layout.rotating[(rotIndex + 1) % layout.rotating.length].name}"><i style:width="{rotProgress * 100}%"></i></div>
+			<div class="timer" title="Next: {byKey.get(p.keys[(r.i + 1) % p.keys.length])?.name}"><i style:width="{Math.min(1, (now - r.t) / (p.rotateSeconds * 1000)) * 100}%"></i></div>
 		{/if}
 		<div class="cb">
 			{#each items as a (a.id)}
@@ -115,15 +152,15 @@
 	</div>
 {/snippet}
 
-<div class="cols" bind:clientWidth={width} style:grid-template-columns="repeat({layout.fixed.length + (rotCurrent ? 1 : 0)}, minmax(0, 1fr))">
-	{#each layout.fixed as c (c.key)}
-		{@render column(c, false)}
+<div class="cols" bind:clientWidth={width} style:grid-template-columns="repeat({positions.length}, minmax(0, 1fr))">
+	{#each positions as p (p.id)}
+		{@const c = byKey.get(p.keys[rotOf(p).i % p.keys.length])}
+		{#if c}
+			{#key c.key}
+				{@render column(c, p)}
+			{/key}
+		{/if}
 	{/each}
-	{#if rotCurrent}
-		{#key rotCurrent.key}
-			{@render column(rotCurrent, true)}
-		{/key}
-	{/if}
 </div>
 
 <style>

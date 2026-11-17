@@ -99,85 +99,13 @@
 	}
 </script>
 
-<CollapsibleSection title="Category priority">
-	<p class="hint">
-		Synthesis queue processes higher-ranked categories first. Nothing is dropped — lower
-		categories just wait longer when the queue is busy. This list also drives the site's nav —
-		remove anything you're not interested in (Business, Culture, etc.) or add your own. A
-		private category (and everything in it) is hidden from the public site until a visitor
-		logs in with the lock icon in the masthead. A "More" category is collapsed into a single
-		"More »" nav tab instead of getting its own, and shows up on that overflow page with its
-		latest few articles. "No AI" skips clustering and synthesis for that category — each item
-		publishes on its own, using its own source's text, instead of being merged/rewritten by the
-		model.
-	</p>
-	{#if primaryCategoryCount > 10}
-		<p class="hint warn">
-			{primaryCategoryCount} categories showing directly in the nav — consider marking some as
-			"More" below before it gets too wide (a rough guideline, not a hard limit).
-		</p>
-	{/if}
-	<div class="priority-list">
-		{#each local.categoryPriority as cat, i (cat.id)}
-			<div class="priority-row">
-				<span class="rank">{i + 1}</span>
-				<span class="name">{cat.name}</span>
-				{#if cat.name.toLowerCase() !== 'top stories'}
-					<label class="private-toggle">
-						<input type="checkbox" checked={cat.isPrivate} onchange={() => togglePrivate(cat.id)} />
-						Private
-					</label>
-					<label class="private-toggle">
-						<input type="checkbox" checked={cat.isSpillover} onchange={() => toggleSpillover(cat.id)} />
-						More
-					</label>
-					<label class="private-toggle">
-						<input type="checkbox" checked={cat.disableAi} onchange={() => toggleDisableAi(cat.id)} />
-						No AI
-					</label>
-				{/if}
-				<button class="icon-btn" onclick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">▲</button>
-				<button
-					class="icon-btn"
-					onclick={() => move(i, 1)}
-					disabled={i === local.categoryPriority.length - 1}
-					aria-label="Move down">▼</button
-				>
-				{#if cat.name.toLowerCase() !== 'top stories'}
-					<button class="icon-btn danger" onclick={() => removeCategory(cat.id, cat.isDefault, cat.name)} aria-label={`Remove ${cat.name}`}
-						>✕</button
-					>
-				{/if}
-			</div>
-		{/each}
-	</div>
-	<div class="add-row">
-		<input
-			type="text"
-			placeholder="New category name"
-			bind:value={newCategoryName}
-			onkeydown={(e) => e.key === 'Enter' && addCategory()}
-		/>
-		<label class="private-toggle">
-			<input type="checkbox" bind:checked={newCategoryPrivate} />
-			Private
-		</label>
-		<label class="private-toggle">
-			<input type="checkbox" bind:checked={newCategorySpillover} />
-			More
-		</label>
-		<label class="private-toggle">
-			<input type="checkbox" bind:checked={newCategoryDisableAi} />
-			No AI
-		</label>
-		<button onclick={addCategory} disabled={addingCategory || !newCategoryName.trim()}>
-			{addingCategory ? 'Adding…' : '+ Add'}
-		</button>
-	</div>
-</CollapsibleSection>
+<div class="moved">
+	Categories now live on the <b>Board</b> tab: their order, which ones share a rotating column, colours, private and AI settings,
+	and which sources feed each one. The board order is also the order the AI writer works through its queue.
+</div>
 
 <CollapsibleSection title="Sources">
-	<SourcesTab {sources} categories={local.categoryPriority} nitterInstanceUrl={settings.nitterInstanceUrl} />
+	<SourcesTab {sources} categories={local.categoryPriority.filter((c) => c.name.toLowerCase() !== 'top stories')} nitterInstanceUrl={settings.nitterInstanceUrl} />
 </CollapsibleSection>
 
 <div class="panel">
@@ -295,6 +223,19 @@
 </div>
 
 <style>
+	.moved {
+		background: var(--surface-1);
+		border-radius: 12px;
+		padding: 14px 16px;
+		margin-bottom: 14px;
+		font-size: 12.5px;
+		line-height: 1.5;
+		color: var(--text-secondary);
+	}
+	.moved b {
+		color: var(--text-primary);
+		font-weight: 500;
+	}
 	.panel {
 		background: var(--surface-1);
 		border-radius: 12px;

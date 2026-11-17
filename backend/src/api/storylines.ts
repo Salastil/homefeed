@@ -12,7 +12,7 @@ import * as categoriesDb from '../storage/db/categories.js';
 import * as eventsDb from '../storage/db/events.js';
 import * as settingsDb from '../storage/db/settings.js';
 import * as stl from '../storage/db/storylines.js';
-import type { MergedArticle, StorylineSettings } from '../storage/db/types.js';
+import type { BoardLayout, BoardSlot, Category, MergedArticle, StorylineSettings } from '../storage/db/types.js';
 import { hasPrivateAccess } from './privateAccess.js';
 import { closesAt, engineStatus, sourceKeyOf, storylineState } from '../pipeline/storylines.js';
 
@@ -150,6 +150,38 @@ function eventTimeline(eventId: string, hours: number, visible: (a: MergedArticl
 	};
 }
 
+/** The categories the board can show: every category except the retired "Top stories". */
+export function boardCategories() {
+	return categoriesDb.listCategories().filter((c) => c.name.toLowerCase() !== 'top stories');
+}
+
+/**
+ * The board's columns as the admin arranged them (Board tab), filled in for anything they
+ * haven't placed. With no saved arrangement it reproduces the earlier default: categories in
+ * priority order with Wire third and General last, and the "More" (spillover) categories
+ * sharing one rotating column at the end. Unknown keys are dropped; a category added later
+ * gets a column of its own at the end; hidden columns are left out.
+ */
+export function resolveBoardLayout(saved: BoardLayout, cats: Category[]): BoardLayout {
+	const valid = new Set([...cats.map((c) => `cat:${c.id}`), 'wire', 'general']);
+	const hidden = saved.hidden.filter((k) => valid.has(k));
+	const hiddenSet = new Set(hidden);
+	let slots: BoardSlot[];
+	if (saved.slots.length) {
+		slots = saved.slots.map((s) => ({ ...s, columns: s.columns.filter((k) => valid.has(k) && !hiddenSet.has(k)) }));
+	} else {
+		const main = cats.filter((c) => !c.isSpillover).map((c) => `cat:${c.id}`);
+		main.splice(Math.min(2, main.length), 0, 'wire');
+		main.push('general');
+		slots = main.filter((k) => !hiddenSet.has(k)).map((k) => ({ columns: [k], rotateSeconds: 20 }));
+		const more = cats.filter((c) => c.isSpillover).map((c) => `cat:${c.id}`).filter((k) => !hiddenSet.has(k));
+		if (more.length) slots.push({ columns: more, rotateSeconds: 20 });
+	}
+	const placed = new Set([...slots.flatMap((s) => s.columns), ...hidden]);
+	for (const k of valid) if (!placed.has(k)) slots.push({ columns: [k], rotateSeconds: 20 });
+	return { ...saved, slots: slots.filter((s) => s.columns.length > 0), hidden };
+}
+
 export async function registerStorylineRoutes(app: FastifyInstance) {
 	// The board's storyline panel: open storylines (most active first) and, when enabled,
 	// each active tracked event as a pinned storyline whose timeline is its developments.
@@ -228,21 +260,28 @@ export async function registerStorylineRoutes(app: FastifyInstance) {
 		};
 	});
 
-	// Every board column in one poll. Category columns follow the admin's category list
-	// (Top stories excluded - the board itself is the top-level view); Wire is posts
-	// (X/Telegram) from sources with no category, General is articles with none. A
-	// tracked event's own posts stay out of Wire/General - they show in the event's row.
+	// Every board column in one poll, in the admin's Board layout (see resolveBoardLayout).
+	// Category columns come from the category list (Top stories excluded - the board itself is
+	// the top-level view); Wire is posts (X/Telegram) from sources with no category, General is
+	// articles with none. A tracked event's own posts stay out of Wire/General - they show in
+	// the event's row. Hidden columns aren't sent; private ones only with private access.
 	app.get('/api/board', async (req) => {
 		const includePrivate = hasPrivateAccess(req);
 		const dayAgo = new Date(Date.now() - 24 * HOUR).toISOString();
-		const categories = categoriesDb.listCategories().filter((c) => (includePrivate || !c.isPrivate) && c.name.toLowerCase() !== 'top stories');
+		const settings = settingsDb.getSettings();
+		const all = boardCategories();
+		const layout = resolveBoardLayout(settings.boardLayout, all);
+		const shownKeys = new Set(layout.slots.flatMap((s) => s.columns));
+		const categories = all.filter((c) => shownKeys.has(`cat:${c.id}`) && (includePrivate || !c.isPrivate));
 		const columns = categories.map((c) => {
 			const items = articlesDb.queryFeed({ category: c.name, limit: COLUMN_SIZE }, includePrivate);
+			const key = `cat:${c.id}`;
 			return {
-				key: `cat:${c.id}`,
+				key,
 				kind: 'category' as const,
 				name: c.name,
 				categoryId: c.id,
+				color: settings.boardLayout.colors[key] ?? null,
 				isSpillover: c.isSpillover,
 				isPrivate: c.isPrivate,
 				count24h: articlesDb.countWhere('category LIKE ? AND published_at >= ?', [`%"${c.name}"%`, dayAgo]),
@@ -255,17 +294,29 @@ export async function registerStorylineRoutes(app: FastifyInstance) {
 		const special = [
 			{ key: 'wire', name: 'Wire', where: `${POST} AND ${LOOSE}` },
 			{ key: 'general', name: 'General', where: `${NOT_POST} AND ${LOOSE}` }
-		].map((col) => ({
-			key: col.key,
-			kind: col.key as 'wire' | 'general',
-			name: col.name,
-			categoryId: null,
-			isSpillover: false,
-			isPrivate: false,
-			count24h: articlesDb.countWhere(`${col.where} AND published_at >= ?`, [dayAgo]),
-			items: articlesDb.queryWhere(col.where, [], COLUMN_SIZE).map(lite)
-		}));
-		return { columns: [...columns, ...special].filter((c) => c.items.length > 0 || c.kind === 'category') };
+		]
+			.filter((col) => shownKeys.has(col.key))
+			.map((col) => ({
+				key: col.key,
+				kind: col.key as 'wire' | 'general',
+				name: col.name,
+				categoryId: null,
+				color: settings.boardLayout.colors[col.key] ?? null,
+				isSpillover: false,
+				isPrivate: false,
+				count24h: articlesDb.countWhere(`${col.where} AND published_at >= ?`, [dayAgo]),
+				items: articlesDb.queryWhere(col.where, [], COLUMN_SIZE).map(lite)
+			}));
+		const sent = [...columns, ...special].filter((c) => c.items.length > 0 || c.kind === 'category');
+		const sentKeys = new Set(sent.map((c) => c.key));
+		return {
+			columns: sent,
+			layout: {
+				slots: layout.slots.map((s) => ({ ...s, columns: s.columns.filter((k) => sentKeys.has(k)) })).filter((s) => s.columns.length > 0),
+				autoRotateQuiet: layout.autoRotateQuiet,
+				autoFold: layout.autoFold
+			}
+		};
 	});
 
 	// Article page side rail: the storyline this article belongs to, or recent articles from

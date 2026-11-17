@@ -357,10 +357,25 @@ export interface BoardColumn {
 	kind: 'category' | 'wire' | 'general';
 	name: string;
 	categoryId: string | null;
+	/** The admin's colour (theme token like 'c-news', or hex); null = the default for the name. */
+	color?: string | null;
 	isSpillover: boolean;
 	isPrivate: boolean;
 	count24h: number;
 	items: LiteArticle[];
+}
+
+/** The admin's Board layout as the board applies it: positions left to right; several keys = one rotating column. */
+export interface BoardLayout {
+	slots: { columns: string[]; rotateSeconds: number }[];
+	autoRotateQuiet: boolean;
+	autoFold: boolean;
+}
+
+export interface BoardResponse {
+	columns: BoardColumn[];
+	/** Absent from older backends - the board then uses its built-in arrangement. */
+	layout?: BoardLayout;
 }
 
 export interface EventTimeline {

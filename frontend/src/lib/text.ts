@@ -171,6 +171,15 @@ export function categoryColor(name: string | undefined): string {
 	return palette[h % palette.length];
 }
 
+/** Colours offered for board columns: theme tokens first (they adapt to light/dark), then a few fixed ones. */
+export const COLUMN_SWATCHES = ['c-news', 'c-local', 'c-wire', 'c-biz', 'c-cult', 'c-tech', 'c-mag', 'c-gen', '#e2896a', '#d9a94e', '#e5484d', '#3fa9dc'];
+
+/** A board column's colour: the admin's choice (token or hex) or the default for its name. */
+export function columnColor(name: string | undefined, override?: string | null): string {
+	if (override) return override.startsWith('#') ? override : `var(--${override})`;
+	return categoryColor(name);
+}
+
 export const STORY_PALETTE = ['#e2896a', '#d9a94e', '#7fa8ea', '#56b8a8', '#c39be6', '#e07a9a', '#8fbf6a', '#6cc3d9', '#e0b06a'];
 
 /** A storyline keeps one colour for as long as it lives, picked from its id. */

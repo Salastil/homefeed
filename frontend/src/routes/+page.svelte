@@ -39,7 +39,7 @@
 
 <div class="board">
 	<StorylineBand data={storylines} paused={!!sheet} selectedNode={sheet?.nodeId ?? null} onNode={(info) => (sheet = info)} />
-	<BoardColumns columns={board.columns} storylines={storylines} />
+	<BoardColumns columns={board.columns} layout={board.layout} storylines={storylines} />
 </div>
 
 {#if sheet}
