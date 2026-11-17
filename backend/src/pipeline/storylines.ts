@@ -375,6 +375,12 @@ let backlogSkipped = false;
  * each. Returns how many were placed. Never throws on a single article - a failed embed
  * leaves it unchecked for the next pass.
  */
+/**
+ * Whether the last storyline tick could reach the embedding service (null before the first
+ * tick). The board uses it to say storylines are paused rather than just showing none.
+ */
+export const engineStatus: { reachable: boolean | null } = { reachable: null };
+
 export async function runStorylineCycle(provider: InferenceProvider, model: string, settings: StorylineSettings): Promise<number> {
 	if (!backlogSkipped) {
 		const skipped = stl.skipUncheckedBefore(new Date(Date.now() - BACKLOG_HOURS * HOUR).toISOString());

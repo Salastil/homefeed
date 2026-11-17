@@ -14,7 +14,7 @@ import * as settingsDb from '../storage/db/settings.js';
 import * as stl from '../storage/db/storylines.js';
 import type { MergedArticle, StorylineSettings } from '../storage/db/types.js';
 import { hasPrivateAccess } from './privateAccess.js';
-import { closesAt, sourceKeyOf, storylineState } from '../pipeline/storylines.js';
+import { closesAt, engineStatus, sourceKeyOf, storylineState } from '../pipeline/storylines.js';
 
 const HOUR = 3_600_000;
 const EXCERPT = 600;
@@ -196,7 +196,9 @@ export async function registerStorylineRoutes(app: FastifyInstance) {
 			},
 			storylines,
 			events,
-			closedToday
+			closedToday,
+			// False while the embedding service is unreachable: nothing new can be grouped.
+			grouping: engineStatus.reachable !== false
 		};
 	});
 

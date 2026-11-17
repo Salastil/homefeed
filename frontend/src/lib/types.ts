@@ -346,6 +346,8 @@ export interface StorylinesResponse {
 	storylines: Storyline[];
 	events: EventStoryline[];
 	closedToday: number;
+	/** False while the embedding service is unreachable - storylines can't form or grow. Absent from older backends. */
+	grouping?: boolean;
 }
 
 export interface BoardColumn {

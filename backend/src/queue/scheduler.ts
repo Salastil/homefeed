@@ -2,7 +2,7 @@ import { pollDueSources } from '../ingestion/poller.js';
 import { runSynthesisCycle, runPassthroughCycle, runDirectPublishCycle } from './priorityQueue.js';
 import { runEventRecaps } from './eventsRecap.js';
 import { runRetentionSweep } from './retention.js';
-import { runStorylineCycle } from '../pipeline/storylines.js';
+import { engineStatus, runStorylineCycle } from '../pipeline/storylines.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import * as settingsDb from '../storage/db/settings.js';
 import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
@@ -202,7 +202,8 @@ export function startScheduler() {
 		try {
 			const settings = settingsDb.getSettings();
 			const embedding = embeddingProvider();
-			if (!(await embedding.isReachable())) return;
+			engineStatus.reachable = await embedding.isReachable();
+			if (!engineStatus.reachable) return;
 			const placed = await runStorylineCycle(embedding, settings.selectedModels.embedding, settings.storylines);
 			if (placed > 0) logger.info('storylines', `Storyline tick: placed ${placed} article(s) in storylines`);
 		} catch (err) {
