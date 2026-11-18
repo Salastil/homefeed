@@ -134,7 +134,7 @@
 			</p>
 			<p class="sub">
 				<b>While it is off:</b> every item publishes as its own article with its source's text, straight away. Storylines still group related
-				coverage, and tags still come from embeddings.
+				coverage using embeddings; X, Telegram and YouTube posts are still tagged, RSS articles are not.
 			</p>
 		</div>
 		<button class="switch" role="switch" aria-checked={s.aiWriterEnabled} onclick={toggle}>
