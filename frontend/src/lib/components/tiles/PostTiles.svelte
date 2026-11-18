@@ -5,7 +5,7 @@
 	 * its text in the media box. The grid has fixed shapes so a tile is the same size whichever
 	 * set it shows: 3x2 up to 6 cards, 3x3 up to 9, 4x3 beyond (last tile = "+N more").
 	 * `compact` (the board's sheet, which is shorter) uses one row for up to 3 cards.
-	 * Word-for-word reposts fold into one card that names the others.
+	 * Word-for-word reposts fold into one card that names the others. Newest first.
 	 */
 	import type { LiteArticle } from '$lib/types';
 	import { authorOf, clockTime, foldReposts, imageOf, initials, isPost, KIND_ICON, KIND_LABEL, kindOf, textOf } from '$lib/text';
@@ -16,7 +16,8 @@
 		moreHref = null
 	}: { items: LiteArticle[]; compact?: boolean; moreHref?: string | null } = $props();
 
-	const cards = $derived(foldReposts(items));
+	// Newest first: top left is the latest, bottom right the oldest (and "+N more" the oldest of all).
+	const cards = $derived(foldReposts(items).sort((a, b) => b.item.publishedAt.localeCompare(a.item.publishedAt)));
 	const shape = $derived.by(() => {
 		const n = cards.length;
 		if (compact && n <= 3) return { cols: 3, rows: 1 };
