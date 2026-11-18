@@ -166,6 +166,14 @@ export function startScheduler() {
 	everyTickSkippingOverlap(SYNTHESIS_TICK_MS, async () => {
 		try {
 			const settings = settingsDb.getSettings();
+			// AI writer switched off (admin → AI writer): nothing is merged or rewritten and no
+			// recaps are written - every item publishes as itself, the same path used while the
+			// AI server is unreachable, without even asking the synthesis server.
+			if (!settings.aiWriterEnabled) {
+				const published = await runPassthroughCycle(settings);
+				if (published > 0) logger.info('scheduler', `AI writer off - published ${published} article(s) as they are`);
+				return;
+			}
 			const embedding = embeddingProvider();
 			const synthesis = synthesisProvider();
 

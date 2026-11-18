@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { AdminSettings, TelegramStatus } from '$lib/adminTypes';
+	import type { AdminSettings, AiStatusBySlot, TelegramStatus } from '$lib/adminTypes';
 	import { getBackendUrl, setBackendUrl } from '$lib/config';
 	import {
 		updateSettings,
@@ -7,14 +7,62 @@
 		startTelegramLogin,
 		verifyTelegramCode,
 		verifyTelegramPassword,
-		telegramLogout
+		telegramLogout,
+		getAiStatus,
+		testAiConnection
 	} from '$lib/adminApi';
 	import SaveStatus from './SaveStatus.svelte';
 
 	let {
 		settings,
-		telegramStatus: initialTelegramStatus
-	}: { settings: AdminSettings; telegramStatus: TelegramStatus } = $props();
+		telegramStatus: initialTelegramStatus,
+		aiStatus: initialAiStatus
+	}: { settings: AdminSettings; telegramStatus: TelegramStatus; aiStatus: AiStatusBySlot } = $props();
+
+	// --- Embedding server (the AI writer's own server is on its page) ---
+	// svelte-ignore state_referenced_locally
+	let embeddingHost = $state(settings.embeddingServiceHost);
+	// svelte-ignore state_referenced_locally
+	let embeddingPort = $state(settings.embeddingServicePort);
+	// svelte-ignore state_referenced_locally
+	let embeddingStatus = $state(initialAiStatus.embedding);
+	let embeddingTesting = $state(false);
+	let embeddingSave = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+	async function saveEmbedding() {
+		embeddingSave = 'saving';
+		try {
+			await updateSettings({ embeddingServiceHost: embeddingHost, embeddingServicePort: embeddingPort });
+			embeddingStatus = (await getAiStatus()).embedding;
+			embeddingSave = 'saved';
+			setTimeout(() => (embeddingSave = 'idle'), 1500);
+		} catch {
+			embeddingSave = 'error';
+		}
+	}
+	async function testEmbedding() {
+		embeddingTesting = true;
+		try {
+			embeddingStatus = await testAiConnection(embeddingHost, embeddingPort);
+		} finally {
+			embeddingTesting = false;
+		}
+	}
+
+	// --- Telegram media (moved here from Retention, next to Nitter's) ---
+	// svelte-ignore state_referenced_locally
+	let telegramMediaMode = $state(settings.telegramMediaMode);
+	let telegramMediaStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+	async function saveTelegramMedia(mode: 'self-host' | 'proxy') {
+		telegramMediaMode = mode;
+		telegramMediaStatus = 'saving';
+		try {
+			await updateSettings({ telegramMediaMode: mode });
+			telegramMediaStatus = 'saved';
+			setTimeout(() => (telegramMediaStatus = 'idle'), 1500);
+		} catch {
+			telegramMediaStatus = 'error';
+		}
+	}
 
 	let backendUrl = $state(getBackendUrl());
 	let backendSaved = $state(false);
@@ -154,24 +202,33 @@
 	}
 </script>
 
-<div class="panel">
+<div class="panel" id="ai-servers">
 	<div class="head">
-		<span class="panel-title">Backend address</span>
-		{#if backendSaved}<span class="saved-note">✓ Saved to this browser</span>{/if}
+		<span class="panel-title">Embedding server</span>
+		<SaveStatus status={embeddingSave} />
 	</div>
 	<p class="hint">
-		Stored in this browser only — each device connecting to the admin panel sets its own
-		backend address. Not synced across devices.
+		The Ollama server that turns articles into embeddings for storylines, tracked-item developments and tags. Cheap enough
+		for a CPU. The AI writer's server is set on its own page.
 	</p>
 	<div class="row">
-		<input type="text" bind:value={backendUrl} placeholder="https://backend.homefeed.local:8443" />
-		<button onclick={saveBackendUrl}>Save</button>
+		<input type="text" bind:value={embeddingHost} placeholder="http://10.0.0.14" style="flex: 1" />
+		<input type="text" bind:value={embeddingPort} placeholder="11434" style="width: 90px" />
+		<button onclick={testEmbedding} disabled={embeddingTesting}>{embeddingTesting ? 'Testing…' : 'Test'}</button>
+		<button class="primary" onclick={saveEmbedding}>Save</button>
+	</div>
+	<div class="status-row">
+		{#if embeddingStatus.connected}
+			<span class="connected">✓ Connected · {embeddingStatus.host}:{embeddingStatus.port}</span>
+		{:else}
+			<span class="disconnected">✕ Unreachable</span>
+		{/if}
 	</div>
 </div>
 
-<div class="panel">
+<div class="panel" id="nitter">
 	<div class="head">
-		<span class="panel-title">Nitter</span>
+		<span class="panel-title">X / Nitter</span>
 		<SaveStatus status={nitterStatus} />
 	</div>
 	<p class="hint">
@@ -225,7 +282,7 @@
 	/>
 </div>
 
-<div class="panel">
+<div class="panel" id="telegram">
 	<div class="head">
 		<span class="panel-title">Telegram account</span>
 		<SaveStatus status={apiCredsStatus} />
@@ -282,6 +339,41 @@
 	</div>
 </div>
 
+<div class="panel">
+	<div class="head">
+		<span class="panel-title">Telegram media</span>
+		<SaveStatus status={telegramMediaStatus} />
+	</div>
+	<p class="hint">
+		How photos and videos in Telegram posts reach visitors. Telegram media only comes through the logged-in account, so
+		there's no Direct option: Self-host downloads and keeps it; Proxy streams each view through this server without keeping
+		anything.
+	</p>
+	<div class="row" style="flex-wrap: wrap;">
+		{#each [{ label: 'Self-host', value: 'self-host' as const }, { label: 'Proxy', value: 'proxy' as const }] as mode (mode.value)}
+			<button class="pill" class:active={telegramMediaMode === mode.value} onclick={() => saveTelegramMedia(mode.value)}>{mode.label}</button>
+		{/each}
+	</div>
+</div>
+
+<details class="advanced">
+	<summary>Advanced: this browser's backend address</summary>
+<div class="panel">
+	<div class="head">
+		<span class="panel-title">Backend address</span>
+		{#if backendSaved}<span class="saved-note">✓ Saved to this browser</span>{/if}
+	</div>
+	<p class="hint">
+		Stored in this browser only — each device connecting to the admin panel sets its own
+		backend address. Not synced across devices.
+	</p>
+	<div class="row">
+		<input type="text" bind:value={backendUrl} placeholder="https://backend.homefeed.local:8443" />
+		<button onclick={saveBackendUrl}>Save</button>
+	</div>
+</div>
+</details>
+
 <style>
 	.panel {
 		background: var(--surface-1);
@@ -333,6 +425,15 @@
 	.saved-note {
 		font-size: 12px;
 		color: var(--text-success);
+	}
+	.advanced {
+		margin-top: 6px;
+	}
+	.advanced summary {
+		cursor: pointer;
+		font-size: 12px;
+		color: var(--text-secondary);
+		margin-bottom: 10px;
 	}
 	.status-row {
 		font-size: 12px;

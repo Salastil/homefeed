@@ -12,6 +12,7 @@
 	import StorylineBand from '$lib/components/board/StorylineBand.svelte';
 	import BoardColumns from '$lib/components/board/BoardColumns.svelte';
 	import DevelopmentSheet from '$lib/components/board/DevelopmentSheet.svelte';
+	import { admin } from '$lib/adminSession.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -33,6 +34,17 @@
 		}, 60_000)
 	);
 
+	// An edit made in board edit mode (or on the admin pages in this tab) shows at once.
+	let seenVersion = admin.boardVersion;
+	$effect(() => {
+		if (admin.boardVersion === seenVersion) return;
+		seenVersion = admin.boardVersion;
+		Promise.allSettled([getBoard(), getStorylines()]).then(([b, s]) => {
+			if (b.status === 'fulfilled') board = b.value;
+			if (s.status === 'fulfilled') storylines = s.value;
+		});
+	});
+
 	// A storyline whose close time has passed leaves the panel (and its chip) on the next clock
 	// tick instead of waiting for the next poll; that poll then confirms it.
 	const open = $derived({ ...storylines, storylines: storylines.storylines.filter((s) => !s.closesAt || Date.parse(s.closesAt) > clock.now) });
@@ -43,7 +55,12 @@
 <svelte:head><title>Homefeed</title></svelte:head>
 
 <div class="board">
-	<StorylineBand data={open} paused={!!sheet} selectedNode={sheet?.nodeId ?? null} onNode={(info) => (sheet = info)} />
+	<div class="band" class:editing={admin.editing} class:sel={admin.sheet?.kind === 'panel'}>
+		<StorylineBand data={open} paused={!!sheet || admin.editing} selectedNode={sheet?.nodeId ?? null} onNode={(info) => (sheet = info)} />
+		{#if admin.editing}
+			<button class="eh" onclick={() => (admin.sheet = { kind: 'panel' })}>Storyline panel · {storylines.settings.rows} row{storylines.settings.rows === 1 ? '' : 's'} · {storylines.settings.rotateSeconds} s</button>
+		{/if}
+	</div>
 	<BoardColumns columns={board.columns} layout={board.layout} storylines={open} />
 </div>
 
@@ -52,6 +69,33 @@
 {/if}
 
 <style>
+	.band {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		flex: none;
+	}
+	.band.editing {
+		outline: 1.5px dashed var(--acc);
+		outline-offset: 3px;
+		border-radius: 11px;
+	}
+	.band.sel {
+		outline-style: solid;
+	}
+	.eh {
+		position: absolute;
+		top: -11px;
+		right: 12px;
+		z-index: 2;
+		font-size: 11px;
+		font-weight: 600;
+		padding: 2px 9px;
+		border: 0;
+		border-radius: 6px;
+		background: var(--acc);
+		color: var(--s0);
+	}
 	.board {
 		flex: 1;
 		min-height: 0;

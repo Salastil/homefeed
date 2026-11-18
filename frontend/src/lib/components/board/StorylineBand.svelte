@@ -123,7 +123,7 @@
 			</span>
 		{/if}
 		<span class="sp"></span>
-		{#if data.grouping === false}<span class="chip arch" title="The embedding service set on the admin Models tab isn't reachable">grouping paused</span>{/if}
+		{#if data.grouping === false}<span class="chip arch" title="The embedding server set under admin Connections isn't reachable">grouping paused</span>{/if}
 		{#if data.closedToday}<span class="chip arch">Closed today: {data.closedToday}</span>{/if}
 	</div>
 	{#each shown as it (it.id)}
@@ -131,7 +131,7 @@
 	{:else}
 		<p class="quiet">
 			{#if data.grouping === false}
-				Storylines are paused: the embedding service set on the admin Models tab isn't reachable. New articles are grouped
+				Storylines are paused: the embedding server set under admin Connections isn't reachable. New articles are grouped
 				as soon as it's back.
 			{:else}
 				No storylines open right now. A storyline appears once several sources cover the same story.

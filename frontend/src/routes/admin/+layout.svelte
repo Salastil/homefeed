@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { logout } from '$lib/adminApi';
+	import { admin } from '$lib/adminSession.svelte';
 	import type { LayoutData } from './$types';
 
 	let { children, data }: { children: any; data: LayoutData } = $props();
 
 	async function handleLogout() {
 		await logout();
+		admin.valid = false;
+		admin.editing = false;
+		admin.palette = false;
+		admin.sheet = null;
 		await goto('/admin/login');
 	}
 </script>

@@ -2,6 +2,7 @@
 	import type { AdminTrackedEvent, AdminSource } from '$lib/adminTypes';
 	import { addEvent, updateEvent, deleteEvent, forceRecap } from '$lib/adminApi';
 	import CollapsibleSection from './CollapsibleSection.svelte';
+	import { admin } from '$lib/adminSession.svelte';
 
 	let { events: initial, sources }: { events: AdminTrackedEvent[]; sources: AdminSource[] } = $props();
 	let events = $state([...initial]);
@@ -134,6 +135,7 @@
 		<div class="add-grid">
 			<input placeholder="Item name (e.g. Iran war)" bind:value={newEvent.name} />
 		</div>
+		{#if admin.aiWriterEnabled}
 		<div class="cadence-block">
 			<div class="field-label">Recap cadence</div>
 			<select bind:value={newEvent.recapIntervalHours}>
@@ -151,6 +153,7 @@
 				torrent feed) with nothing that needs summarizing.
 			</p>
 		</div>
+		{/if}
 		<div class="add-actions">
 			<button onclick={() => (showAdd = false)}>Cancel</button>
 			<button class="primary" onclick={handleAdd}>Create</button>
@@ -190,6 +193,7 @@
 					include everything from the assigned sources.
 				</p>
 
+				{#if admin.aiWriterEnabled}
 				<div class="cadence-block">
 					<div class="field-label">Recap cadence</div>
 					<select bind:value={editForm.recapIntervalHours}>
@@ -223,7 +227,7 @@
 					<CollapsibleSection title="More">
 						<div class="field-label">Recap writing style</div>
 						<p class="hint">
-							Independent from the global "Writing style" in the Merge tab — that only applies to
+							Independent from the "Writing style" on the AI writer page — that only applies to
 							regular AI-merged articles. This item's own recap uses only what's set here.
 						</p>
 						<select bind:value={editForm.recapStylePreset}>
@@ -242,6 +246,10 @@
 						></textarea>
 					</CollapsibleSection>
 				</div>
+
+				{:else}
+					<p class="hint">Recaps are off while the <a href="/admin/settings?tab=ai">AI writer</a> is off.</p>
+				{/if}
 
 				<label class="spillover-toggle edit-spillover">
 					<input type="checkbox" bind:checked={editForm.isSpillover} />

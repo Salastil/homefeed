@@ -73,7 +73,7 @@ export function getBacklogSnapshot(settings: GlobalSettings): BacklogSnapshot {
 	const directEligible: ContentItem[] = [];
 	const mergeable: ContentItem[] = [];
 	for (const item of items) {
-		if (directPublishSourceIds.has(item.sourceId) || inAiDisabledCategory(item, aiDisabledCategoryNames, sourcesById)) {
+		if (!settings.aiWriterEnabled || directPublishSourceIds.has(item.sourceId) || inAiDisabledCategory(item, aiDisabledCategoryNames, sourcesById)) {
 			directEligible.push(item);
 		} else {
 			mergeable.push(item);

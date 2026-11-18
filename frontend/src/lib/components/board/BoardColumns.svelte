@@ -11,6 +11,7 @@
 	import { clock } from '$lib/live.svelte';
 	import { authorOf, cleanPost, columnColor, imageOf, isPost, relTime, textOf } from '$lib/text';
 	import { slugify } from '$lib/format';
+	import { admin } from '$lib/adminSession.svelte';
 
 	let {
 		columns,
@@ -118,10 +119,13 @@
 	{@const items = itemsOf(c)}
 	{@const color = columnColor(c.name, c.color)}
 	{@const r = rotOf(p)}
-	<div class="col" class:rot={p.keys.length > 1} style:--cc={color}>
+	<div class="col" class:rot={p.keys.length > 1} class:editing={admin.editing} class:sel={admin.sheet?.kind === 'column' && admin.sheet.key === c.key} style:--cc={color}>
 		<div class="ch">
 			<a class="ttl" href={href(c)}><i></i>{c.name}<span class="arr">→</span></a>
 			{#if c.isPrivate}<span class="lockd" title="Private category">🔒</span>{/if}
+			{#if admin.editing}
+				<button class="edit" onclick={() => (admin.sheet = { kind: 'column', key: c.key })} aria-label="Edit the {c.name} column">Edit</button>
+			{/if}
 		</div>
 		{#if p.keys.length > 1}
 			<div class="rtabs">
@@ -168,6 +172,24 @@
 </div>
 
 <style>
+	.col.editing {
+		outline: 1.5px dashed color-mix(in srgb, var(--acc) 70%, transparent);
+		outline-offset: 2px;
+	}
+	.col.sel {
+		outline: 2px solid var(--cc);
+	}
+	.edit {
+		margin-left: auto;
+		font-size: 11px;
+		font-weight: 600;
+		padding: 2px 9px;
+		border: 0;
+		border-radius: 6px;
+		background: var(--acc);
+		color: var(--s0);
+		flex: none;
+	}
 	.cols {
 		display: grid;
 		gap: 10px;

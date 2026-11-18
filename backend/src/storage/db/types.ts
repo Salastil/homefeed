@@ -368,6 +368,8 @@ export interface WidgetSlot {
 }
 
 export interface GlobalSettings {
+	/** Master switch for the generative AI writer (admin → AI writer). Off: every item publishes as its own article with its source's text (runPassthroughCycle) and no recaps are written; the per-category "AI rewrite" toggles only matter while this is on. Embeddings (storylines, tags) run either way. */
+	aiWriterEnabled: boolean;
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	holdBeforePublishMinutes: number;
 	tagDedupThreshold: number;

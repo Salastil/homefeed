@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { BookmarksFeed, Poe2Data, StocksFeed, Weather, WidgetsEnabled } from '$lib/types';
 	import WidgetSlot from './WidgetSlot.svelte';
+	import { admin } from '$lib/adminSession.svelte';
 
 	let {
 		widgets,
@@ -26,16 +27,21 @@
 {#if slots.length > 0}
 	<div class="row" style:grid-template-columns={columns}>
 		{#each slots as slot, i (slot.widgets.join('+') + i)}
-			<WidgetSlot
-				widgets={slot.widgets}
-				rotateSeconds={slot.rotateSeconds}
-				{weather}
-				{stocks}
-				{bookmarks}
-				{poe2}
-				pluggable={widgets.pluggable}
-				{weatherActive}
-			/>
+			<div class="ws" class:editing={admin.editing} class:sel={admin.sheet?.kind === 'widgets' && admin.sheet.ids.join() === slot.widgets.join()}>
+				<WidgetSlot
+					widgets={slot.widgets}
+					rotateSeconds={slot.rotateSeconds}
+					{weather}
+					{stocks}
+					{bookmarks}
+					{poe2}
+					pluggable={widgets.pluggable}
+					{weatherActive}
+				/>
+				{#if admin.editing}
+					<button class="eh" onclick={() => (admin.sheet = { kind: 'widgets', ids: slot.widgets })}>Edit</button>
+				{/if}
+			</div>
 		{/each}
 	</div>
 {/if}
@@ -45,6 +51,31 @@
 		display: grid;
 		gap: 10px;
 		flex: none;
+	}
+	.ws {
+		position: relative;
+		min-width: 0;
+	}
+	.ws.editing {
+		outline: 1.5px dashed var(--acc);
+		outline-offset: 3px;
+		border-radius: 11px;
+	}
+	.ws.sel {
+		outline-style: solid;
+	}
+	.eh {
+		position: absolute;
+		top: -11px;
+		right: 10px;
+		z-index: 2;
+		font-size: 11px;
+		font-weight: 600;
+		padding: 2px 9px;
+		border: 0;
+		border-radius: 6px;
+		background: var(--acc);
+		color: var(--s0);
 	}
 	@media (max-width: 900px) {
 		.row {

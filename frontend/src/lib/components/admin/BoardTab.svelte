@@ -13,11 +13,12 @@
 		getBoardOverview,
 		updateCategory,
 		updateSettings,
-		updateSource,
 		type BoardLayoutCfg,
 		type BoardOverview
 	} from '$lib/adminApi';
 	import { COLUMN_SWATCHES, columnColor } from '$lib/text';
+	import * as ops from '$lib/boardLayoutOps';
+	import { admin } from '$lib/adminSession.svelte';
 	import { slugify } from '$lib/format';
 	import SaveStatus from './SaveStatus.svelte';
 
@@ -65,55 +66,14 @@
 	}
 	const copy = (): BoardLayoutCfg => structuredClone($state.snapshot(layout)!);
 
-	// ---- arranging ----
-	function moveSlot(i: number, to: number) {
-		const next = copy();
-		if (to < 0 || to >= next.slots.length || to === i) return;
-		const [s] = next.slots.splice(i, 1);
-		next.slots.splice(to, 0, s);
-		saveLayout(next);
-	}
-	function rotateWithNext(i: number) {
-		const next = copy();
-		if (!next.slots[i + 1]) return;
-		next.slots[i].columns.push(...next.slots[i + 1].columns);
-		next.slots.splice(i + 1, 1);
-		saveLayout(next);
-	}
-	function ownColumn(i: number, key: string) {
-		const next = copy();
-		next.slots[i].columns = next.slots[i].columns.filter((k) => k !== key);
-		next.slots.splice(i + 1, 0, { columns: [key], rotateSeconds: 20 });
-		saveLayout(next);
-	}
-	function moveWithin(i: number, k: number, dir: -1 | 1) {
-		const next = copy();
-		const cols = next.slots[i].columns;
-		if (!cols[k + dir]) return;
-		[cols[k], cols[k + dir]] = [cols[k + dir], cols[k]];
-		saveLayout(next);
-	}
-	function setRotate(i: number, secs: number) {
-		const next = copy();
-		next.slots[i].rotateSeconds = secs;
-		saveLayout(next);
-	}
-	function toggleBoard(key: string) {
-		const next = copy();
-		if (next.hidden.includes(key)) {
-			next.hidden = next.hidden.filter((k) => k !== key);
-			next.slots.push({ columns: [key], rotateSeconds: 20 });
-		} else {
-			for (const s of next.slots) s.columns = s.columns.filter((k) => k !== key);
-			next.hidden.push(key);
-		}
-		saveLayout(next);
-	}
-	function setColor(key: string, c: string) {
-		const next = copy();
-		next.colors[key] = c;
-		saveLayout(next);
-	}
+	// ---- arranging (each op returns a new layout; see lib/boardLayoutOps.ts) ----
+	const moveSlot = (i: number, to: number) => saveLayout(ops.moveSlot(copy(), i, to));
+	const rotateWithNext = (i: number) => saveLayout(ops.rotateWithNext(copy(), i));
+	const ownColumn = (i: number, key: string) => saveLayout(ops.ownColumn(copy(), i, key));
+	const moveWithin = (i: number, k: number, dir: -1 | 1) => saveLayout(ops.moveWithin(copy(), i, k, dir));
+	const setRotate = (i: number, secs: number) => saveLayout(ops.setRotate(copy(), i, secs));
+	const toggleBoard = (key: string) => saveLayout(ops.toggleBoard(copy(), key));
+	const setColor = (key: string, c: string) => saveLayout(ops.setColor(copy(), key, c));
 	function setAuto(field: 'autoRotateQuiet' | 'autoFold', v: boolean) {
 		const next = copy();
 		next[field] = v;
@@ -146,14 +106,6 @@
 			ov = await updateCategory(id, patch);
 		});
 	}
-	async function toggleSource(s: BoardOverview['sources'][number], catName: string) {
-		const has = s.category.includes(catName);
-		const category = has ? s.category.filter((c) => c !== catName) : [...s.category, catName];
-		await run(async () => {
-			await updateSource(s.id, { category });
-			ov = await getBoardOverview();
-		});
-	}
 	async function addColumn() {
 		const name = newName.trim();
 		if (!name) return;
@@ -171,11 +123,7 @@
 		selected = null;
 		await run(async () => {
 			await deleteCategory(c.id!);
-			const next = copy();
-			for (const s of next.slots) s.columns = s.columns.filter((k) => k !== key);
-			next.hidden = next.hidden.filter((k) => k !== key);
-			delete next.colors[key];
-			await updateSettings({ boardLayout: next });
+			await updateSettings({ boardLayout: ops.removeKey(copy(), key) });
 			ov = await getBoardOverview();
 			layout = $state.snapshot(ov.layout) as BoardLayoutCfg;
 		});
@@ -191,7 +139,6 @@
 	const ROTATE = [10, 15, 20, 30, 45, 60];
 	// Each column's number in board order (rotating members counted one by one).
 	const numbers = $derived(new Map((layout?.slots ?? []).flatMap((s) => s.columns).map((k, i) => [k, i + 1])));
-	const catNames = $derived(new Set((ov?.columns ?? []).filter((c) => c.kind === 'category').map((c) => c.name)));
 	const feedHref = (c: { kind: string; name: string }) => (c.kind === 'category' ? `/category/${slugify(c.name)}` : `/feed/${c.kind}`);
 </script>
 
@@ -214,7 +161,7 @@
 			<span class="src" title={fedBy(key)}>{fedBy(key)}</span>
 			{@render sw(!layout?.hidden.includes(key), 'Board', () => toggleBoard(key))}
 			{@render sw(c.isPrivate, 'Private', c.id ? () => patchCategory(c.id!, { isPrivate: !c.isPrivate }) : null)}
-			{@render sw(!c.disableAi, 'AI', c.id ? () => patchCategory(c.id!, { disableAi: !c.disableAi }) : null)}
+			<span class:aioff={!admin.aiWriterEnabled} title={admin.aiWriterEnabled ? '' : 'The AI writer is off, so no column is rewritten'}>{@render sw(!c.disableAi, 'AI', c.id ? () => patchCategory(c.id!, { disableAi: !c.disableAi }) : null)}</span>
 			<span class="act">
 				{#if inGroup}
 					<button aria-label="Earlier in rotation" disabled={k === 0} onclick={() => moveWithin(slotIndex, k, -1)}>↑</button>
@@ -353,19 +300,9 @@
 				</div>
 				{#if c.kind === 'category'}
 					<div class="fld">
-						<span class="lbl">Sources feeding this column · {c.sources.length} of {ov.sources.length}</span>
-						<div class="srcl">
-							{#each [...ov.sources].sort((a, b) => Number(b.category.includes(c.name)) - Number(a.category.includes(c.name)) || a.name.localeCompare(b.name)) as s (s.id)}
-								{@const on = s.category.includes(c.name)}
-								{@const also = s.category.filter((x) => x !== c.name && catNames.has(x))}
-								<label class="si" class:dis={!s.enabled}>
-									<input type="checkbox" checked={on} onchange={() => toggleSource(s, c.name)} />
-									<span>{s.name}</span>
-									{#if also.length}<span class="al">· also in {also.join(', ')}</span>{/if}
-									<span class="ty">{s.type}</span>
-								</label>
-							{/each}
-						</div>
+						<span class="lbl">Sources feeding this column · {c.sources.length}</span>
+						<p class="hint">{c.sources.length ? c.sources.join(', ') : 'None yet.'}</p>
+						<a class="in" href="/admin/settings?tab=sources">Add or move sources on Sources &amp; columns →</a>
 					</div>
 				{:else}
 					<p class="hint">
@@ -772,39 +709,8 @@
 			0 0 0 2px var(--surface-1),
 			0 0 0 4px var(--text-primary);
 	}
-	.srcl {
-		border: 1px solid var(--border);
-		border-radius: 9px;
-		max-height: 340px;
-		overflow-y: auto;
-	}
-	.si {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 10px;
-		border-bottom: 1px solid var(--border);
-		font-size: 12.5px;
-	}
-	.si:last-child {
-		border-bottom: 0;
-	}
-	.si input {
-		width: auto;
-	}
-	.si.dis {
-		opacity: 0.55;
-	}
-	.si .al {
-		font-size: 11px;
-		color: var(--text-muted);
-		white-space: nowrap;
-	}
-	.si .ty {
-		margin-left: auto;
-		font-family: var(--mono);
-		font-size: 10.5px;
-		color: var(--text-muted);
+	.aioff {
+		opacity: 0.45;
 	}
 	.dact {
 		display: flex;

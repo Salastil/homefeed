@@ -536,6 +536,10 @@ export function migrate() {
 	if (!hasColumn('global_settings', 'board_layout')) {
 		db.exec("ALTER TABLE global_settings ADD COLUMN board_layout TEXT NOT NULL DEFAULT '{}'");
 	}
+	// Defaults to on so an existing install keeps writing exactly as before until the admin flips it.
+	if (!hasColumn('global_settings', 'ai_writer_enabled')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN ai_writer_enabled INTEGER NOT NULL DEFAULT 1');
+	}
 	if (!hasColumn('global_settings', 'storyline_settings')) {
 		db.exec("ALTER TABLE global_settings ADD COLUMN storyline_settings TEXT NOT NULL DEFAULT '{}'");
 		db.exec("ALTER TABLE global_settings ADD COLUMN widget_slots TEXT NOT NULL DEFAULT '[]'");

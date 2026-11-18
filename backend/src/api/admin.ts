@@ -22,6 +22,7 @@ import { loadedWidgets } from '../widgets/registry.js';
 import { installUploadedWidget } from '../widgets/install.js';
 import { uninstallWidget } from '../widgets/uninstall.js';
 import { buildExportZip, applyImportZip } from './backup.js';
+import { detectSource } from './sourceDetect.js';
 import { swapLiveServer } from '../server.js';
 import type { GlobalSettings } from '../storage/db/types.js';
 
@@ -212,6 +213,16 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		// — the admin adding a feed expects to see it start working right away.
 		pollSourceNow(created).catch((err) => logger.error('poller', `Immediate poll failed for "${created.name}": ${err.message}`));
 		return reply.code(201).send(created);
+	});
+
+	// "Add by URL": works out the type, name and feed url for whatever was pasted.
+	app.post('/api/admin/sources/detect', async (req, reply) => {
+		const { input } = (req.body ?? {}) as { input?: string };
+		try {
+			return await detectSource(String(input ?? ''), settingsDb.getSettings().nitterInstanceUrl, sourcesDb.listSources());
+		} catch (err) {
+			return reply.code(422).send({ error: (err as Error).message });
+		}
 	});
 
 	app.patch('/api/admin/sources/:id', async (req, reply) => {

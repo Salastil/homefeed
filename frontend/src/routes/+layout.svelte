@@ -5,6 +5,7 @@
 	import '@fontsource/ibm-plex-mono/400.css';
 	import '@fontsource/ibm-plex-mono/500.css';
 	import '../lib/styles/app.css';
+	import '../lib/styles/admin.css';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { invalidateAll, invalidate } from '$app/navigation';
@@ -14,6 +15,9 @@
 	import TickerStrip from '$lib/components/shell/TickerStrip.svelte';
 	import { logoutPrivateAccess } from '$lib/privateAccess';
 	import { poll, startClock } from '$lib/live.svelte';
+	import { admin, checkAdmin } from '$lib/adminSession.svelte';
+	import CommandPalette from '$lib/components/admin/CommandPalette.svelte';
+	import BoardEditor from '$lib/components/board/edit/BoardEditor.svelte';
 	import type { LayoutData } from './$types';
 
 	let { children, data }: { children: any; data: LayoutData } = $props();
@@ -26,8 +30,37 @@
 	// dependency (see +layout.ts) so the board's own state is untouched.
 	onMount(() => {
 		startClock();
-		return poll(() => invalidate('app:sidebar'), 60_000);
+		// Admin-only tools (board edit mode, the ⌘K palette) appear only once the saved admin
+		// key has been checked against the backend; signing in or out in another tab re-checks.
+		checkAdmin(data.adminPanelEnabled);
+		const onStorage = (e: StorageEvent) => e.key === 'homefeed:adminApiKey' && checkAdmin(data.adminPanelEnabled);
+		window.addEventListener('storage', onStorage);
+		const stop = poll(() => invalidate('app:sidebar'), 60_000);
+		return () => {
+			stop();
+			window.removeEventListener('storage', onStorage);
+		};
 	});
+
+	// Edit mode belongs to the board: leaving it ends edit mode.
+	$effect(() => {
+		if ($page.url.pathname !== '/' && admin.editing) {
+			admin.editing = false;
+			admin.sheet = null;
+		}
+	});
+
+	function onKey(e: KeyboardEvent) {
+		if (!admin.valid) return;
+		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+			e.preventDefault();
+			admin.palette = !admin.palette;
+		}
+	}
+	const toggleEdit = () => {
+		admin.editing = !admin.editing;
+		if (!admin.editing) admin.sheet = null;
+	};
 
 	// Issue #1: the top bar and widget row are on screen on every page and the page itself
 	// never scrolls - each page fills the space under them. The admin panel is the one
@@ -57,12 +90,19 @@
 
 {#if isAdmin}
 	<div class="admin-shell">
-		<TopBar widgets={data.widgetsEnabled} privateAccess={data.privateAccess} adminPanelEnabled={data.adminPanelEnabled} onLock={handleLockClick} />
+		<TopBar widgets={data.widgetsEnabled} privateAccess={data.privateAccess} adminPanelEnabled={data.adminPanelEnabled} onLock={handleLockClick} onPalette={() => (admin.palette = true)} />
 		<main class="admin-main">{@render children()}</main>
 	</div>
 {:else}
 	<div class="app">
-		<TopBar widgets={data.widgetsEnabled} privateAccess={data.privateAccess} adminPanelEnabled={data.adminPanelEnabled} onLock={handleLockClick} />
+		<TopBar
+			widgets={data.widgetsEnabled}
+			privateAccess={data.privateAccess}
+			adminPanelEnabled={data.adminPanelEnabled}
+			onLock={handleLockClick}
+			onPalette={() => (admin.palette = true)}
+			onEdit={$page.url.pathname === '/' ? toggleEdit : undefined}
+		/>
 		<WidgetRow
 			widgets={data.widgetsEnabled}
 			weather={data.weather}
@@ -74,6 +114,15 @@
 		{#if tickerStocks.tickers.length || tickerPoe2.entries.length}<TickerStrip stocks={tickerStocks} poe2={tickerPoe2} />{/if}
 		<main class="content">{@render children()}</main>
 	</div>
+{/if}
+
+<svelte:window onkeydown={onKey} />
+
+{#if admin.valid && !isAdmin}
+	<BoardEditor />
+{/if}
+{#if admin.valid && admin.palette}
+	<CommandPalette />
 {/if}
 
 {#if showLoginModal}

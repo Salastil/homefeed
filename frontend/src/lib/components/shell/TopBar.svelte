@@ -3,17 +3,24 @@
 	import { clock } from '$lib/live.svelte';
 	import ThemeToggle from '../ThemeToggle.svelte';
 	import DynamicWidgetSlot from '../sidebar/DynamicWidgetSlot.svelte';
+	import { admin } from '$lib/adminSession.svelte';
 
 	let {
 		widgets,
 		privateAccess,
 		adminPanelEnabled,
-		onLock
+		onLock,
+		onPalette,
+		onEdit
 	}: {
 		widgets: WidgetsEnabled;
 		privateAccess: { configured: boolean; authenticated: boolean } | undefined;
 		adminPanelEnabled: boolean;
 		onLock: () => void;
+		/** Signed-in admin only: open the ⌘K palette. */
+		onPalette?: () => void;
+		/** Signed-in admin, on the board only: toggle board edit mode. */
+		onEdit?: () => void;
 	} = $props();
 
 	const time = $derived(new Date(clock.now));
@@ -33,6 +40,15 @@
 		{/each}
 	</div>
 	<div class="ctl">
+		{#if admin.valid}
+			{#if admin.editing}<span class="editing"><i></i>Editing the board · changes save as you go</span>{/if}
+			{#if onPalette}
+				<button class="adminbtn" onclick={onPalette} title="Find any setting (Ctrl+K)"><kbd>Ctrl</kbd><kbd>K</kbd></button>
+			{/if}
+			{#if onEdit}
+				<button class="adminbtn" class:on={admin.editing} onclick={onEdit}>{admin.editing ? 'Done' : 'Edit'}</button>
+			{/if}
+		{/if}
 		<ThemeToggle />
 		{#if privateAccess?.configured}
 			<button
@@ -103,6 +119,43 @@
 		align-items: center;
 		color: var(--tx2);
 		flex: none;
+	}
+	.adminbtn {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		font-size: 12px;
+		padding: 4px 10px;
+		border-radius: 7px;
+		border: 1px solid var(--bd);
+		background: var(--s1);
+		color: var(--tx2);
+	}
+	.adminbtn:hover {
+		color: var(--tx);
+	}
+	.adminbtn.on {
+		background: var(--tx);
+		border-color: var(--tx);
+		color: var(--s0);
+	}
+	.adminbtn kbd {
+		border: 0;
+		padding: 0 1px;
+		color: inherit;
+	}
+	.editing {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+		color: var(--acc);
+	}
+	.editing i {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--acc);
 	}
 	.icon {
 		display: flex;

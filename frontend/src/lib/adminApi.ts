@@ -156,6 +156,29 @@ export const updateSource = (id: string, patch: Partial<AdminSource>, fetchFn?: 
 export const deleteSource = (id: string, fetchFn?: typeof fetch) =>
 	request<void>(`/api/admin/sources/${id}`, { method: 'DELETE' }, fetchFn);
 
+/** What "Add by URL" found for a pasted link or handle (backend api/sourceDetect.ts). */
+export interface DetectedSource {
+	type: AdminSource['type'];
+	name: string;
+	url: string;
+	found: string;
+	existing: { id: string; name: string; category: string[] } | null;
+	note: string | null;
+}
+
+/** Throws an Error carrying the backend's own explanation when nothing usable was found. */
+export async function detectSource(input: string): Promise<DetectedSource> {
+	const apiKey = getApiKey();
+	const res = await fetch(`${getBackendUrl()}/api/admin/sources/detect`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...(apiKey ? { 'X-Api-Key': apiKey } : {}) },
+		body: JSON.stringify({ input })
+	});
+	const body = await res.json().catch(() => ({}));
+	if (!res.ok) throw new Error(body.error ?? `Couldn't read that link (${res.status})`);
+	return body as DetectedSource;
+}
+
 export const pollSourceNow = (id: string, fetchFn?: typeof fetch) =>
 	request<{ ingested: number; source: AdminSource }>(`/api/admin/sources/${id}/poll`, { method: 'POST' }, fetchFn);
 

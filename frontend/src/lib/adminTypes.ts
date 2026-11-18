@@ -174,6 +174,8 @@ export interface AdminSearchEngine {
 }
 
 export interface AdminSettings {
+	/** Master switch for the generative AI writer: off, every item publishes as its own article and no recaps are written. */
+	aiWriterEnabled: boolean;
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	holdBeforePublishMinutes: number;
 	tagDedupThreshold: number;

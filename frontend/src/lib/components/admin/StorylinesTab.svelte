@@ -9,7 +9,12 @@
 	import { poll } from '$lib/live.svelte';
 	import SaveStatus from './SaveStatus.svelte';
 
-	let { settings }: { settings: AdminSettings } = $props();
+	/**
+	 * One part per admin page (issue #1, B-structure): 'panel' is Screen › Storyline panel (also
+	 * the board's edit sheet), 'pipeline' is Processing › Storylines, 'events' heads Tracked
+	 * items, 'status' sits on System › Status.
+	 */
+	let { settings, section }: { settings: AdminSettings; section: 'panel' | 'pipeline' | 'events' | 'status' } = $props();
 
 	// svelte-ignore state_referenced_locally
 	let s = $state<StorylineSettings>({ ...settings.storylines });
@@ -41,6 +46,7 @@
 		}
 	};
 	$effect(() => {
+		if (section !== 'status') return;
 		loadStatus();
 		return poll(loadStatus, 10_000);
 	});
@@ -60,6 +66,7 @@
 	const withCurrent = (list: number[], v: number) => (list.includes(v) ? list : [...list, v].sort((a, b) => a - b));
 </script>
 
+{#if section === 'status'}
 <div class="panel">
 	<span class="panel-title">Status</span>
 	{#if !st}
@@ -85,7 +92,9 @@
 		{/if}
 	{/if}
 </div>
+{/if}
 
+{#if section === 'panel'}
 <div class="panel">
 	<div class="head"><span class="panel-title">Storyline panel</span><SaveStatus {status} /></div>
 	<p class="hint">
@@ -144,13 +153,15 @@
 		<span><b>Pause rotation while the pointer is over the panel</b></span>
 	</label>
 </div>
+{/if}
 
+{#if section === 'pipeline'}
 <div class="panel">
 	<span class="panel-title">Grouping</span>
 	<p class="hint">
 		Storylines are built from <b>embeddings only</b> — no text generation. Each new item is compared with open storylines;
 		it joins one when it is similar enough <b>and</b> shares a specific name (place, person, organisation, route number) with
-		it. Uses the embedding model set on the Models tab ({settings.selectedModels.embedding || 'none selected'}).
+		it. Uses the embedding model set on Embeddings &amp; tags ({settings.selectedModels.embedding || 'none selected'}).
 	</p>
 	<span class="lbl">Join similarity</span>
 	<div class="slider">
@@ -184,7 +195,9 @@
 		<span><b>Require a shared name to join</b><em>Stops look-alike stories (two unrelated shootings, two pedestrian crashes) from merging. Near-identical items (0.90+) join regardless.</em></span>
 	</label>
 </div>
+{/if}
 
+{#if section === 'pipeline'}
 <div class="panel">
 	<span class="panel-title">Lifecycle</span>
 	<p class="hint">
@@ -212,14 +225,15 @@
 		</label>
 	</div>
 </div>
+{/if}
 
+{#if section === 'events'}
 <div class="panel">
-	<span class="panel-title">Tracked events</span>
+	<span class="panel-title">Developments</span>
 	<p class="hint">
-		Each active tracked item is shown as a pinned storyline: its posts are grouped into developments with the same
-		embedding step. Recap articles are still written on each event's own interval when the AI writer is enabled on the
-		Models tab, and appear on the event's timeline like any other post. Sources, keywords and recap interval stay on the
-		Tracked items tab.
+		Each active tracked item shows on the board as a pinned storyline: its posts are grouped into developments with the
+		same embedding step storylines use. While the AI writer is on, recaps are written on each item's own interval and
+		appear on its timeline like any other post.
 	</p>
 	<span class="lbl">Development similarity</span>
 	<div class="slider">
@@ -243,6 +257,7 @@
 		</label>
 	</div>
 </div>
+{/if}
 
 <style>
 	.panel {
