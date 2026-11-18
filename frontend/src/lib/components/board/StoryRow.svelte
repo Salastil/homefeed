@@ -14,9 +14,12 @@
 	let {
 		item,
 		onNode,
-		selectedNode = null
+		selectedNode = null,
+		big = false
 	}: {
 		item: Item;
+		/** Hybrid mode's single row: twice the height, a larger picture and headline. */
+		big?: boolean;
 		onNode: (title: string, members: LiteArticle[], nodeId: string) => void;
 		selectedNode?: string | null;
 	} = $props();
@@ -58,7 +61,7 @@
 	});
 </script>
 
-<div class="st" class:cooling={item.kind === 'story' && item.story.state === 'cooling'} style:--sc={item.color}>
+<div class="st" class:big class:cooling={item.kind === 'story' && item.story.state === 'cooling'} style:--sc={item.color}>
 	<a class="thumb" class:none={!image} {href}>
 		{#if image}
 			<img src={resolveMediaUrl(image.url)} alt="" loading="lazy" />
@@ -203,6 +206,7 @@
 	}
 	.tl {
 		display: grid;
+		align-items: start;
 		position: relative;
 		padding-top: 18px;
 		min-width: 0;
@@ -296,6 +300,49 @@
 		padding: 0 3px;
 		border: 1px dashed var(--bd);
 		border-radius: 4px;
+	}
+	/* Hybrid's single row: 1px rule + 18px padding + 219px picture = two ordinary rows. */
+	.st.big {
+		grid-template-columns: 330px 440px minmax(0, 1fr);
+		gap: 0 22px;
+	}
+	.big .thumb {
+		width: 330px;
+		height: 219px;
+		border-radius: 10px;
+	}
+	.big .thumb::after {
+		height: 4px;
+	}
+	.big .sh {
+		border-left-width: 4px;
+		padding-left: 14px;
+	}
+	.big .sname {
+		font-size: 12.5px;
+		margin: 9px 0 4px;
+	}
+	.big .slab {
+		font-size: 26px;
+		line-height: 1.15;
+		-webkit-line-clamp: 4;
+	}
+	.big .smeta {
+		font-size: 12px;
+		margin-top: 8px;
+	}
+	.big .nd b {
+		font-size: 12px;
+		margin-bottom: 4px;
+	}
+	.big .nd p {
+		font-size: 14px;
+		line-height: 1.4;
+		-webkit-line-clamp: 5;
+	}
+	.big .nd i {
+		font-size: 11.5px;
+		margin-top: 5px;
 	}
 	.none {
 		margin: 0;

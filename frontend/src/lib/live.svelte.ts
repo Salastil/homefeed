@@ -33,16 +33,18 @@ export function startClock() {
 
 export function poll(fn: () => Promise<unknown> | void, ms: number): () => void {
 	if (!browser) return () => {};
-	let busy = false;
+	// A run still going after two intervals is treated as stuck, so a request that never
+	// settles can't stop the polling for good.
+	let busy = 0;
 	const run = async () => {
-		if (busy || document.visibilityState !== 'visible') return;
-		busy = true;
+		if ((busy && Date.now() - busy < ms * 2) || document.visibilityState !== 'visible') return;
+		const mine = (busy = Date.now());
 		try {
 			await fn();
 		} catch {
 			// A failed poll keeps what's on screen; the next tick retries.
 		} finally {
-			busy = false;
+			if (busy === mine) busy = 0;
 		}
 	};
 	const id = setInterval(run, ms);

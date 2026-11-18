@@ -8,7 +8,7 @@
 	import type { PageData } from './$types';
 	import type { LiteArticle } from '$lib/types';
 	import { getBoard, getStorylines } from '$lib/api';
-	import { poll } from '$lib/live.svelte';
+	import { clock, poll } from '$lib/live.svelte';
 	import StorylineBand from '$lib/components/board/StorylineBand.svelte';
 	import BoardColumns from '$lib/components/board/BoardColumns.svelte';
 	import DevelopmentSheet from '$lib/components/board/DevelopmentSheet.svelte';
@@ -26,11 +26,16 @@
 
 	$effect(() =>
 		poll(async () => {
-			const [b, s] = await Promise.all([getBoard(), getStorylines()]);
-			board = b;
-			storylines = s;
+			// Each half updates on its own: one failing request doesn't hold back the other.
+			const [b, s] = await Promise.allSettled([getBoard(), getStorylines()]);
+			if (b.status === 'fulfilled') board = b.value;
+			if (s.status === 'fulfilled') storylines = s.value;
 		}, 60_000)
 	);
+
+	// A storyline whose close time has passed leaves the panel (and its chip) on the next clock
+	// tick instead of waiting for the next poll; that poll then confirms it.
+	const open = $derived({ ...storylines, storylines: storylines.storylines.filter((s) => !s.closesAt || Date.parse(s.closesAt) > clock.now) });
 
 	let sheet = $state<{ title: string; members: LiteArticle[]; nodeId: string; color: string; scopeName: string; href: string; anchor: number } | null>(null);
 </script>
@@ -38,8 +43,8 @@
 <svelte:head><title>Homefeed</title></svelte:head>
 
 <div class="board">
-	<StorylineBand data={storylines} paused={!!sheet} selectedNode={sheet?.nodeId ?? null} onNode={(info) => (sheet = info)} />
-	<BoardColumns columns={board.columns} layout={board.layout} storylines={storylines} />
+	<StorylineBand data={open} paused={!!sheet} selectedNode={sheet?.nodeId ?? null} onNode={(info) => (sheet = info)} />
+	<BoardColumns columns={board.columns} layout={board.layout} storylines={open} />
 </div>
 
 {#if sheet}

@@ -288,6 +288,9 @@ export interface Bookmark {
 export interface StorylineSettings {
 	/** Storylines shown at once on the board's panel; the rest rotate through. */
 	rows: 1 | 2 | 3;
+	/** Hybrid: one double-height storyline (bigger picture and headline) until `hybridSwitchAt` are open, then two ordinary rows. Overrides `rows`. */
+	hybrid: boolean;
+	hybridSwitchAt: number;
 	rotateSeconds: number;
 	/** Tracked events take part in the rotation as pinned storylines. */
 	includeEvents: boolean;
@@ -339,6 +342,8 @@ export const DEFAULT_BOARD_LAYOUT: BoardLayout = { slots: [], hidden: [], colors
 
 export const DEFAULT_STORYLINE_SETTINGS: StorylineSettings = {
 	rows: 2,
+	hybrid: false,
+	hybridSwitchAt: 10,
 	rotateSeconds: 15,
 	includeEvents: true,
 	jumpOnUpdate: true,

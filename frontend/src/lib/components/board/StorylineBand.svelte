@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * The storyline panel: `rows` storylines at once (admin setting), turning to the next page
-	 * every `rotateSeconds`. Tracked events take part as pinned storylines. The chip row lists
+	 * every `rotateSeconds` (or, in hybrid mode, one large row until enough are open for two). Tracked events take part as pinned storylines. The chip row lists
 	 * every open one and outlines those on screen; clicking a chip jumps to its page. With
 	 * "jump on update", a storyline that gets a new update is shown at the next turn.
 	 */
@@ -39,7 +39,10 @@
 		return out.sort((a, b) => b.score - a.score);
 	});
 
-	const rows = $derived(data.settings.rows);
+	// Hybrid: one double-height storyline until `hybridSwitchAt` are in the rotation, then the
+	// ordinary two rows. The big row is exactly two rows tall, so the columns never move.
+	const big = $derived(!!data.settings.hybrid && items.length < (data.settings.hybridSwitchAt ?? 10));
+	const rows = $derived(data.settings.hybrid ? (big ? 1 : 2) : data.settings.rows);
 	const pages = $derived(Math.max(1, Math.ceil(items.length / rows)));
 	let page = $state(0);
 	let hovering = $state(false);
@@ -124,7 +127,7 @@
 		{#if data.closedToday}<span class="chip arch">Closed today: {data.closedToday}</span>{/if}
 	</div>
 	{#each shown as it (it.id)}
-		<StoryRow item={it} {selectedNode} onNode={(title, members, nodeId) => open(it, title, members, nodeId, document.activeElement)} />
+		<StoryRow item={it} {big} {selectedNode} onNode={(title, members, nodeId) => open(it, title, members, nodeId, document.activeElement)} />
 	{:else}
 		<p class="quiet">
 			{#if data.grouping === false}

@@ -95,7 +95,7 @@
 	<span class="lbl">Rows shown at once</span>
 	<div class="rows">
 		{#each [1, 2, 3] as n (n)}
-			<button class="rowpick" class:on={s.rows === n} onclick={() => ((s.rows = n as 1 | 2 | 3), save())}>
+			<button class="rowpick" class:on={!s.hybrid && s.rows === n} onclick={() => ((s.rows = n as 1 | 2 | 3), (s.hybrid = false), save())}>
 				<span class="mini">
 					<i class="tb"></i>
 					{#each { length: n } as _}<i class="band"></i>{/each}
@@ -104,7 +104,25 @@
 				<em>{n === 1 ? '1 row · columns tallest' : n === 2 ? '2 rows' : '3 rows · most storylines'}</em>
 			</button>
 		{/each}
+		<button class="rowpick" class:on={s.hybrid} onclick={() => ((s.hybrid = true), save())}>
+			<span class="mini">
+				<i class="tb"></i>
+				<i class="band big"></i>
+				<span class="cols">{#each { length: 5 } as _}<i></i>{/each}</span>
+			</span>
+			<em>Hybrid · 1 large row, 2 rows at {s.hybridSwitchAt}+ open</em>
+		</button>
 	</div>
+	{#if s.hybrid}
+		<div class="grid2">
+			<label>
+				<span class="lbl">Switch to two rows when this many are open</span>
+				<select bind:value={s.hybridSwitchAt} onchange={save}>
+					{#each withCurrent([4, 6, 8, 10, 12, 15, 20], s.hybridSwitchAt) as v (v)}<option value={v}>{v} storylines</option>{/each}
+				</select>
+			</label>
+		</div>
+	{/if}
 	<div class="grid2">
 		<label>
 			<span class="lbl">Rotate every</span>
@@ -261,7 +279,7 @@
 	}
 	.rows {
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
+		grid-template-columns: repeat(4, 1fr);
 		gap: 10px;
 		margin-bottom: 14px;
 	}
@@ -296,6 +314,9 @@
 	.mini .band {
 		height: 8px;
 		background: color-mix(in srgb, var(--acc) 55%, transparent);
+	}
+	.mini .band.big {
+		height: 19px;
 	}
 	.cols {
 		flex: 1;

@@ -215,6 +215,8 @@ export interface AdminSettings {
 
 export interface StorylineSettings {
 	rows: 1 | 2 | 3;
+	hybrid: boolean;
+	hybridSwitchAt: number;
 	rotateSeconds: number;
 	includeEvents: boolean;
 	jumpOnUpdate: boolean;

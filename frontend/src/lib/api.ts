@@ -6,7 +6,9 @@ async function get<T>(path: string, fetchFn: typeof fetch = fetch): Promise<T> {
 	// credentials: 'include' so the private-access cookie (see lib/privateAccess.ts)
 	// is sent cross-origin to the backend, revealing private categories/articles to
 	// anyone who's logged in — without it every request would look unauthenticated.
-	const res = await fetchFn(`${getBackendUrl()}${path}`, { credentials: 'include' });
+	// The timeout matters for a board left open for days: a request that stalls forever would
+	// otherwise hold its poll's turn forever, and the screen would stop updating.
+	const res = await fetchFn(`${getBackendUrl()}${path}`, { credentials: 'include', signal: AbortSignal.timeout(30_000) });
 	if (!res.ok) {
 		// Carries the status the way adminApi's request() does, so a caller can tell a
 		// genuinely-missing resource apart from a backend that's down — an article that

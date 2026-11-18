@@ -351,7 +351,7 @@ export interface EventStoryline {
 }
 
 export interface StorylinesResponse {
-	settings: { rows: 1 | 2 | 3; rotateSeconds: number; jumpOnUpdate: boolean; pauseOnHover: boolean; closeHours: number };
+	settings: { rows: 1 | 2 | 3; hybrid?: boolean; hybridSwitchAt?: number; rotateSeconds: number; jumpOnUpdate: boolean; pauseOnHover: boolean; closeHours: number };
 	storylines: Storyline[];
 	events: EventStoryline[];
 	closedToday: number;

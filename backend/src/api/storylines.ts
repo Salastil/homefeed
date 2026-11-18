@@ -221,6 +221,8 @@ export async function registerStorylineRoutes(app: FastifyInstance) {
 		return {
 			settings: {
 				rows: settings.rows,
+				hybrid: settings.hybrid,
+				hybridSwitchAt: settings.hybridSwitchAt,
 				rotateSeconds: settings.rotateSeconds,
 				jumpOnUpdate: settings.jumpOnUpdate,
 				pauseOnHover: settings.pauseOnHover,

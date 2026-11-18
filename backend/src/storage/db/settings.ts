@@ -75,6 +75,8 @@ function clampStorylines(s: GlobalSettings['storylines']): GlobalSettings['story
 	const d = DEFAULT_STORYLINE_SETTINGS;
 	return {
 		rows: clamp(s.rows, 1, 3, d.rows) as 1 | 2 | 3,
+		hybrid: s.hybrid === undefined ? d.hybrid : !!s.hybrid,
+		hybridSwitchAt: Math.round(clamp(s.hybridSwitchAt, 3, 30, d.hybridSwitchAt)),
 		rotateSeconds: clamp(s.rotateSeconds, 5, 120, d.rotateSeconds),
 		includeEvents: !!s.includeEvents,
 		jumpOnUpdate: !!s.jumpOnUpdate,
