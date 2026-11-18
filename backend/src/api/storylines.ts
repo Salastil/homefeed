@@ -87,6 +87,7 @@ interface StorylinePayload {
 	id: string;
 	scope: string;
 	tag: string;
+	tagLocked: boolean;
 	label: string;
 	labelArticleId: string | null;
 	state: 'live' | 'cooling' | 'closed';
@@ -108,6 +109,7 @@ function payload(row: stl.StorylineRow, members: MergedArticle[], settings: Stor
 		id: row.id,
 		scope: row.scope,
 		tag: row.tag,
+		tagLocked: row.tagLocked,
 		label: labelArticle?.title ?? '',
 		labelArticleId: labelArticle?.id ?? null,
 		state: storylineState(row, settings, now),

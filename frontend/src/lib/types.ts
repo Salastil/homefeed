@@ -324,6 +324,8 @@ export interface Storyline {
 	id: string;
 	scope: string;
 	tag: string;
+	/** Named by hand by an admin; the engine leaves it alone. */
+	tagLocked?: boolean;
 	label: string;
 	labelArticleId: string | null;
 	state: 'live' | 'cooling' | 'closed';

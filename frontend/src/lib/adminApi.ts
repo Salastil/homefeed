@@ -86,6 +86,9 @@ export interface StorylineStatus {
 	developments: number;
 }
 
+/** Names a storyline by hand; an empty name hands it back to the engine. */
+export const renameStoryline = (id: string, tag: string) =>
+	request<{ tag: string; tagLocked: boolean }>(`/api/admin/storylines/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ tag }) });
 export const getStorylineStatus = (fetchFn?: typeof fetch) => request<StorylineStatus>('/api/admin/storylines/status', {}, fetchFn);
 
 export const updateSettings = (patch: Partial<AdminSettings>, fetchFn?: typeof fetch) =>

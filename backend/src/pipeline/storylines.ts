@@ -31,6 +31,7 @@ import type { MergedArticle, StorylineSettings } from '../storage/db/types.js';
 import * as articlesDb from '../storage/db/articles.js';
 import * as stl from '../storage/db/storylines.js';
 import { logger } from '../storage/db/logs.js';
+import { STOP, candidates, composeTag, docKeys, rerankPool, tagCoverage, tagStrength, type Candidates, type NameMember } from './storylineNames.js';
 
 const HOUR = 3_600_000;
 /** Articles older than this when the tick first sees them go to the historical pass instead of the live lane. */
@@ -51,20 +52,11 @@ const COMMON_DF = 0.06;
 const STRONG_SIMILARITY = 0.9;
 /** Seeding a storyline needs a bit more similarity than joining one. */
 const SEED_MARGIN = 0.04;
+/** Words a verb follows, for spotting verbs (see buildLexicon). */
+const MODALS = new Set(['to', 'will', 'would', 'could', 'can', 'may', 'might', 'must', 'should', 'cannot', 'not', "won't", "didn't", "doesn't", "don't"]);
 
 // ---------- text ----------
 
-const STOP = new Set(
-	`a an the and or but if of to in on at by for with from as is are was were be been being this that these those it its
-he she they them his her their we you i our your not no yes do does did done has have had will would can could should may might
-than then there here what which who whom whose when where why how all any each more most other some such only own same so too very
-just over under after before about into through during against between up down out off again further once also said says say new
-according amid per via told year years day days time week weeks today tonight yesterday monday tuesday wednesday
-thursday friday saturday sunday january february march april june july august september october november december
-pm am breaking update watch live news report reports reported video photos photo one two three first last people police
-man woman men women official officials us u.s president former state city county sources source mr mrs ms dr
-reserved rights copyright wpvi-tv wpvi ktrk-tv wabc-tv all est edt gmt utc`.split(/\s+/)
-);
 
 /** The text that gets embedded - identical to what the thresholds were tuned on. */
 export function embedTextOf(a: Pick<MergedArticle, 'title' | 'body' | 'tweet' | 'telegramMessage'>): string {
@@ -96,6 +88,11 @@ interface Lexicon {
 	boiler: Map<string, Set<string>>;
 	df: Map<string, number>;
 	cache: Map<string, Set<string>>;
+	/** Phrase document counts over the same window, for naming storylines (see storylineNames.ts). */
+	phraseDf: Map<string, number>;
+	docs: number;
+	verbs: Set<string>;
+	wordBoiler: Map<string, Set<string>>;
 }
 
 let lexicon: Lexicon | null = null;
@@ -112,6 +109,7 @@ interface TextRow {
 	title: string;
 	body: string;
 	sourceKey: string;
+	isPost: boolean;
 }
 
 function rawEntities(r: TextRow, proper: Set<string>): Set<string> {
@@ -134,7 +132,7 @@ function buildLexicon(until?: number): Lexicon {
 	const rows: TextRow[] = stl.recentArticleTexts(since, until === undefined ? undefined : new Date(end).toISOString()).map((r) => {
 		const tweet = r.tweet ? JSON.parse(r.tweet) : null;
 		const telegramMessage = r.telegram_message ? JSON.parse(r.telegram_message) : null;
-		return { id: r.id, title: r.title, body: r.body, sourceKey: sourceKeyOf({ tweet, telegramMessage, sources: JSON.parse(r.sources) }) };
+		return { id: r.id, title: r.title, body: r.body, isPost: !!(tweet || telegramMessage), sourceKey: sourceKeyOf({ tweet, telegramMessage, sources: JSON.parse(r.sources) }) };
 	});
 	// Proper nouns: written capitalised mid-sentence at least twice and more than twice as
 	// often as lowercase.
@@ -151,6 +149,15 @@ function buildLexicon(until?: number): Lexicon {
 		}
 	}
 	const proper = new Set<string>();
+	// Verbs, for naming: lowercase words that mostly follow "to", "will", "can" and the like.
+	const verbUses = new Map<string, number>();
+	for (const r of rows) {
+		for (const toks of sentencesOf(r.title, r.body)) {
+			for (let i = 1; i < toks.length; i++) if (MODALS.has(toks[i - 1].toLowerCase()) && /^[a-z]/.test(toks[i])) verbUses.set(norm(toks[i]), (verbUses.get(norm(toks[i])) ?? 0) + 1);
+		}
+	}
+	const verbs = new Set<string>();
+	for (const [w, k] of verbUses) if (k >= 2 && k / ((low.get(w) ?? 0) + (cap.get(w) ?? 0) || 1) >= 0.12) verbs.add(w);
 	for (const [w, k] of cap) {
 		if (k >= 2 && k > 2 * (low.get(w) ?? 0) && w.length >= 3 && !STOP.has(w)) proper.add(w);
 	}
@@ -182,7 +189,24 @@ function buildLexicon(until?: number): Lexicon {
 	}
 	const df = new Map<string, number>();
 	for (const [w, k] of dfCount) df.set(w, k / Math.max(1, rows.length));
-	return { builtAt: Date.now(), proper, boiler, df, cache };
+	const phraseDf = new Map<string, number>();
+	for (const r of rows) for (const k of docKeys(r)) phraseDf.set(k, (phraseDf.get(k) ?? 0) + 1);
+	// Naming's boilerplate: ANY word in more than 30% of one source's items (5+ items) -
+	// hashtags a channel stamps on every post, page chrome a scraper picked up.
+	const wordsPerSource = new Map<string, Map<string, number>>();
+	for (const r of rows) {
+		const c = wordsPerSource.get(r.sourceKey) ?? new Map<string, number>();
+		for (const w of new Set(sentencesOf(r.title, r.body).flat().map(norm))) c.set(w, (c.get(w) ?? 0) + 1);
+		wordsPerSource.set(r.sourceKey, c);
+	}
+	const wordBoiler = new Map<string, Set<string>>();
+	for (const [src, c] of wordsPerSource) {
+		const n = perSourceN.get(src) ?? 0;
+		const set = new Set<string>();
+		if (n >= 5) for (const [w, k] of c) if (k / n > 0.3 && !STOP.has(w)) set.add(w);
+		wordBoiler.set(src, set);
+	}
+	return { builtAt: Date.now(), proper, boiler, df, cache, phraseDf, docs: rows.length, verbs, wordBoiler };
 }
 
 function getLexicon(): Lexicon {
@@ -199,7 +223,7 @@ function entitiesOf(a: MergedArticle): Set<string> {
 	const hit = lx.cache.get(a.id);
 	if (hit) return hit;
 	const key = sourceKeyOf(a);
-	const ents = new Set([...rawEntities({ id: a.id, title: a.title, body: a.body, sourceKey: key }, lx.proper)].filter((w) => !lx.boiler.get(key)?.has(w)));
+	const ents = new Set([...rawEntities({ id: a.id, title: a.title, body: a.body, sourceKey: key, isPost: !!(a.tweet || a.telegramMessage) }, lx.proper)].filter((w) => !lx.boiler.get(key)?.has(w)));
 	lx.cache.set(a.id, ents);
 	return ents;
 }
@@ -248,24 +272,6 @@ function centroidOf(vectors: number[][]): number[] {
 
 // ---------- labels ----------
 
-const TAG_STOP = new Set([...STOP]);
-
-/** The storyline's short name: its most frequent capitalised phrase ("United Airlines", "Lindsay Clancy"). */
-function tagOf(members: MergedArticle[]): string {
-	const count = new Map<string, number>();
-	for (const m of members) {
-		const text = embedTextOf(m);
-		for (const match of text.matchAll(/\b([A-Z][a-z]+(?: [A-Z][a-z]+){0,2})\b/g)) {
-			const phrase = match[1];
-			if (phrase.length > 3 && !TAG_STOP.has(phrase.toLowerCase())) count.set(phrase, (count.get(phrase) ?? 0) + 1);
-		}
-	}
-	let best = '';
-	let bestN = 0;
-	for (const [p, n] of count) if (n > bestN || (n === bestN && p.length > best.length)) [best, bestN] = [p, n];
-	return best;
-}
-
 /** The headline that stands for the storyline: the member closest to the centroid, preferring an article over a post. */
 function labelOf(members: MergedArticle[], vectors: Map<string, number[]>, centroid: number[]): string | null {
 	const articles = members.filter((m) => !m.tweet && !m.telegramMessage);
@@ -293,7 +299,6 @@ function refresh(storylineId: string) {
 	if (vectors.size === 0) return;
 	const centroid = centroidOf([...vectors.values()]);
 	stl.updateStoryline(storylineId, {
-		tag: tagOf(members),
 		labelArticleId: labelOf(members, vectors, centroid),
 		centroid,
 		firstItemAt: members[0].publishedAt,
@@ -301,6 +306,130 @@ function refresh(storylineId: string) {
 		itemCount: members.length,
 		sourceCount: new Set(members.map(sourceKeyOf)).size
 	});
+	// Live: named at the end of the tick, with the embedding check. Historical: named now,
+	// while the lexicon is still anchored to the article's day.
+	if (anchorDay === null) dirty.set(storylineId, dirty.get(storylineId) ?? false);
+	else retagNow(storylineId);
+}
+
+// ---------- naming ----------
+
+/** Storylines whose members changed this tick, to be (re)named at its end. true = skip the stability check. */
+const dirty = new Map<string, boolean>();
+/** Phrase vectors for the centroid check; bounded, oldest dropped first. */
+const phraseVectors = new Map<string, number[]>();
+const PHRASE_CACHE = 2000;
+/** A new name has to be this much better backed than the current one to replace it. */
+const RENAME_MARGIN = 1.2;
+
+function nameMember(a: MergedArticle): NameMember {
+	return { title: a.title, body: a.body, isPost: !!(a.tweet || a.telegramMessage), sourceKey: sourceKeyOf(a) };
+}
+
+/** What naming needs from the lexicon (exported for offline reports). */
+export function nameContext() {
+	const lx = getLexicon();
+	return { proper: lx.proper, phraseDf: lx.phraseDf, docs: lx.docs, boiler: lx.wordBoiler, verbs: lx.verbs };
+}
+
+function nameCandidates(members: MergedArticle[]): Candidates {
+	return candidates(members.map(nameMember), nameContext());
+}
+
+/** Whether `next` should replace the storyline's current name. */
+function shouldRename(row: stl.StorylineRow, next: string, c: Candidates, force: boolean): boolean {
+	if (!next || next.toLowerCase() === row.tag.toLowerCase()) return false;
+	if (force || !row.tag) return true;
+	if (c.n < 3) return false;
+	const now = tagStrength(row.tag, c);
+	const then = tagStrength(next, c);
+	// A name most of the storyline no longer says goes as soon as something better backed exists.
+	if (tagCoverage(row.tag, c) < 0.3) return then > now;
+	return then >= RENAME_MARGIN * now;
+}
+
+/** Names a storyline from statistics alone (no embedding calls). */
+export function retagNow(id: string, force = false): string | null {
+	const row = stl.getStoryline(id);
+	if (!row || row.tagLocked) return row?.tag ?? null;
+	const members = membersOf(id);
+	if (members.length === 0) return row.tag;
+	const c = nameCandidates(members);
+	const next = composeTag(c);
+	if (shouldRename(row, next, c, force)) stl.setStorylineTag(id, next);
+	return next || row.tag;
+}
+
+/**
+ * The name the storyline would get now, re-ranking the top phrases by closeness to its
+ * centroid when a provider is given (statistics alone if not, or if the call fails).
+ */
+export async function proposeName(id: string, provider?: InferenceProvider, model?: string): Promise<{ row: stl.StorylineRow; next: string; c: Candidates } | null> {
+	const row = stl.getStoryline(id);
+	if (!row) return null;
+	const members = membersOf(id);
+	if (members.length === 0) return null;
+	const c = nameCandidates(members);
+	let closeness: Map<string, number> | undefined;
+	// Only the board's storylines get the embedding check; event developments aren't shown by name.
+	if (provider && model && row.scope === 'news' && c.list.length > 1) {
+		try {
+			closeness = new Map();
+			for (const cand of rerankPool(c)) {
+				const k = `${model}|${cand.display.toLowerCase()}`;
+				let v = phraseVectors.get(k);
+				if (!v) {
+					v = normalize(await provider.embed(cand.display, { model }));
+					phraseVectors.set(k, v);
+					if (phraseVectors.size > PHRASE_CACHE) phraseVectors.delete(phraseVectors.keys().next().value!);
+				}
+				closeness.set(cand.key, dot(v, row.centroid));
+			}
+		} catch {
+			closeness = undefined; // embedding service away: statistics alone
+		}
+	}
+	return { row, next: composeTag(c, closeness), c };
+}
+
+async function retag(id: string, force: boolean, provider: InferenceProvider, model: string): Promise<void> {
+	const p = await proposeName(id, provider, model);
+	if (!p || p.row.tagLocked) return;
+	if (shouldRename(p.row, p.next, p.c, force)) stl.setStorylineTag(id, p.next);
+}
+
+async function flushNames(provider: InferenceProvider, model: string) {
+	const todo = [...dirty];
+	dirty.clear();
+	for (const [id, force] of todo) await retag(id, force, provider, model);
+}
+
+/** For offline reports: name against the lexicon of a past day (null = now). */
+export function anchorNamesTo(day: number | null) {
+	anchorDay = day;
+}
+
+let namesMigrated = false;
+/**
+ * Once per start: re-name the last week's storylines (names now come from storylineNames.ts),
+ * each against the lexicon of its own day, and queue the open ones for the embedding check.
+ */
+function renameRecent(settings: StorylineSettings) {
+	const rows = stl.storylinesTouchedSince('news', new Date(Date.now() - 7 * 24 * HOUR).toISOString());
+	const today = Math.floor(Date.now() / (24 * HOUR)) * 24 * HOUR;
+	let renamed = 0;
+	try {
+		for (const r of rows.sort((a, b) => a.lastItemAt.localeCompare(b.lastItemAt))) {
+			const day = Math.floor(new Date(r.lastItemAt).getTime() / (24 * HOUR)) * 24 * HOUR;
+			anchorDay = day >= today - 24 * HOUR ? null : day;
+			const before = r.tag;
+			if ((retagNow(r.id, true) ?? before) !== before) renamed++;
+			if (storylineState(r, settings) !== 'closed') dirty.set(r.id, true);
+		}
+	} finally {
+		anchorDay = null;
+	}
+	logger.info('storylines', `Re-named ${renamed} of ${rows.length} storylines from the last 7 days`);
 }
 
 // ---------- assignment ----------
@@ -433,6 +562,10 @@ export async function runStorylineCycle(
 		if (queued > 0) logger.info('storylines', `Queued ${queued} article(s) older than ${BACKLOG_HOURS}h for the historical pass`);
 		backlogQueued = true;
 	}
+	if (!namesMigrated) {
+		namesMigrated = true;
+		renameRecent(settings);
+	}
 	const removed = stl.deleteEmptyStorylines();
 	if (removed > 0) logger.info('storylines', `Removed ${removed} empty storyline(s)`);
 	engineStatus.lastTickAt = new Date().toISOString();
@@ -441,9 +574,13 @@ export async function runStorylineCycle(
 	const recent = stl.uncheckedArticleIds(BATCH);
 	for (const id of recent) {
 		const r = await processArticle(id, provider, model, settings);
-		if (!r.ok) return { placed, backfilled: 0, backfillLeft: stl.pendingCounts().backfill };
+		if (!r.ok) {
+			await flushNames(provider, model);
+			return { placed, backfilled: 0, backfillLeft: stl.pendingCounts().backfill };
+		}
 		if (r.placed) placed++;
 	}
+	await flushNames(provider, model);
 	if (recent.length >= BATCH) return { placed, backfilled: 0, backfillLeft: stl.pendingCounts().backfill };
 
 	const started = Date.now();

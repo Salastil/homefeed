@@ -11,6 +11,9 @@
 	import { resolveMediaUrl } from '$lib/config';
 	import { authorOf, clockTime, headlineOf, hhmm, isPost, storyColor, until } from '$lib/text';
 	import PostTiles from '$lib/components/tiles/PostTiles.svelte';
+	import { browser } from '$app/environment';
+	import { getApiKey } from '$lib/adminAuth';
+	import { renameStoryline } from '$lib/adminApi';
 
 	let { data }: { data: PageData } = $props();
 
@@ -38,6 +41,28 @@
 	const tiles = $derived(newest.slice(selIndex, selIndex + PAGE));
 	const sources = $derived(new Set(s.members.map((m) => m.sourceKey)).size);
 	let hidden = $state(0);
+	// Admins (a key stored in this browser) can name a storyline by hand.
+	// Read after hydration, so the server's render (never an admin) and the client's agree.
+	let isAdmin = $state(false);
+	$effect(() => {
+		isAdmin = browser && !!getApiKey();
+	});
+	let editing = $state(false);
+	let draft = $state('');
+	let saving = $state(false);
+	async function saveName(tag: string) {
+		saving = true;
+		try {
+			const r = await renameStoryline(s.id, tag);
+			s = { ...s, tag: r.tag, tagLocked: r.tagLocked };
+			editing = false;
+		} catch {
+			/* keep the editor open */
+		} finally {
+			saving = false;
+		}
+	}
+
 	const stateText = $derived(
 		s.state === 'live' ? 'LIVE' : s.state === 'cooling' ? `COOLING · closes in ${until(s.closesAt, clock.now)}` : 'CLOSED'
 	);
@@ -52,7 +77,20 @@
 		<div class="ht">
 			<div class="hk">
 				<span class="pill" class:live={s.state === 'live'} class:cool={s.state !== 'live'}>{#if s.state === 'live'}<i></i>{/if}{stateText}</span>
-				<b>{s.tag}</b>
+				{#if editing}
+					<form class="rn" onsubmit={(e) => (e.preventDefault(), saveName(draft))}>
+						<!-- svelte-ignore a11y_autofocus -->
+						<input bind:value={draft} maxlength="60" autofocus onkeydown={(e) => e.key === 'Escape' && (editing = false)} />
+						<button type="submit" disabled={saving}>Save</button>
+						{#if s.tagLocked}<button type="button" disabled={saving} onclick={() => saveName('')} title="Let the engine name it again">Automatic</button>{/if}
+						<button type="button" onclick={() => (editing = false)}>Cancel</button>
+					</form>
+				{:else}
+					<b>{s.tag}</b>
+					{#if isAdmin}
+						<button class="pen" title={s.tagLocked ? 'Named by hand - rename' : 'Rename this storyline'} onclick={() => ((draft = s.tag), (editing = true))}>✎{s.tagLocked ? ' named by hand' : ''}</button>
+					{/if}
+				{/if}
 			</div>
 			<h1>{s.label}</h1>
 		</div>
@@ -133,6 +171,39 @@
 		gap: 10px;
 		font-size: 12px;
 		color: var(--sc);
+	}
+	.hk b,
+	.pen {
+		white-space: nowrap;
+	}
+	.pen {
+		font-size: 11px;
+		padding: 0 6px;
+		border: 1px solid var(--bd);
+		border-radius: 5px;
+		background: transparent;
+		color: var(--tx3);
+	}
+	.rn {
+		display: flex;
+		gap: 6px;
+	}
+	.rn input {
+		font-size: 12px;
+		padding: 2px 7px;
+		width: 220px;
+		border: 1px solid var(--sc);
+		border-radius: 5px;
+		background: var(--s2);
+		color: var(--tx);
+	}
+	.rn button {
+		font-size: 11px;
+		padding: 2px 8px;
+		border: 1px solid var(--bd);
+		border-radius: 5px;
+		background: transparent;
+		color: var(--tx2);
 	}
 	h1 {
 		margin: 4px 0 0;

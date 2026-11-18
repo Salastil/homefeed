@@ -6,6 +6,8 @@ export interface StorylineRow {
 	id: string;
 	scope: string;
 	tag: string;
+	/** Named by hand on the storyline page: the engine leaves the name alone. */
+	tagLocked: boolean;
 	labelArticleId: string | null;
 	centroid: number[];
 	firstItemAt: string;
@@ -22,6 +24,7 @@ function rowToStoryline(row: any): StorylineRow {
 		id: row.id,
 		scope: row.scope,
 		tag: row.tag,
+		tagLocked: !!row.tag_locked,
 		labelArticleId: row.label_article_id,
 		centroid: JSON.parse(row.centroid),
 		firstItemAt: row.first_item_at,
@@ -112,13 +115,12 @@ export function addMember(storylineId: string, articleId: string, similarity: nu
 
 export function updateStoryline(
 	id: string,
-	fields: { tag: string; labelArticleId: string | null; centroid: number[]; firstItemAt: string; lastItemAt: string; itemCount: number; sourceCount: number }
+	fields: { labelArticleId: string | null; centroid: number[]; firstItemAt: string; lastItemAt: string; itemCount: number; sourceCount: number }
 ) {
 	db.prepare(
-		`UPDATE storylines SET tag = ?, label_article_id = ?, centroid = ?, first_item_at = ?, last_item_at = ?, item_count = ?, source_count = ?, updated_at = ?
+		`UPDATE storylines SET label_article_id = ?, centroid = ?, first_item_at = ?, last_item_at = ?, item_count = ?, source_count = ?, updated_at = ?
 		 WHERE id = ?`
 	).run(
-		fields.tag,
 		fields.labelArticleId,
 		JSON.stringify(fields.centroid),
 		fields.firstItemAt,
@@ -128,6 +130,11 @@ export function updateStoryline(
 		new Date().toISOString(),
 		id
 	);
+}
+
+export function setStorylineTag(id: string, tag: string, locked?: boolean) {
+	if (locked === undefined) db.prepare('UPDATE storylines SET tag = ? WHERE id = ?').run(tag, id);
+	else db.prepare('UPDATE storylines SET tag = ?, tag_locked = ? WHERE id = ?').run(tag, locked ? 1 : 0, id);
 }
 
 /** Storylines whose members have all been deleted (retention) - nothing left to show. */

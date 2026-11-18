@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as stl from '../storage/db/storylines.js';
-import { engineStatus } from '../pipeline/storylines.js';
+import { engineStatus, retagNow } from '../pipeline/storylines.js';
 import { boardCategories, resolveBoardLayout } from './storylines.js';
 import * as settingsDb from '../storage/db/settings.js';
 import * as sourcesDb from '../storage/db/sources.js';
@@ -138,6 +138,21 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
 	// Storyline engine status for the admin Storylines tab: whether the embedder is reachable,
 	// what's waiting, and how the historical pass is going.
+	// Name a storyline by hand (the engine then leaves the name alone), or - with an empty
+	// name - hand it back to the engine, which names it again straight away.
+	app.patch<{ Params: { id: string }; Body: { tag?: string } }>('/api/admin/storylines/:id', async (req, reply) => {
+		const row = stl.getStoryline(req.params.id);
+		if (!row) return reply.code(404).send({ error: 'No such storyline' });
+		const tag = String(req.body?.tag ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+		if (tag) stl.setStorylineTag(row.id, tag, true);
+		else {
+			stl.setStorylineTag(row.id, row.tag, false);
+			retagNow(row.id, true);
+		}
+		const after = stl.getStoryline(row.id)!;
+		return { tag: after.tag, tagLocked: after.tagLocked };
+	});
+
 	app.get('/api/admin/storylines/status', async () => {
 		const pending = stl.pendingCounts();
 		const counts = stl.storylineCounts();

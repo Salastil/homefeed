@@ -530,6 +530,9 @@ export function migrate() {
 		);
 		CREATE INDEX IF NOT EXISTS idx_storyline_items_storyline ON storyline_items(storyline_id);
 	`);
+	if (!hasColumn('storylines', 'tag_locked')) {
+		db.exec('ALTER TABLE storylines ADD COLUMN tag_locked INTEGER NOT NULL DEFAULT 0');
+	}
 	if (!hasColumn('global_settings', 'board_layout')) {
 		db.exec("ALTER TABLE global_settings ADD COLUMN board_layout TEXT NOT NULL DEFAULT '{}'");
 	}
