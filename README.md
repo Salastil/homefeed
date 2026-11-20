@@ -1,7 +1,6 @@
 # Homefeed — An all‑in‑one RSS, social media and news blotter
 
-<img width="1600" height="770" alt="homefeed-features-chyron" src="https://github.com/user-attachments/assets/5472687a-ee51-4552-92a4-686c6b416e51" />
-
+<img width="1600" height="770" alt="homefeed-features-chyron" src="https://github.com/user-attachments/assets/1ce8af6c-b38e-4e09-936b-1476ff32d26f" />
 
 Homefeed aggregates news, social posts and media into a clean, personal feed you can host on your own site — without the clutter of ads and invasive tracking. It pulls content from a variety of sources, normalizes and groups related items, and presents them in a readable, customizable format.
 
