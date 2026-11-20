@@ -16,31 +16,6 @@
 	let reissueResult = $state<string | null>(null);
 	let reissueError = $state<string | null>(null);
 
-	let telegramMediaMode = $state(settings.telegramMediaMode);
-	let telegramMediaStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
-	let telegramMediaSaveTimer: ReturnType<typeof setTimeout>;
-
-	function scheduleTelegramMediaSave() {
-		telegramMediaStatus = 'saving';
-		clearTimeout(telegramMediaSaveTimer);
-		telegramMediaSaveTimer = setTimeout(async () => {
-			try {
-				await updateSettings({ telegramMediaMode });
-				telegramMediaStatus = 'saved';
-				setTimeout(() => (telegramMediaStatus = 'idle'), 1500);
-			} catch {
-				telegramMediaStatus = 'error';
-			}
-		}, 500);
-	}
-
-	// No "Direct" option here — unlike Twitter's CDN, Telegram has no public
-	// hotlinkable media URL, so there's nothing to hotlink straight from.
-	const telegramMediaModes: { label: string; value: 'self-host' | 'proxy' }[] = [
-		{ label: 'Self-host', value: 'self-host' },
-		{ label: 'Proxy', value: 'proxy' }
-	];
-
 	async function handleClearArticles() {
 		if (!confirm('Delete every published article and its media? Raw ingested items are kept, so sources can be re-synthesized fresh.')) return;
 		clearing = 'articles';
@@ -188,42 +163,13 @@
 	</div>
 </div>
 
-<div class="panel">
-	<div class="head">
-		<span class="panel-title">Telegram (message media)</span>
-		<SaveStatus status={telegramMediaStatus} />
-	</div>
-	<p class="hint">
-		How photos/videos attached to ingested Telegram messages (and channel avatars) are served
-		to visitors. Telegram has no public URL for this media the way Twitter's CDN does — bytes
-		only ever come from the logged-in account (Connections tab), so there's no "Direct" option.
-		Self-hosting downloads and stores everything locally, same as regular article images.
-		Proxying re-fetches each request live through the logged-in account and streams it straight
-		through without persisting anything, so only this server ever touches Telegram's servers —
-		at the cost of a live round-trip to Telegram on every view (a short cache absorbs repeats).
-	</p>
-	<div class="pill-row">
-		{#each telegramMediaModes as mode}
-			<button
-				class="pill"
-				class:active={telegramMediaMode === mode.value}
-				onclick={() => {
-					telegramMediaMode = mode.value;
-					scheduleTelegramMediaSave();
-				}}
-			>
-				{mode.label}
-			</button>
-		{/each}
-	</div>
-</div>
+<h2 class="danger-head">Danger zone</h2>
 
 <div class="panel">
 	<span class="panel-title">Clear content</span>
 	<p class="hint">
-		Wipe everything so a category or the whole site can be repopulated fresh. To clear a single
-		source's content without deleting the source, use the ✕ next to it in the Sources tab's
-		"Clear content" action instead.
+		Wipe everything so the whole site can be repopulated fresh. To clear one source, use "Clear
+		content" under Repair and delete in that source's panel on Sources &amp; columns.
 	</p>
 	<div class="clear-row">
 		<button class="danger-btn" onclick={handleClearArticles} disabled={clearing !== null}>
@@ -245,7 +191,7 @@
 		they re-cluster and re-synthesize fresh on the next scheduler tick — for fixing a single bad
 		publish (e.g. a garbled AI merge) without wiping anything else. Unlike a source's own "Clear
 		content" action, this works regardless of how many different sources the article merged
-		together. Find the article ID in its URL or via <code>GET /api/article/:id</code>.
+		together. The article ID is the last part of its URL (art-…).
 	</p>
 	<div class="clear-row">
 		<input
@@ -272,6 +218,14 @@
 </div>
 
 <style>
+	.danger-head {
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--dn);
+		margin: 26px 0 10px;
+	}
 	.panel {
 		background: var(--surface-1);
 		border-radius: 12px;

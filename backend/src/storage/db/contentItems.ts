@@ -69,6 +69,12 @@ export function unclusteredItemsExcludingSources(excludeSourceIds: string[]): Co
 	return items.filter((i) => !excludeSourceIds.includes(i.sourceId));
 }
 
+/** Live check (not a snapshot) that nothing has published or clustered this item yet. */
+export function isUnclustered(id: string): boolean {
+	const row = db.prepare('SELECT cluster_id FROM content_items WHERE id = ?').get(id) as { cluster_id: string | null } | undefined;
+	return row !== undefined && row.cluster_id === null;
+}
+
 export function setEmbedding(id: string, embedding: number[]) {
 	db.prepare('UPDATE content_items SET embedding = ? WHERE id = ?').run(JSON.stringify(embedding), id);
 }

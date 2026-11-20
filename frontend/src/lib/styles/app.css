@@ -1,57 +1,107 @@
+/*
+ * Homefeed design tokens (new UI, issue #1). Short names (--s0, --tx ...) are the new
+ * system; the long names (--surface-0, --text-primary ...) are kept as aliases so the
+ * admin panel and anything not yet moved over keep rendering.
+ */
 :root {
-	--surface-0: #faf9f6;
-	--surface-1: #f0eee7;
-	--surface-2: #ffffff;
-	--text-primary: #1c1b18;
-	--text-secondary: #55534c;
-	--text-muted: #8a887f;
-	--text-accent: #993c1d;
-	--bg-accent: #faece7;
-	--border: #ddd9cd;
-	--border-accent: #d85a30;
-	--pill-bg: #1c1b18;
-	--pill-text: #ffffff;
-	--text-success: #3a7d4f;
-	--text-danger: #b3402c;
+	/* Temperature colours are tuned for a dark surface; on light ones text and lines mix toward ink. */
+	--temp-ink: 58%;
+	--temp-case: rgba(20, 22, 26, 0.32);
+	--s0: #f2f0ea;
+	--s1: #fbfaf7;
+	--s2: #ffffff;
+	--s3: #e6e2d7;
+	--tx: #1c1b18;
+	--tx2: #55534c;
+	--tx3: #8a887f;
+	--acc: #a3401f;
+	--acc-bg: #faece7;
+	--bd: #dcd8cc;
+	--up: #2f7a48;
+	--dn: #b3402c;
+	--c-local: #1f7f72;
+	--c-news: #2f62b8;
+	--c-mag: #7a4bb0;
+	--c-wire: #96701a;
+	--c-biz: #4d7f2a;
+	--c-cult: #b23c63;
+	--c-tech: #1f7f99;
+	--c-gen: #636a75;
+
+	--sans: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+	--serif: 'Newsreader Variable', Georgia, 'Times New Roman', serif;
+	--mono: 'IBM Plex Mono', 'SF Mono', Menlo, Consolas, monospace;
 	--radius: 8px;
-	--font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-	--font-voice: Georgia, 'Times New Roman', serif;
-	--font-mono: 'SF Mono', Menlo, Consolas, monospace;
+	/* The whole UI is drawn at 90%: everything fits better on the board, as browser zoom at 90%
+	   showed. Viewport-sized boxes divide by it so they still fill the window. */
+	--ui-zoom: 0.9;
+
+	/* legacy aliases */
+	--surface-0: var(--s0);
+	--surface-1: var(--s1);
+	--surface-2: var(--s2);
+	--text-primary: var(--tx);
+	--text-secondary: var(--tx2);
+	--text-muted: var(--tx3);
+	--text-accent: var(--acc);
+	--bg-accent: var(--acc-bg);
+	--border: var(--bd);
+	--border-accent: var(--acc);
+	--pill-bg: var(--tx);
+	--pill-text: var(--s0);
+	--text-success: var(--up);
+	--text-danger: var(--dn);
+	--font-sans: var(--sans);
+	--font-voice: var(--serif);
+	--font-mono: var(--mono);
 }
 
 :root[data-theme='dark'] {
-	--surface-0: #16181d;
-	--surface-1: #1f232a;
-	--surface-2: #262b33;
-	--text-primary: #e7e5df;
-	--text-secondary: #a7a59c;
-	--text-muted: #75736a;
-	--text-accent: #e2896a;
-	--bg-accent: #3a2a22;
-	--border: #333740;
-	--border-accent: #b3532c;
-	--pill-bg: #e7e5df;
-	--pill-text: #16181d;
-	--text-success: #5fb37b;
-	--text-danger: #e07356;
+	--temp-ink: 100%;
+	--temp-case: transparent;
+	--s0: #0f1114;
+	--s1: #16191e;
+	--s2: #1c2026;
+	--s3: #262b33;
+	--tx: #e8e6e0;
+	--tx2: #a5a39b;
+	--tx3: #6d6b64;
+	--acc: #e2896a;
+	--acc-bg: #3a2a22;
+	--bd: #252a32;
+	--up: #5fb37b;
+	--dn: #e07356;
+	--c-local: #56b8a8;
+	--c-news: #7fa8ea;
+	--c-mag: #c39be6;
+	--c-wire: #d9a94e;
+	--c-biz: #8fbf6a;
+	--c-cult: #e07a9a;
+	--c-tech: #6cc3d9;
+	--c-gen: #a7adb8;
 }
 
 * {
 	box-sizing: border-box;
 }
 
+html {
+	zoom: var(--ui-zoom);
+}
+
 html,
 body {
 	margin: 0;
 	padding: 0;
-	background: var(--surface-0);
-	color: var(--text-primary);
-	font-family: var(--font-sans);
-	transition: background-color 0.15s ease, color 0.15s ease;
+	background: var(--s0);
+	color: var(--tx);
+	font-family: var(--sans);
+	font-size: 13px;
+	-webkit-font-smoothing: antialiased;
 }
 
 a {
-	color: var(--text-accent);
+	color: var(--acc);
 	text-decoration: none;
 }
 
@@ -63,21 +113,120 @@ input,
 select,
 textarea,
 button {
-	font-family: var(--font-sans);
+	font-family: var(--sans);
 	font-size: 13px;
-	border: 0.5px solid var(--border);
+	border: 1px solid var(--bd);
 	border-radius: var(--radius);
 	padding: 8px 10px;
-	background: var(--surface-2);
-	color: var(--text-primary);
+	background: var(--s2);
+	color: var(--tx);
 }
 
 button {
 	cursor: pointer;
 }
 
-.page {
-	max-width: 1242px; /* 1080px + 15% */
+kbd {
+	font-family: var(--mono);
+	font-size: 10.5px;
+	border: 1px solid var(--bd);
+	border-radius: 4px;
+	padding: 0 5px;
+	color: var(--tx3);
+}
+
+/* Admin pages keep the old centred, scrolling page. */
+.admin-page {
+	max-width: 1242px;
 	margin: 0 auto;
 	padding: 0 24px 60px;
+}
+
+/* Shared bits the new pages reuse. */
+.card {
+	background: var(--s1);
+	border: 1px solid var(--bd);
+	border-radius: 12px;
+}
+
+.pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.09em;
+	padding: 2px 7px;
+	border-radius: 5px;
+	white-space: nowrap;
+}
+
+.pill.live {
+	color: var(--sc, var(--acc));
+	background: color-mix(in srgb, var(--sc, var(--acc)) 15%, transparent);
+}
+
+.pill.live i {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--sc, var(--acc));
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--sc, var(--acc)) 30%, transparent);
+}
+
+.pill.cool {
+	color: var(--tx3);
+	background: var(--s3);
+	font-weight: 600;
+	letter-spacing: 0.04em;
+}
+
+.pill.trk {
+	color: var(--sc, var(--acc));
+	border: 1px dashed var(--sc, var(--acc));
+	letter-spacing: 0.08em;
+}
+
+/* Type badges - same on tiles, rows and article headers. */
+.kb {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	padding: 2px 6px;
+	border-radius: 5px;
+	color: var(--tx2);
+	background: var(--s3);
+}
+.kb.k-article {
+	color: var(--c-news);
+	background: color-mix(in srgb, var(--c-news) 14%, transparent);
+}
+.kb.k-video {
+	color: var(--acc);
+	background: color-mix(in srgb, var(--acc) 14%, transparent);
+}
+.kb.k-photo {
+	color: var(--c-local);
+	background: color-mix(in srgb, var(--c-local) 14%, transparent);
+}
+.kb svg {
+	width: 11px;
+	height: 11px;
+}
+
+.scroll-thin {
+	scrollbar-width: thin;
+	scrollbar-color: var(--s3) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation-duration: 0s !important;
+		transition-duration: 0s !important;
+	}
 }

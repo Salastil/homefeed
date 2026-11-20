@@ -2,6 +2,7 @@ import { pollDueSources } from '../ingestion/poller.js';
 import { runSynthesisCycle, runPassthroughCycle, runDirectPublishCycle } from './priorityQueue.js';
 import { runEventRecaps } from './eventsRecap.js';
 import { runRetentionSweep } from './retention.js';
+import { engineStatus, runStorylineCycle } from '../pipeline/storylines.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import * as settingsDb from '../storage/db/settings.js';
 import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
@@ -18,11 +19,13 @@ const POLL_STALL_MS = 5 * 60_000;
 const DIRECT_PUBLISH_STALL_MS = 10 * 60_000;
 const SYNTHESIS_STALL_MS = 45 * 60_000;
 const RETENTION_STALL_MS = 10 * 60_000;
+const STORYLINE_STALL_MS = 10 * 60_000;
 
 const POLL_TICK_MS = 60_000; // checks which sources are due every minute; each source's own interval governs actual fetch frequency
 const DIRECT_PUBLISH_TICK_MS = 60_000;
 const SYNTHESIS_TICK_MS = 60_000;
 const RETENTION_TICK_MS = 60 * 60_000; // hourly
+const STORYLINE_TICK_MS = 60_000; // matches the publish ticks, so a new article joins its storyline within a minute
 
 /**
  * Runs fn on every tick, but skips a tick outright if the previous one is still in
@@ -163,6 +166,14 @@ export function startScheduler() {
 	everyTickSkippingOverlap(SYNTHESIS_TICK_MS, async () => {
 		try {
 			const settings = settingsDb.getSettings();
+			// AI writer switched off (admin → AI writer): nothing is merged or rewritten and no
+			// recaps are written - every item publishes as itself, the same path used while the
+			// AI server is unreachable, without even asking the synthesis server.
+			if (!settings.aiWriterEnabled) {
+				const published = await runPassthroughCycle(settings);
+				if (published > 0) logger.info('scheduler', `AI writer off - published ${published} article(s) as they are`);
+				return;
+			}
 			const embedding = embeddingProvider();
 			const synthesis = synthesisProvider();
 
@@ -192,6 +203,23 @@ export function startScheduler() {
 		}
 	}, 'synthesis', SYNTHESIS_STALL_MS);
 
+	// Storylines need only the embedding connection - never the synthesis one - so they keep
+	// working with the AI writer off. Skipped quietly while embedding is unreachable; the
+	// unchecked articles simply wait for the next pass.
+	everyTickSkippingOverlap(STORYLINE_TICK_MS, async () => {
+		try {
+			const settings = settingsDb.getSettings();
+			const embedding = embeddingProvider();
+			engineStatus.reachable = await embedding.isReachable();
+			if (!engineStatus.reachable) return;
+			const r = await runStorylineCycle(embedding, settings.selectedModels.embedding, settings.storylines);
+			if (r.placed > 0) logger.info('storylines', `Storyline tick: placed ${r.placed} article(s) in storylines`);
+			if (r.backfilled > 0) logger.info('storylines', `Historical pass: grouped ${r.backfilled} older article(s), ${r.backfillLeft} left`);
+		} catch (err) {
+			logger.error('storylines', `Storyline tick failed: ${(err as Error).message}`);
+		}
+	}, 'storylines', STORYLINE_STALL_MS);
+
 	everyTickSkippingOverlap(RETENTION_TICK_MS, async () => {
 		try {
 			runRetentionSweep(settingsDb.getSettings());
@@ -207,6 +235,6 @@ export function startScheduler() {
 
 	logger.info(
 		'scheduler',
-		`Started: poll every 1m, direct-publish every 1m, synthesis every 1m, retention every 1h, ${loadedWidgets.size} widget(s) polling on their own intervals`
+		`Started: poll every 1m, direct-publish every 1m, synthesis every 1m, storylines every 1m, retention every 1h, ${loadedWidgets.size} widget(s) polling on their own intervals`
 	);
 }

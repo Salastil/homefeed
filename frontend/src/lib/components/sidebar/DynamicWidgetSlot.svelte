@@ -9,7 +9,15 @@
 	// bundle was built — no Fastify route registration is involved at all, unlike the
 	// widget's own custom *API* routes, which do need a backend restart (see
 	// widgets/install.ts's notes on that).
-	let { id, displayName, frontendEntry }: { id: string; displayName: string; frontendEntry: string } = $props();
+	// `layout` tells the widget where it's mounted: 'tile' (a fixed-height widget-row tile),
+	// 'bar' (inline in the top bar) or 'sidebar' (the old free-height card). A widget that
+	// predates the hint simply ignores it.
+	let {
+		id,
+		displayName,
+		frontendEntry,
+		layout = 'sidebar'
+	}: { id: string; displayName: string; frontendEntry: string; layout?: 'tile' | 'bar' | 'sidebar' } = $props();
 
 	let container: HTMLDivElement | undefined = $state();
 	let error = $state<string | null>(null);
@@ -25,7 +33,7 @@
 				throw new Error('module has no default-exported mount(container, ctx)');
 			}
 			if (container) {
-				cleanup = mod.default.mount(container, { id, displayName, apiBase: getBackendUrl() });
+				cleanup = mod.default.mount(container, { id, displayName, apiBase: getBackendUrl(), layout });
 			}
 		} catch (err) {
 			error = (err as Error).message;
@@ -35,12 +43,15 @@
 	onDestroy(() => cleanup?.());
 </script>
 
-<div class="widget">
-	{#if error}
+<div class="widget layout-{layout}">
+	{#if error && layout !== 'sidebar'}
+		<!-- One quiet line in the top bar or a tile; the full message is in the tooltip. -->
+		<span class="unavail" title={error}>{displayName} unavailable</span>
+	{:else if error}
 		<div class="head"><span class="title">{displayName}</span></div>
 		<p class="empty">Failed to load: {error}</p>
 	{/if}
-	<div bind:this={container}></div>
+	<div class="mount" bind:this={container}></div>
 </div>
 
 <style>
@@ -48,6 +59,24 @@
 		background: var(--surface-1);
 		border-radius: 12px;
 		padding: 14px;
+	}
+	.widget.layout-tile,
+	.widget.layout-bar {
+		background: none;
+		border-radius: 0;
+		padding: 0;
+		height: 100%;
+	}
+	.layout-tile .mount,
+	.layout-bar .mount {
+		height: 100%;
+	}
+	.unavail {
+		display: flex;
+		align-items: center;
+		height: 100%;
+		font-size: 12px;
+		color: var(--tx3);
 	}
 	.head {
 		display: flex;

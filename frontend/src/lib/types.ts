@@ -95,7 +95,37 @@ export interface Category {
 	isSpillover: boolean;
 }
 
-export interface WeatherHourEntry {
+/**
+ * The at-a-glance conditions an hour and "right now" both carry, so the weather page's
+ * header card can render either through one code path (see backend widgets/weather/db.ts).
+ */
+export interface WeatherConditionDetails {
+	/** Already in the feed's configured windUnit. */
+	windGust: number;
+	/** Percent, 0-100. */
+	cloudCover: number;
+	/** Miles when windUnit is mph, kilometres when kph. Null when the forecast model has none. */
+	visibility: number | null;
+	/** In the feed's configured temperature unit. */
+	dewPoint: number;
+	/** Estimated indoor relative humidity, percent. */
+	indoorHumidity: number;
+	/** "Ideal Humidity", "Slightly Dry", "Dangerously Humid", ... — one of AccuWeather's 11 descriptions. */
+	indoorHumidityLabel: string;
+	/** -5 (dangerously dry) .. 0 (ideal) .. +5 (dangerously humid). */
+	indoorHumidityLevel: number;
+	/** Feet; null when unknown. NWS data, so US only — see the backend's fetchCeilingBlocks. At or above 25,000 means "no ceiling below that". */
+	cloudCeilingFt: number | null;
+}
+
+/** See the backend's ConditionKind: a coarse look for one hour, so neighbouring hours can merge into one stretch of the timeline bar. */
+export type WeatherConditionKind = 'clear' | 'partly' | 'cloudy' | 'fog' | 'light-rain' | 'rain' | 'freezing' | 'sleet' | 'mix' | 'snow' | 'storm' | 'hail';
+
+export interface WeatherHourEntry extends WeatherConditionDetails {
+	/** Absent on a forecast cached before the field existed - until the next poll, a few seconds after a deploy. */
+	conditionKind?: WeatherConditionKind;
+	/** Apparent temperature, in the feed's configured temperature unit. */
+	feelsLike: number;
 	time: string;
 	temp: number;
 	conditionText: string;
@@ -118,12 +148,23 @@ export interface WeatherHourEntry {
 export interface WeatherDayEntry {
 	date: string;
 	tempMax: number;
+	/** The calendar day's minimum - the fallback for nightLow. */
 	tempMin: number;
+	/** Short daytime description composed from the hourly forecast, e.g. "Mostly cloudy with a shower". */
 	conditionText: string;
 	icon: string;
+	/** Short description of the night that follows this day, e.g. "A couple of evening showers". */
+	nightDescription: string;
+	nightIcon: string;
+	/** That night's low - what AccuWeather shows as the day's "low". Null when too little of the night is in the forecast. */
+	nightLow: number | null;
+	/** Percent, 0-100: the day's highest hourly chance of precipitation. */
+	precipitationChance: number | null;
+	/** Same, for that night alone — what a "Tonight" row shows. */
+	nightPrecipitationChance: number | null;
 }
 
-export interface WeatherCurrentConditions {
+export interface WeatherCurrentConditions extends WeatherConditionDetails {
 	temp: number;
 	feelsLike: number;
 	conditionText: string;
@@ -145,6 +186,13 @@ export interface WeatherAlert {
 	headline: string;
 	severity: string;
 	expires: string;
+	/** NWS fields the page can show when the backend sends them (older backends don't). */
+	onset?: string | null;
+	ends?: string | null;
+	description?: string | null;
+	instruction?: string | null;
+	areaDesc?: string | null;
+	senderName?: string | null;
 }
 
 export interface Weather {
@@ -232,4 +280,123 @@ export interface WidgetsEnabled {
 	order: string[];
 	/** Enabled uploaded widgets — a lookup Sidebar.svelte uses for any `order` entry that isn't one of the 4 built-in keys; missing = disabled, skip it. */
 	pluggable: PluggableWidgetSummary[];
+	/** The widget row: one entry per position; more than one widget in a slot rotates on a timer. */
+	slots: WidgetSlot[];
+	/** Plug-in widgets shown in the top bar instead of the widget row (the search widget). */
+	topBar: string[];
+	/** Built-in widgets shown in the ticker strip under the widget row ('stocks', 'poe2'). Absent from older backends. */
+	ticker?: string[];
+}
+
+export interface WidgetSlot {
+	widgets: string[];
+	rotateSeconds: number;
+}
+
+// ---------- storylines / board (see backend api/storylines.ts) ----------
+
+/** An article as the board polls it: no full body, an excerpt instead. */
+export interface LiteArticle {
+	id: string;
+	title: string;
+	excerpt: string;
+	heroImage: MergedArticle['heroImage'];
+	hasVideo: boolean;
+	tweet: MergedArticle['tweet'];
+	telegramMessage: MergedArticle['telegramMessage'];
+	category: string[];
+	eventId: string | null;
+	sourceName: string;
+	sourceKey: string;
+	sourceLink: string | null;
+	sourceCount: number;
+	publishedAt: string;
+	isRecap: boolean;
+}
+
+export interface StoryImage {
+	url: string;
+	credit: string;
+	at: string;
+}
+
+export interface Storyline {
+	id: string;
+	scope: string;
+	tag: string;
+	/** Named by hand by an admin; the engine leaves it alone. */
+	tagLocked?: boolean;
+	label: string;
+	labelArticleId: string | null;
+	state: 'live' | 'cooling' | 'closed';
+	closesAt: string;
+	firstItemAt: string;
+	lastItemAt: string;
+	itemCount: number;
+	sourceCount: number;
+	continuesId: string | null;
+	image: StoryImage | null;
+	score: number;
+	members: LiteArticle[];
+}
+
+export interface EventStoryline {
+	id: string;
+	name: string;
+	recapIntervalHours: number | null;
+	postCount: number;
+	channelCount: number;
+	developmentCount: number;
+	developments: Storyline[];
+	image: StoryImage | null;
+	score: number;
+}
+
+export interface StorylinesResponse {
+	settings: { rows: 1 | 2 | 3; hybrid?: boolean; hybridSwitchAt?: number; rotateSeconds: number; jumpOnUpdate: boolean; pauseOnHover: boolean; closeHours: number };
+	storylines: Storyline[];
+	events: EventStoryline[];
+	closedToday: number;
+	/** False while the embedding service is unreachable - storylines can't form or grow. Absent from older backends. */
+	grouping?: boolean;
+}
+
+export interface BoardColumn {
+	key: string;
+	kind: 'category' | 'wire' | 'general';
+	name: string;
+	categoryId: string | null;
+	/** The admin's colour (theme token like 'c-news', or hex); null = the default for the name. */
+	color?: string | null;
+	isSpillover: boolean;
+	isPrivate: boolean;
+	count24h: number;
+	items: LiteArticle[];
+}
+
+/** The admin's Board layout as the board applies it: positions left to right; several keys = one rotating column. */
+export interface BoardLayout {
+	slots: { columns: string[]; rotateSeconds: number }[];
+	autoRotateQuiet: boolean;
+	autoFold: boolean;
+}
+
+export interface BoardResponse {
+	columns: BoardColumn[];
+	/** Absent from older backends - the board then uses its built-in arrangement. */
+	layout?: BoardLayout;
+}
+
+export interface EventTimeline {
+	event: { id: string; name: string; recapIntervalHours: number | null; lastRecapAt: string | null };
+	hours: number;
+	developments: Storyline[];
+	singles: LiteArticle[];
+	postCount: number;
+	channelCount: number;
+}
+
+export interface ArticleContext {
+	storyline: Storyline | null;
+	related: LiteArticle[];
 }

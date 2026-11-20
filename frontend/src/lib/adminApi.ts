@@ -73,6 +73,24 @@ export async function logout(): Promise<void> {
 export const getSettings = (fetchFn?: typeof fetch) =>
 	request<AdminSettings>('/api/admin/settings', {}, fetchFn);
 
+export interface StorylineStatus {
+	reachable: boolean | null;
+	lastTickAt: string | null;
+	recentPending: number;
+	backfillPending: number;
+	backfillOldest: string | null;
+	backfillDone: number;
+	backfillRatePerMin: number | null;
+	backfillEtaMinutes: number | null;
+	storylines: number;
+	developments: number;
+}
+
+/** Names a storyline by hand; an empty name hands it back to the engine. */
+export const renameStoryline = (id: string, tag: string) =>
+	request<{ tag: string; tagLocked: boolean }>(`/api/admin/storylines/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ tag }) });
+export const getStorylineStatus = (fetchFn?: typeof fetch) => request<StorylineStatus>('/api/admin/storylines/status', {}, fetchFn);
+
 export const updateSettings = (patch: Partial<AdminSettings>, fetchFn?: typeof fetch) =>
 	request<AdminSettings>('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
 
@@ -90,6 +108,38 @@ export const createCategory = (
 		fetchFn
 	);
 
+export interface BoardSlotCfg {
+	columns: string[];
+	rotateSeconds: number;
+}
+export interface BoardLayoutCfg {
+	slots: BoardSlotCfg[];
+	hidden: string[];
+	colors: Record<string, string>;
+	autoRotateQuiet: boolean;
+	autoFold: boolean;
+}
+export interface BoardColumnInfo {
+	key: string;
+	kind: 'category' | 'wire' | 'general';
+	id: string | null;
+	name: string;
+	isPrivate: boolean;
+	disableAi: boolean;
+	sources: string[];
+}
+export interface BoardOverview {
+	layout: BoardLayoutCfg;
+	saved: boolean;
+	columns: BoardColumnInfo[];
+	sources: { id: string; name: string; type: string; category: string[]; enabled: boolean }[];
+}
+
+export const getBoardOverview = (fetchFn?: typeof fetch) => request<BoardOverview>('/api/admin/board', {}, fetchFn);
+
+export const updateCategory = (id: string, patch: { name?: string; isPrivate?: boolean; disableAi?: boolean }, fetchFn?: typeof fetch) =>
+	request<BoardOverview>(`/api/admin/categories/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
+
 export const deleteCategory = (id: string, fetchFn?: typeof fetch) =>
 	request<void>(`/api/admin/categories/${id}`, { method: 'DELETE' }, fetchFn);
 
@@ -105,6 +155,29 @@ export const updateSource = (id: string, patch: Partial<AdminSource>, fetchFn?: 
 
 export const deleteSource = (id: string, fetchFn?: typeof fetch) =>
 	request<void>(`/api/admin/sources/${id}`, { method: 'DELETE' }, fetchFn);
+
+/** What "Add by URL" found for a pasted link or handle (backend api/sourceDetect.ts). */
+export interface DetectedSource {
+	type: AdminSource['type'];
+	name: string;
+	url: string;
+	found: string;
+	existing: { id: string; name: string; category: string[] } | null;
+	note: string | null;
+}
+
+/** Throws an Error carrying the backend's own explanation when nothing usable was found. */
+export async function detectSource(input: string): Promise<DetectedSource> {
+	const apiKey = getApiKey();
+	const res = await fetch(`${getBackendUrl()}/api/admin/sources/detect`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...(apiKey ? { 'X-Api-Key': apiKey } : {}) },
+		body: JSON.stringify({ input })
+	});
+	const body = await res.json().catch(() => ({}));
+	if (!res.ok) throw new Error(body.error ?? `Couldn't read that link (${res.status})`);
+	return body as DetectedSource;
+}
 
 export const pollSourceNow = (id: string, fetchFn?: typeof fetch) =>
 	request<{ ingested: number; source: AdminSource }>(`/api/admin/sources/${id}/poll`, { method: 'POST' }, fetchFn);

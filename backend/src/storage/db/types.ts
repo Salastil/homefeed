@@ -277,7 +277,99 @@ export interface Bookmark {
 	createdAt: string;
 }
 
+/**
+ * Storylines (see pipeline/storylines.ts): how articles are grouped into live storylines
+ * and tracked-event developments, and how the board's storyline panel shows them. Stored
+ * as one JSON column so a new knob never needs a migration; missing keys fall back to
+ * DEFAULT_STORYLINE_SETTINGS. The similarity numbers are tuned for nomic-embed-text
+ * (benchmarked 2026-11-17 against hand-labelled stories) - another embedding model has
+ * its own similarity scale and needs them re-tuned.
+ */
+export interface StorylineSettings {
+	/** Storylines shown at once on the board's panel; the rest rotate through. */
+	rows: 1 | 2 | 3;
+	/** Hybrid: one double-height storyline (bigger picture and headline) until `hybridSwitchAt` are open, then two ordinary rows. Overrides `rows`. */
+	hybrid: boolean;
+	hybridSwitchAt: number;
+	rotateSeconds: number;
+	/** Tracked events take part in the rotation as pinned storylines. */
+	includeEvents: boolean;
+	/** A storyline that gets a new update moves to the front at the next rotation. */
+	jumpOnUpdate: boolean;
+	pauseOnHover: boolean;
+	/** Cosine similarity an article needs to a storyline's centroid to join it. Two loose articles start one at this + 0.04. */
+	joinSimilarity: number;
+	/** A storyline shows on the board once it has this many articles... */
+	minItems: number;
+	/** ...from at least this many distinct sources (each X / Telegram account counts as its own source). */
+	minSources: number;
+	/** How far back a new article looks for a loose article to start a storyline with. */
+	seedWindowHours: number;
+	/** Also require a shared specific name (place, person, organisation, route number) to join - stops look-alike stories from merging. */
+	nameGuard: boolean;
+	coolingHours: number;
+	closeHours: number;
+	maxLifetimeHours: number;
+	/** Tracked-event developments: stricter join, and a short life so a busy stream can't chain into one blob. */
+	eventJoinSimilarity: number;
+	eventMaxHours: number;
+	eventCloseHours: number;
+}
+
+/**
+ * One board position. Column keys are 'cat:<categoryId>', 'wire' or 'general'; a slot with
+ * several keys is one column that rotates through them every `rotateSeconds`.
+ */
+export interface BoardSlot {
+	columns: string[];
+	rotateSeconds: number;
+}
+
+export interface BoardLayout {
+	/** Left to right. Empty means "not arranged yet" - the board derives the old default. */
+	slots: BoardSlot[];
+	/** Columns kept off the board (still reachable from their own page). */
+	hidden: string[];
+	/** Column colour overrides, by column key. */
+	colors: Record<string, string>;
+	/** A column with nothing new in 48 h joins the rotating column until something arrives. */
+	autoRotateQuiet: boolean;
+	/** Columns that don't fit the screen fold into the rotating column, right-most first. */
+	autoFold: boolean;
+}
+
+export const DEFAULT_BOARD_LAYOUT: BoardLayout = { slots: [], hidden: [], colors: {}, autoRotateQuiet: true, autoFold: true };
+
+export const DEFAULT_STORYLINE_SETTINGS: StorylineSettings = {
+	rows: 2,
+	hybrid: false,
+	hybridSwitchAt: 10,
+	rotateSeconds: 15,
+	includeEvents: true,
+	jumpOnUpdate: true,
+	pauseOnHover: true,
+	joinSimilarity: 0.74,
+	minItems: 3,
+	minSources: 2,
+	seedWindowHours: 6,
+	nameGuard: true,
+	coolingHours: 2,
+	closeHours: 5,
+	maxLifetimeHours: 30,
+	eventJoinSimilarity: 0.78,
+	eventMaxHours: 3,
+	eventCloseHours: 2
+};
+
+/** One position in the widget row. More than one widget in a slot rotates through them on a timer. */
+export interface WidgetSlot {
+	widgets: string[];
+	rotateSeconds: number;
+}
+
 export interface GlobalSettings {
+	/** Master switch for the generative AI writer (admin → AI writer). Off: every item publishes as its own article with its source's text (runPassthroughCycle) and no recaps are written; the per-category "AI rewrite" toggles only matter while this is on. Embeddings (storylines, tags) run either way. */
+	aiWriterEnabled: boolean;
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	holdBeforePublishMinutes: number;
 	tagDedupThreshold: number;
@@ -320,6 +412,11 @@ export interface GlobalSettings {
 	};
 	/** Sidebar widget display order (every installed widget, built-in or uploaded), admin-sortable via the Widgets tab's up/down arrows — mirrors installed_widgets.priority_rank exactly, mirrored exactly by Sidebar.svelte. */
 	widgetOrder: string[];
+	/** Widget row layout. Empty means "derive from widgetOrder" (see api/public.ts's resolveWidgetSlots). */
+	widgetSlots: WidgetSlot[];
+	storylines: StorylineSettings;
+	/** The home board's columns: order, which rotate together, colours, what's hidden - the admin Board tab. */
+	boardLayout: BoardLayout;
 	retention: {
 		publishedArticleMaxAgeDays: number | null;
 		rawItemMaxAgeDays: number | null;

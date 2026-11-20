@@ -27,9 +27,20 @@ export interface WeatherHourEntry {
 export interface WeatherDayEntry {
 	date: string;
 	tempMax: number;
+	/** The calendar day's minimum - the fallback for nightLow. */
 	tempMin: number;
+	/** Short daytime description composed from the hourly forecast, e.g. "Mostly cloudy with a shower". */
 	conditionText: string;
 	icon: string;
+	/** Short description of the night that follows this day, e.g. "A couple of evening showers". */
+	nightDescription: string;
+	nightIcon: string;
+	/** That night's low - what AccuWeather shows as the day's "low". Null when too little of the night is in the forecast. */
+	nightLow: number | null;
+	/** Percent, 0-100: the day's highest hourly chance of precipitation. */
+	precipitationChance: number | null;
+	/** Same, for that night alone — what a "Tonight" row shows. */
+	nightPrecipitationChance: number | null;
 }
 
 export interface WeatherCurrentConditions {
@@ -163,6 +174,8 @@ export interface AdminSearchEngine {
 }
 
 export interface AdminSettings {
+	/** Master switch for the generative AI writer: off, every item publishes as its own article and no recaps are written. */
+	aiWriterEnabled: boolean;
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	holdBeforePublishMinutes: number;
 	tagDedupThreshold: number;
@@ -195,6 +208,32 @@ export interface AdminSettings {
 	bookmarksColumns: 1 | 2 | 3;
 	retention: RetentionSettings;
 	categoryPriority: CategoryPriority[];
+	/** The board's storyline panel and the embedding-only grouping behind it - see the Storylines tab. */
+	storylines: StorylineSettings;
+	/** Widget positions in the widget row; several widgets in one slot rotate on a timer. Empty = the default arrangement. */
+	widgetSlots: { widgets: string[]; rotateSeconds: number }[];
+	boardLayout: import('./adminApi').BoardLayoutCfg;
+}
+
+export interface StorylineSettings {
+	rows: 1 | 2 | 3;
+	hybrid: boolean;
+	hybridSwitchAt: number;
+	rotateSeconds: number;
+	includeEvents: boolean;
+	jumpOnUpdate: boolean;
+	pauseOnHover: boolean;
+	joinSimilarity: number;
+	minItems: number;
+	minSources: number;
+	seedWindowHours: number;
+	nameGuard: boolean;
+	coolingHours: number;
+	closeHours: number;
+	maxLifetimeHours: number;
+	eventJoinSimilarity: number;
+	eventMaxHours: number;
+	eventCloseHours: number;
 }
 
 export interface AdminSource {

@@ -1,11 +1,14 @@
 import { getBackendUrl } from './config';
-import type { MergedArticle, Tag, TrackedEventPublic, Category, Weather, StockTicker, StocksFeed, BookmarksFeed, Poe2Data, WidgetsEnabled } from './types';
+import type { MergedArticle, Tag, TrackedEventPublic, Category, Weather, StockTicker, StocksFeed, BookmarksFeed, Poe2Data, WidgetsEnabled, BoardColumn,
+	BoardResponse, StorylinesResponse, Storyline, EventTimeline, ArticleContext } from './types';
 
 async function get<T>(path: string, fetchFn: typeof fetch = fetch): Promise<T> {
 	// credentials: 'include' so the private-access cookie (see lib/privateAccess.ts)
 	// is sent cross-origin to the backend, revealing private categories/articles to
 	// anyone who's logged in — without it every request would look unauthenticated.
-	const res = await fetchFn(`${getBackendUrl()}${path}`, { credentials: 'include' });
+	// The timeout matters for a board left open for days: a request that stalls forever would
+	// otherwise hold its poll's turn forever, and the screen would stop updating.
+	const res = await fetchFn(`${getBackendUrl()}${path}`, { credentials: 'include', signal: AbortSignal.timeout(30_000) });
 	if (!res.ok) {
 		// Carries the status the way adminApi's request() does, so a caller can tell a
 		// genuinely-missing resource apart from a backend that's down — an article that
@@ -22,6 +25,8 @@ export interface FeedParams {
 	geo?: string;
 	eventId?: string;
 	tag?: string;
+	/** The board's catch-all columns: uncategorised posts (wire) or articles (general). */
+	kind?: 'wire' | 'general';
 	before?: string;
 	limit?: number;
 }
@@ -71,4 +76,24 @@ export function getPoe2(fetchFn?: typeof fetch): Promise<Poe2Data> {
 
 export function getWidgetsEnabled(fetchFn?: typeof fetch): Promise<WidgetsEnabled> {
 	return get<WidgetsEnabled>('/api/widgets', fetchFn);
+}
+
+export function getBoard(fetchFn?: typeof fetch): Promise<BoardResponse> {
+	return get<BoardResponse>('/api/board', fetchFn);
+}
+
+export function getStorylines(fetchFn?: typeof fetch): Promise<StorylinesResponse> {
+	return get<StorylinesResponse>('/api/storylines', fetchFn);
+}
+
+export function getStoryline(id: string, fetchFn?: typeof fetch): Promise<Storyline> {
+	return get<Storyline>(`/api/storylines/${id}`, fetchFn);
+}
+
+export function getEventTimeline(id: string, hours = 12, fetchFn?: typeof fetch): Promise<EventTimeline> {
+	return get<EventTimeline>(`/api/events/${id}/timeline?hours=${hours}`, fetchFn);
+}
+
+export function getArticleContext(id: string, fetchFn?: typeof fetch): Promise<ArticleContext> {
+	return get<ArticleContext>(`/api/article/${id}/context`, fetchFn);
 }

@@ -4,7 +4,7 @@ import type { Cluster } from './clustering.js';
 import { synthesizeArticle, synthesizeRecap } from './synthesis.js';
 import { selectBestImage, faviconUrlFor } from './image-selection.js';
 import { downloadAndStore, promoteToPublished, storeMediaBuffer } from '../storage/media/index.js';
-import { downloadMessageMedia, downloadChannelAvatar } from '../telegram/client.js';
+import { downloadMessageMedia, downloadMessageThumb, downloadChannelAvatar } from '../telegram/client.js';
 import { logger } from '../storage/db/logs.js';
 import * as articles from '../storage/db/articles.js';
 import * as tags from '../storage/db/tags.js';
@@ -221,10 +221,12 @@ async function resolveTelegramMediaUrl(
 	channelUsername: string,
 	ref: TelegramMediaRef,
 	mode: GlobalSettings['telegramMediaMode']
-): Promise<{ item: TelegramMediaItem; storedMediaId: string | null } | null> {
+): Promise<{ item: TelegramMediaItem; storedMediaId: string | null; thumbMediaId?: string | null } | null> {
 	if (mode === 'proxy') {
-		const url = `/media/telegram-proxy?channel=${encodeURIComponent(channelUsername)}&message=${encodeURIComponent(ref.messageId)}&type=${ref.type}`;
-		return { item: { type: ref.type, url, thumbnailUrl: null, width: ref.width, height: ref.height }, storedMediaId: null };
+		const base = `/media/telegram-proxy?channel=${encodeURIComponent(channelUsername)}&message=${encodeURIComponent(ref.messageId)}`;
+		// Videos and GIFs get their stored preview image as a poster (type=thumb).
+		const thumbnailUrl = ref.type === 'photo' ? null : `${base}&type=thumb`;
+		return { item: { type: ref.type, url: `${base}&type=${ref.type}`, thumbnailUrl, width: ref.width, height: ref.height }, storedMediaId: null };
 	}
 
 	try {
@@ -232,7 +234,22 @@ async function resolveTelegramMediaUrl(
 		if (!buffer) return null;
 		const ext = guessTelegramExtension(ref.mimeType, ref.type);
 		const stored = storeMediaBuffer(buffer, ext, `telegram-message:${channelUsername}:${ref.messageId}`, 'published', {});
-		return { item: { type: ref.type, url: stored.servedPath, thumbnailUrl: null, width: ref.width, height: ref.height }, storedMediaId: stored.id };
+		// Best effort: a stored poster for videos/GIFs, so feeds needn't load the video to show one.
+		let thumbnailUrl: string | null = null;
+		let thumbMediaId: string | null = null;
+		if (ref.type !== 'photo') {
+			try {
+				const thumb = await downloadMessageThumb(channelUsername, ref.messageId);
+				if (thumb) {
+					const storedThumb = storeMediaBuffer(thumb, '.jpg', `telegram-thumb:${channelUsername}:${ref.messageId}`, 'published', {});
+					thumbnailUrl = storedThumb.servedPath;
+					thumbMediaId = storedThumb.id;
+				}
+			} catch {
+				/* no poster - the feed shows a placeholder */
+			}
+		}
+		return { item: { type: ref.type, url: stored.servedPath, thumbnailUrl, width: ref.width, height: ref.height }, storedMediaId: stored.id, thumbMediaId };
 	} catch (err) {
 		logger.error('telegram', `Failed to self-host media for message ${ref.messageId}: ${(err as Error).message}`);
 		return null;
@@ -252,6 +269,7 @@ async function resolveTelegramMedia(
 		if (resolved) {
 			media.push(resolved.item);
 			if (resolved.storedMediaId) storedMediaIds.push(resolved.storedMediaId);
+			if (resolved.thumbMediaId) storedMediaIds.push(resolved.thumbMediaId);
 		}
 	}
 	return { media, storedMediaIds };

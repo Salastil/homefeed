@@ -2,8 +2,7 @@
 	import type { MergedArticle } from '$lib/types';
 	import { timeAgo, exactTime, excerpt } from '$lib/format';
 	import { resolveMediaUrl } from '$lib/config';
-	import TweetCard from './TweetCard.svelte';
-	import TelegramCard from './TelegramCard.svelte';
+	import PostItem from './posts/PostItem.svelte';
 
 	let { article }: { article: MergedArticle } = $props();
 
@@ -14,10 +13,9 @@
 	);
 </script>
 
-{#if article.tweet}
-	<TweetCard {article} />
-{:else if article.telegramMessage}
-	<TelegramCard {article} />
+<!-- Posts (Tweets, Telegram) use the compact side-by-side layout (issue #1, layout C). -->
+{#if article.tweet || article.telegramMessage}
+	<PostItem {article} />
 {:else}
 	<a class="row" href={`/article/${article.id}`}>
 		{#if article.heroImage}

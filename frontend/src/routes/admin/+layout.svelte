@@ -1,23 +1,28 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { logout } from '$lib/adminApi';
+	import { admin } from '$lib/adminSession.svelte';
 	import type { LayoutData } from './$types';
 
 	let { children, data }: { children: any; data: LayoutData } = $props();
 
 	async function handleLogout() {
 		await logout();
+		admin.valid = false;
+		admin.editing = false;
+		admin.palette = false;
+		admin.sheet = null;
 		await goto('/admin/login');
 	}
 </script>
 
 {#if !data.adminPanelEnabled}
-	<div class="page disabled-notice">
+	<div class="admin-page disabled-notice">
 		<p>The admin panel is disabled on this deployment.</p>
 	</div>
 {:else}
 	<div class="admin-shell">
-		<div class="page admin-inner">
+		<div class="admin-page admin-inner">
 			<div class="top-row">
 				<a class="back" href="/">← Back to site</a>
 				<button class="logout" onclick={handleLogout}>Log out</button>
@@ -35,7 +40,7 @@
 		font-size: 14px;
 	}
 	.admin-shell {
-		min-height: 100vh;
+		min-height: calc(100vh / var(--ui-zoom));
 	}
 	.admin-inner {
 		padding-top: 20px;

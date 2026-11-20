@@ -75,6 +75,11 @@ async function publishItemsDirect(
 ): Promise<number> {
 	let published = 0;
 	for (const item of items) {
+		// `items` is a snapshot taken when this cycle started, and publishing awaits between
+		// items - so by the time we reach one, another cycle (see runPassthroughCycle) may
+		// already have published it. Claim it first; the claim is synchronous, so two cycles
+		// can never both get past this point for the same item.
+		if (!claimForDirectPublish(item.id)) continue;
 		try {
 			const eventId = claimedEventId(item, activeEvents) ?? undefined;
 			const article = await publishDirect(item, settings, { eventId, embeddingProvider });
@@ -83,9 +88,28 @@ async function publishItemsDirect(
 			logger.info('synthesis', `Published "${article.title}" directly (${describeSuccess(item)})`);
 		} catch (err) {
 			logger.error('synthesis', `${failureLabel} for "${item.title}": ${(err as Error).message}`);
+		} finally {
+			directPublishInFlight.delete(item.id);
 		}
 	}
 	return published;
+}
+
+// Items a direct-publish pass is working on right now. Module state rather than anything
+// persisted: it only has to bridge the awaits inside one process, and assignCluster (below)
+// is what makes the answer permanent for every later cycle.
+const directPublishInFlight = new Set<string>();
+
+/**
+ * True if the caller now owns publishing this item. False when another pass is mid-publish
+ * on it, or already finished it since the caller's snapshot was taken (re-read from the DB,
+ * since the snapshot's own cluster_id is stale by definition).
+ */
+function claimForDirectPublish(itemId: string): boolean {
+	if (directPublishInFlight.has(itemId)) return false;
+	if (!contentItemsDb.isUnclustered(itemId)) return false;
+	directPublishInFlight.add(itemId);
+	return true;
 }
 
 /**
@@ -94,10 +118,11 @@ async function publishItemsDirect(
  * pipeline, this doesn't wait out the hold-before-publish window: that window exists to
  * give corroborating sources time to arrive before an AI merge locks in, which doesn't
  * apply here since there's no merging happening at all — each item is just itself.
- * Still respects category priority. Harmless overlap with runDirectPublishCycle (which
- * runs regardless of reachability) — an item already published by one is simply gone
- * from the other's next "unclustered" query, since assignCluster lands before either
- * moves on to its next item.
+ * Still respects category priority. Overlaps with runDirectPublishCycle (which runs
+ * regardless of reachability) on the items both consider theirs: each works from its own
+ * snapshot of the unclustered list, so without publishItemsDirect's per-item claim they
+ * published the same item twice - the duplicate articles seen on RSS feeds in categories
+ * with AI turned off.
  */
 export async function runPassthroughCycle(settings: GlobalSettings): Promise<number> {
 	const activeEvents = eventsDb.listActiveEvents();

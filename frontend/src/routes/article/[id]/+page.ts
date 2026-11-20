@@ -1,17 +1,19 @@
 import { error } from '@sveltejs/kit';
 import type { PageLoad } from './$types';
-import { getArticle, getTags } from '$lib/api';
+import { getArticle, getArticleContext, getTags } from '$lib/api';
 
 export const load: PageLoad = async ({ params, fetch }) => {
 	// Articles genuinely disappear — retention ages them out and the storage cap trims
 	// oldest-first — so a link that worked yesterday 404ing is expected, not a fault.
 	// Without this it surfaces as a 500 to the reader and as a stack trace in the log.
-	const [article, tags] = await Promise.all([
+	const [article, tags, context] = await Promise.all([
 		getArticle(params.id, fetch).catch((err) => {
 			if ((err as { status?: number }).status === 404) throw error(404, 'Article not found');
 			throw err;
 		}),
-		getTags(fetch)
+		getTags(fetch),
+		// The storyline rail is extra: an older backend or a hiccup just leaves it out.
+		getArticleContext(params.id, fetch).catch(() => ({ storyline: null, related: [] }))
 	]);
 
 	let nextArticle = null;
@@ -27,5 +29,5 @@ export const load: PageLoad = async ({ params, fetch }) => {
 		.map((id) => tags.find((t) => t.id === id))
 		.filter((t): t is NonNullable<typeof t> => Boolean(t));
 
-	return { article, tagLabels, nextArticle, previousArticle };
+	return { article, tagLabels, nextArticle, previousArticle, context };
 };

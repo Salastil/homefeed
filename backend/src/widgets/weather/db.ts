@@ -1,8 +1,44 @@
 import { getKv, setKv } from '../../storage/db/widgetKv.js';
 
-export interface WeatherHourEntry {
+/**
+ * The at-a-glance conditions an hour (or "right now") carries beyond temperature and
+ * wind — the same fields on both, so the weather page's header card can show either the
+ * live reading or whichever hour is being hovered with one rendering path.
+ */
+export interface ConditionDetails {
+	/** Already in the admin's configured windUnit. */
+	windGust: number;
+	/** Percent, 0-100. */
+	cloudCover: number;
+	/** Miles when windUnit is mph, kilometres when kph — so imperial and metric users each get the distance unit their wind speed already implies. */
+	visibility: number | null;
+	/** In the admin's configured temperature unit. */
+	dewPoint: number;
+	/** Estimated relative humidity indoors, percent — see indoorHumidity() in client.ts for how and how closely it tracks AccuWeather's figure. */
+	indoorHumidity: number;
+	/** One of the 11 descriptions from "Dangerously Dry" through "Ideal Humidity" to "Dangerously Humid". Driven by the outdoor DEW POINT, not by indoorHumidity — see INDOOR_HUMIDITY_SCALE. */
+	indoorHumidityLabel: string;
+	/** -5 (dangerously dry) .. 0 (ideal) .. +5 (dangerously humid), for colouring the label without the frontend re-deriving the scale. */
+	indoorHumidityLevel: number;
+	/** Lowest-cloud-layer height in feet, or null when unknown. NWS gridpoint data, so US locations only — Open-Meteo has no cloud-base field for any model. Values at or above NWS's 25,000 ft cap mean "no ceiling". */
+	cloudCeilingFt: number | null;
+}
+
+/**
+ * What an hour looks like at a glance, coarse enough to merge neighbouring hours into one
+ * labelled stretch on the weather page's timeline bar. Derived from the WMO weather code
+ * rather than from the display text, so rewording a label can never silently reclassify
+ * an hour. Rain is split into light and heavier because that is the distinction the bar
+ * draws; the rest of the precipitation types are one colour each.
+ */
+export type ConditionKind = 'clear' | 'partly' | 'cloudy' | 'fog' | 'light-rain' | 'rain' | 'freezing' | 'sleet' | 'mix' | 'snow' | 'storm' | 'hail';
+
+export interface WeatherHourEntry extends ConditionDetails {
+	conditionKind: ConditionKind;
 	time: string;
 	temp: number;
+	/** Apparent temperature (Open-Meteo's heat-index/wind-chill blend), in the configured temperature unit. */
+	feelsLike: number;
 	conditionText: string;
 	icon: string;
 	/** Percent, 0-100. */
@@ -24,9 +60,20 @@ export interface WeatherHourEntry {
 export interface WeatherDayEntry {
 	date: string;
 	tempMax: number;
+	/** The calendar day's minimum - the fallback for nightLow when too little of the night is in the forecast. */
 	tempMin: number;
+	/** Short daytime description composed from the hourly series (see describePeriod in client.ts), e.g. "Mostly cloudy with a shower". */
 	conditionText: string;
 	icon: string;
+	/** Short description of the night that follows this day (dusk to the next dawn). Empty when there were no hours to describe. */
+	nightDescription: string;
+	nightIcon: string;
+	/** That night's lowest temperature - what AccuWeather shows as the day's "low". Null when under 6 night hours are in the forecast. */
+	nightLow: number | null;
+	/** Percent, 0-100: the day's maximum hourly chance of precipitation. */
+	precipitationChance: number | null;
+	/** Same, over that night's hours alone - what a "Tonight" row shows once the day itself is over. */
+	nightPrecipitationChance: number | null;
 }
 
 export interface WeatherAlert {
@@ -35,6 +82,14 @@ export interface WeatherAlert {
 	headline: string;
 	severity: string;
 	expires: string;
+	/** When it takes effect / ends (NWS onset/ends); absent on alerts cached before these were kept. */
+	onset?: string | null;
+	ends?: string | null;
+	/** What and impacts, condensed from the NWS description - see condenseAlertText. */
+	description?: string | null;
+	instruction?: string | null;
+	areaDesc?: string | null;
+	senderName?: string | null;
 }
 
 export interface WeatherConfig {
@@ -49,7 +104,7 @@ export interface WeatherConfig {
 }
 
 export interface WeatherCache {
-	current: {
+	current: (ConditionDetails & {
 		temp: number;
 		/** Apparent temperature (Open-Meteo's own heat-index/wind-chill blend) — "Feels like". */
 		feelsLike: number;
@@ -71,7 +126,7 @@ export interface WeatherCache {
 		precipIsSnow: boolean;
 		sunrise: string;
 		sunset: string;
-	} | null;
+	}) | null;
 	hourly: WeatherHourEntry[];
 	daily: WeatherDayEntry[];
 	/** Active NWS alerts (flash flood, hurricane, blizzard, etc.) for the configured location — US-only, empty elsewhere. See client.ts's fetchActiveAlerts. */

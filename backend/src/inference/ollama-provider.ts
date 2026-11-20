@@ -147,7 +147,9 @@ export class OllamaProvider implements InferenceProvider {
 	}
 
 	async listModels(): Promise<string[]> {
-		const res = await fetch(`${this.base()}/api/tags`);
+		// Bounded like isReachable() below: this only backs the admin panel, and an unreachable
+		// host otherwise holds the request for undici's 10s connect timeout.
+		const res = await fetch(`${this.base()}/api/tags`, { signal: AbortSignal.timeout(3000) });
 		if (!res.ok) throw new Error(`Ollama listModels failed: ${res.status}`);
 		const data = (await res.json()) as { models: { name: string }[] };
 		return data.models.map((m) => m.name);

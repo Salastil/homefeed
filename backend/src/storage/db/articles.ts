@@ -87,6 +87,8 @@ export function queryFeed(
 		geo?: string;
 		eventId?: string;
 		tag?: string;
+		/** The board's two catch-all columns: posts (wire) or articles (general) with no category and no tracked event. */
+		kind?: 'wire' | 'general';
 		before?: string;
 		limit?: number;
 	},
@@ -110,7 +112,7 @@ export function queryFeed(
 	// otherwise every ingested article from every source would flood the homepage.
 	// Any explicit filter (a real category page, Local's geo filter, a tag or event page)
 	// is unaffected — those show everything matching, regardless of this flag.
-	const isHomepage = !filters.category && !filters.geo && !filters.eventId && !filters.tag;
+	const isHomepage = !filters.category && !filters.geo && !filters.eventId && !filters.tag && !filters.kind;
 	if (isHomepage) {
 		sql += ' AND top_stories = 1';
 	}
@@ -130,6 +132,10 @@ export function queryFeed(
 	if (filters.tag) {
 		sql += ' AND tags LIKE ?';
 		params.push(`%"${filters.tag}"%`);
+	}
+	if (filters.kind) {
+		sql += filters.kind === 'wire' ? ' AND (tweet IS NOT NULL OR telegram_message IS NOT NULL)' : ' AND tweet IS NULL AND telegram_message IS NULL';
+		sql += " AND category = '[]' AND event_id IS NULL";
 	}
 	if (filters.before) {
 		sql += ' AND published_at < ?';
@@ -166,6 +172,31 @@ export function findRecentArticleByTags(tagIds: string[], sinceDays: number): Me
 		if (article.tags.some((t) => tagIds.includes(t))) return article;
 	}
 	return null;
+}
+
+/**
+ * Newest-first articles matching a raw SQL predicate - for the board's Wire/General columns,
+ * which select on shape (post vs. article, no category) rather than any one filter queryFeed
+ * offers. `where` is always a fixed string from api/storylines.ts, never user input.
+ */
+export function queryWhere(where: string, params: unknown[], limit: number): MergedArticle[] {
+	return db
+		.prepare(`SELECT * FROM merged_articles WHERE ${where} ORDER BY published_at DESC LIMIT ?`)
+		.all(...(params as any[]), limit)
+		.map(rowToArticle);
+}
+
+export function countWhere(where: string, params: unknown[]): number {
+	const row = db.prepare(`SELECT COUNT(*) AS c FROM merged_articles WHERE ${where}`).get(...(params as any[])) as { c: number };
+	return row.c;
+}
+
+export function getArticles(ids: string[]): MergedArticle[] {
+	if (ids.length === 0) return [];
+	return db
+		.prepare(`SELECT * FROM merged_articles WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY published_at`)
+		.all(...ids)
+		.map(rowToArticle);
 }
 
 export function deleteArticle(id: string) {

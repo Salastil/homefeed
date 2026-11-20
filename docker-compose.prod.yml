@@ -27,11 +27,15 @@ services:
       WIDGETS_INSTALLED_DIR: /app/data/widgets-installed
       NODE_ENV: production
       PRIVATE_ACCESS_PASSWORD: ${PRIVATE_ACCESS_PASSWORD:-}
-      # Optional — without this, the container regenerates the admin key on every
-      # recreate (no writable backend/.env inside it). Set to any random string to
-      # pin a stable one. If this stack's .env substitution doesn't reliably apply
-      # (as PUBLIC_ORIGIN's didn't — see FRONTEND_ORIGIN/ORIGIN above), set it as a
-      # literal value directly in Compose Manager's own environment editor instead.
+      # The admin password: whatever you set here IS the key the admin panel asks for, and
+      # it is the only thing protecting /api/admin/*. Use a long one (16+ characters; the
+      # backend warns at startup if it is shorter). It must be listed HERE to reach the
+      # container - a value in this project's .env that isn't forwarded by a line like this
+      # is silently ignored, and the backend then invents a random key of its own on every
+      # recreate (no writable backend/.env inside the container to remember it).
+      # If this stack's .env substitution doesn't reliably apply (as PUBLIC_ORIGIN's didn't
+      # - see FRONTEND_ORIGIN/ORIGIN above), set it as a literal value in Compose Manager's
+      # own environment editor instead. Avoid $ in the value (compose treats it as a variable).
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
     volumes:
       - backend-data:/app/data
@@ -40,6 +44,18 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      # Keep server-side rendering on the LAN. VITE_BACKEND_URL is baked in as the public
+      # https://salastil.com (the browser needs that), but without this entry the frontend's
+      # SSR fetches resolve it to Cloudflare, fail over from IPv6 (this network has none), then
+      # hairpin back in through the router - a WAN round trip and extra router connections for
+      # every render. Pointing it straight at NPM keeps SNI/TLS and the vhost match intact.
+      # Declared on backend because the frontend uses network_mode: service:backend and so
+      # shares this container's /etc/hosts (Docker rejects extra_hosts on a container-networked
+      # service). Like FRONTEND_ORIGIN/ORIGIN, this is deployment-specific: change the name if
+      # you fork this file for another domain. The address is the LAN IP of the host running
+      # NPM - set LAN_HOST_IP in .env when that machine's address changes, otherwise every
+      # server-rendered page 500s with "fetch failed" until this is updated.
+      - "salastil.com:${LAN_HOST_IP:-192.168.0.60}"
     healthcheck:
       test:
         [
@@ -69,3 +85,13 @@ services:
 
 volumes:
   backend-data:
+    # Pinned to an existing volume by its exact name instead of letting Compose derive
+    # "<project>_backend-data". The derived name changes with the project name, and
+    # Compose Manager's project name is whatever is in its project_name file - which once
+    # drifted from the folder name, so its Up button silently created a fresh, empty
+    # database next to the real one. `external` also means Compose will refuse to start
+    # (rather than quietly create a blank volume) if this one is ever missing, and that
+    # `down -v` can never delete it. On a brand-new host, create it first:
+    #   docker volume create homefeed-001_backend-data
+    external: true
+    name: homefeed-001_backend-data

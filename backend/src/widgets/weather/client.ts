@@ -3,6 +3,9 @@
 // the only file that talks to it; poller.ts orchestrates when/how the result gets saved,
 // same separation as backend/src/telegram/ keeps between the raw client and its callers.
 
+import type { ConditionDetails, ConditionKind } from './db.js';
+import { logger } from '../../storage/db/logs.js';
+
 export interface GeocodeResult {
 	name: string;
 	admin1: string | null;
@@ -35,10 +38,15 @@ const WMO_CONDITIONS: Record<number, WeatherCondition> = {
 	65: { text: 'Heavy rain', icon: '🌧️' },
 	66: { text: 'Light freezing rain', icon: '🌧️' },
 	67: { text: 'Heavy freezing rain', icon: '🌧️' },
+	// WMO 68, "rain and snow mixed". Open-Meteo never emits it; the blended forecast does (see blendModels).
+	68: { text: 'Wintry mix', icon: '🌨️' },
 	71: { text: 'Slight snow', icon: '🌨️' },
 	73: { text: 'Moderate snow', icon: '🌨️' },
 	75: { text: 'Heavy snow', icon: '❄️' },
 	77: { text: 'Snow grains', icon: '❄️' },
+	// WMO 79, "ice pellets". Open-Meteo never emits it; the blended forecast does when the
+	// models split between snow and freezing rain around freezing (see blendedCode).
+	79: { text: 'Sleet', icon: '🌨️' },
 	80: { text: 'Slight rain showers', icon: '🌦️' },
 	81: { text: 'Moderate rain showers', icon: '🌦️' },
 	82: { text: 'Violent rain showers', icon: '⛈️' },
@@ -69,6 +77,22 @@ const NIGHT_CONDITIONS: Record<number, WeatherCondition> = {
 	80: { text: 'Slight rain showers', icon: '🌧️' },
 	81: { text: 'Moderate rain showers', icon: '🌧️' }
 };
+
+/** See ConditionKind. Unknown codes read as cloudy, the safest neutral description. */
+export function conditionKindOfCode(code: number): ConditionKind {
+	if (code <= 1) return 'clear';
+	if (code === 2) return 'partly';
+	if (code === 45 || code === 48) return 'fog';
+	if (code === 51 || code === 53 || code === 55 || code === 61 || code === 80) return 'light-rain';
+	if (code === 63 || code === 65 || code === 81 || code === 82) return 'rain';
+	if (code === 56 || code === 57 || code === 66 || code === 67) return 'freezing';
+	if (code === 68) return 'mix';
+	if (code === 79) return 'sleet';
+	if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+	if (code === 96 || code === 99) return 'hail';
+	if (code === 95) return 'storm';
+	return 'cloudy';
+}
 
 /**
  * `isDay` defaults to true so a caller with no day/night context — notably the daily
@@ -122,10 +146,12 @@ const CONDITION_ADJECTIVES: Record<string, string> = {
 	'Heavy rain': 'rainy',
 	'Light freezing rain': 'icy',
 	'Heavy freezing rain': 'icy',
+	'Wintry mix': 'icy',
 	'Slight snow': 'snowy',
 	'Moderate snow': 'snowy',
 	'Heavy snow': 'snowy',
 	'Snow grains': 'snowy',
+	Sleet: 'icy',
 	'Slight rain showers': 'showery',
 	'Moderate rain showers': 'showery',
 	'Violent rain showers': 'stormy',
@@ -165,10 +191,12 @@ const PRECIP_KINDS: Record<string, PrecipKind> = {
 	'Heavy rain': { rank: 4, noun: 'heavy rain', snow: false },
 	'Light freezing rain': { rank: 3, noun: 'freezing rain', snow: false },
 	'Heavy freezing rain': { rank: 4, noun: 'heavy freezing rain', snow: false },
+	'Wintry mix': { rank: 3, noun: 'wintry mix', snow: false },
 	'Slight snow': { rank: 2, noun: 'light snow', snow: true },
 	'Moderate snow': { rank: 3, noun: 'snow', snow: true },
 	'Heavy snow': { rank: 4, noun: 'heavy snow', snow: true },
 	'Snow grains': { rank: 2, noun: 'snow grains', snow: true },
+	Sleet: { rank: 3, noun: 'sleet', snow: false },
 	'Slight rain showers': { rank: 2, noun: 'light showers', snow: false },
 	'Moderate rain showers': { rank: 3, noun: 'showers', snow: false },
 	'Violent rain showers': { rank: 5, noun: 'heavy downpours', snow: false },
@@ -477,7 +505,7 @@ export async function geocodeLocation(query: string): Promise<GeocodeResult[]> {
 	}));
 }
 
-export interface CurrentConditions {
+export interface CurrentConditions extends ConditionDetails {
 	temp: number;
 	feelsLike: number;
 	conditionText: string;
@@ -497,9 +525,12 @@ export interface CurrentConditions {
 
 export interface ForecastResult {
 	current: CurrentConditions;
-	hourly: {
+	hourly: (ConditionDetails & {
 		time: string;
 		temp: number;
+		/** Apparent temperature, in the caller's configured temperature unit. */
+		feelsLike: number;
+		conditionKind: ConditionKind;
 		conditionText: string;
 		icon: string;
 		/** Percent, 0-100. */
@@ -516,8 +547,25 @@ export interface ForecastResult {
 		precipAmount: number;
 		/** True when precipAmount is snow depth rather than rainfall. */
 		precipIsSnow: boolean;
+	})[];
+	daily: {
+		date: string;
+		tempMax: number;
+		/** The calendar day's minimum, kept as the fallback for nightLow when too little of the night is in the forecast. */
+		tempMin: number;
+		/** Short daytime description composed from the hourly series, e.g. "Mostly cloudy with a shower". */
+		conditionText: string;
+		icon: string;
+		/** Short description of the night that FOLLOWS this day (dusk to the next dawn), e.g. "A couple of evening showers". */
+		nightDescription: string;
+		nightIcon: string;
+		/** Lowest temperature of that night - AccuWeather's "low" - or null when under 6 night hours are in the forecast (the last day), in which case tempMin stands in. */
+		nightLow: number | null;
+		/** Percent, 0-100: the day's maximum hourly chance of precipitation. */
+		precipitationChance: number | null;
+		/** Same, over that night's hours alone - what a "Tonight" row shows once the day itself is over. */
+		nightPrecipitationChance: number | null;
 	}[];
-	daily: { date: string; tempMax: number; tempMin: number; conditionText: string; icon: string }[];
 	/** A plain-English wrap-up ("Current conditions in X are 86°F and sunny with a light northwest wind at 5 mph. Tonight will turn...") — composed from the same numbers above, not a separate API call. Null if there isn't enough data to build one (e.g. tomorrow's forecast missing). */
 	summary: string | null;
 }
@@ -669,6 +717,631 @@ function buildDaySummary(
 		.join(' ');
 }
 
+// ---------------------------------------------------------------------------
+// Indoor humidity
+// ---------------------------------------------------------------------------
+// AccuWeather shows an "Indoor Humidity" percentage and an 11-step description of it
+// ("Dangerously Dry" ... "Ideal Humidity" ... "Dangerously Humid"), but publishes neither
+// the thresholds nor the method. Both below were reverse-engineered from 28 live readings
+// taken off their current-weather pages (Antarctica to Singapore) and then checked against
+// 6 more cities that were NOT used in the fit: all 34 descriptions match and every
+// percentage is within 2 points (33 of 34 within 1). Treat them as a close approximation of
+// AccuWeather's, not a copy of it.
+//
+// What those readings showed:
+//
+// 1. The PERCENTAGE is the outdoor air brought to a fixed 68°F without gaining or losing
+//    moisture. Outdoors already 68°F or warmer, indoor simply equals outdoor RH (all 20
+//    warm readings matched exactly); colder, it is the RH that the outdoor dew point
+//    implies at 68°F (Philadelphia 63%, Seattle 49%, Moscow 37%, Atlanta 72% - each within
+//    a point). Below roughly a 34-39°F dew point the real figures run ~14 points HIGHER than
+//    that, i.e. they allow for moisture people add indoors; INDOOR_MOISTURE_GAIN_* is an
+//    empirical fit to the 8 readings in that regime (each within 2 points, and Calgary and
+//    Edmonton, held out, within 1) and tapers to nothing by a 39°F dew point, because
+//    readings at 41°F and up showed no allowance at all.
+//
+// 2. The DESCRIPTION is a function of the outdoor dew point alone - NOT of the percentage.
+//    Minneapolis at 41% is "Ideal" while Reykjavik at 42% is "Slightly Dry"; sorting every
+//    reading by dew point instead gives one clean monotonic ladder (see the scale below).
+
+const INDOOR_TEMP_C = 20; // 68°F
+const INDOOR_MOISTURE_GAIN_HPA = 3.3;
+const INDOOR_GAIN_FULL_AT_DEW_C = 1.1; // 34°F
+const INDOOR_GAIN_NONE_AT_DEW_C = 3.9; // 39°F
+const INDOOR_GAIN_SATURATION_HPA = 1.4;
+
+function toCelsius(value: number, unit: 'celsius' | 'fahrenheit'): number {
+	return unit === 'celsius' ? value : ((value - 32) * 5) / 9;
+}
+
+/** Magnus approximation, in hPa. */
+function saturationVaporPressure(tempC: number): number {
+	return 6.112 * Math.exp((17.62 * tempC) / (243.12 + tempC));
+}
+
+export function estimateIndoorHumidity(outdoorTempC: number, dewPointC: number, outdoorRh: number): number {
+	if (outdoorTempC >= INDOOR_TEMP_C) return Math.round(outdoorRh);
+	const outdoorVapor = saturationVaporPressure(dewPointC);
+	const taper = Math.min(
+		1,
+		Math.max(0, (INDOOR_GAIN_NONE_AT_DEW_C - dewPointC) / (INDOOR_GAIN_NONE_AT_DEW_C - INDOOR_GAIN_FULL_AT_DEW_C))
+	);
+	// The allowance also vanishes as the air gets bone dry (nothing to carry moisture through
+	// to), which is what keeps Antarctic readings from being credited the full amount.
+	const gain = INDOOR_MOISTURE_GAIN_HPA * taper * (1 - Math.exp(-outdoorVapor / INDOOR_GAIN_SATURATION_HPA));
+	const percent = (100 * (outdoorVapor + gain)) / saturationVaporPressure(INDOOR_TEMP_C);
+	return Math.round(Math.min(100, Math.max(0, percent)));
+}
+
+/**
+ * Upper-exclusive cut points on the outdoor dew point in °F. Each cut sits inside the bracket
+ * the live readings pinned it to: the narrow ones are good to about ±1°F (Slightly Dry/Ideal at
+ * 39-41, Ideal/Slightly Humid at 55-57, Slightly Humid/Humid at 62-64, Very/Extremely Humid at
+ * 71-72) and the wide ones are midpoints of their bracket (Dangerously/Extremely Dry between
+ * -24 and -1, Extremely/Very Dry between -1 and 10, Very Dry/Dry between 18 and 27, Humid/Very
+ * Humid between 64 and 67, Extremely/Dangerously Humid between 75 and 78).
+ */
+const INDOOR_HUMIDITY_SCALE: { belowDewF: number; label: string; level: number }[] = [
+	{ belowDewF: -12, label: 'Dangerously Dry', level: -5 },
+	{ belowDewF: 5, label: 'Extremely Dry', level: -4 },
+	{ belowDewF: 23, label: 'Very Dry', level: -3 },
+	{ belowDewF: 28.5, label: 'Dry', level: -2 },
+	{ belowDewF: 40, label: 'Slightly Dry', level: -1 },
+	{ belowDewF: 56, label: 'Ideal Humidity', level: 0 },
+	{ belowDewF: 63, label: 'Slightly Humid', level: 1 },
+	{ belowDewF: 66, label: 'Humid', level: 2 },
+	{ belowDewF: 71.5, label: 'Very Humid', level: 3 },
+	{ belowDewF: 76.5, label: 'Extremely Humid', level: 4 },
+	{ belowDewF: Infinity, label: 'Dangerously Humid', level: 5 }
+];
+
+export function describeIndoorHumidity(dewPointC: number): { label: string; level: number } {
+	const dewF = (dewPointC * 9) / 5 + 32;
+	const step = INDOOR_HUMIDITY_SCALE.find((s) => dewF < s.belowDewF) ?? INDOOR_HUMIDITY_SCALE[INDOOR_HUMIDITY_SCALE.length - 1];
+	return { label: step.label, level: step.level };
+}
+
+/** Open-Meteo reports metres; show miles for mph users and kilometres for kph users, one decimal while it's short enough to matter. */
+function formatVisibility(meters: number | null | undefined, windUnit: 'mph' | 'kph'): number | null {
+	if (meters === null || meters === undefined) return null;
+	const value = windUnit === 'mph' ? meters / 1609.344 : meters / 1000;
+	return value < 10 ? Math.round(value * 10) / 10 : Math.round(value);
+}
+
+// ---------------------------------------------------------------------------
+// Cloud ceiling
+// ---------------------------------------------------------------------------
+// Open-Meteo has a `cloud_base` variable but returns null for every model at every location
+// (checked against 13 models), so there is no ceiling to be had from it. The National
+// Weather Service's gridpoint forecast does carry a real ceilingHeight series, in coarse
+// blocks (anywhere from 1 to 8 hours), US only. Used where it exists; elsewhere the
+// ceiling is simply null and the page leaves the row out rather than guessing — the usual
+// temperature/dew-point "lifting condensation level" estimate describes convective cloud
+// bases and would contradict a real ceiling at higher altitudes (it works out to roughly 1,800 ft for a
+// 63°F/55°F day where AccuWeather reported 26,700 ft under a high overcast).
+
+interface CeilingBlock {
+	startMs: number;
+	endMs: number;
+	feet: number | null;
+}
+
+const NWS_HEADERS = {
+	// NWS's API usage policy requires an identifying User-Agent on every request.
+	'User-Agent': 'Homefeed/1.0 (self-hosted news aggregator)',
+	Accept: 'application/geo+json'
+};
+
+// A location's grid cell never changes, so the points lookup only needs doing once per process.
+const nwsGridUrlCache = new Map<string, string>();
+
+/** ISO-8601 duration limited to the day/hour/minute forms NWS actually emits (P1DT6H, PT8H, PT30M). */
+function isoDurationMs(duration: string): number {
+	const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(duration);
+	if (!m) return 0;
+	return (Number(m[1] ?? 0) * 24 * 60 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0)) * 60_000;
+}
+
+/**
+ * Never throws: the ceiling is a nice-to-have, and NWS answering 404 for anywhere outside the
+ * US is the normal case, not a fault. Any failure just yields no blocks, so every hour's
+ * ceiling comes out null and the forecast itself is unaffected.
+ */
+async function fetchCeilingBlocks(latitude: number, longitude: number): Promise<CeilingBlock[]> {
+	try {
+		// NWS redirects coordinates with more than 4 decimal places, so trim them up front.
+		const key = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+		let gridUrl = nwsGridUrlCache.get(key);
+		if (!gridUrl) {
+			const points = await fetch(`https://api.weather.gov/points/${key}`, {
+				headers: NWS_HEADERS,
+				signal: AbortSignal.timeout(8000)
+			});
+			if (!points.ok) return [];
+			gridUrl = ((await points.json()) as { properties?: { forecastGridData?: string } }).properties?.forecastGridData;
+			if (!gridUrl) return [];
+			nwsGridUrlCache.set(key, gridUrl);
+		}
+		const grid = await fetch(gridUrl, { headers: NWS_HEADERS, signal: AbortSignal.timeout(8000) });
+		if (!grid.ok) return [];
+		const values = ((await grid.json()) as { properties?: { ceilingHeight?: { values?: { validTime: string; value: number | null }[] } } })
+			.properties?.ceilingHeight?.values;
+		return (values ?? []).flatMap((v) => {
+			const [start, duration] = v.validTime.split('/');
+			const startMs = new Date(start).getTime();
+			if (Number.isNaN(startMs)) return [];
+			return [
+				{
+					startMs,
+					endMs: startMs + isoDurationMs(duration ?? ''),
+					// metres -> feet, to the nearest 100: the source steps in coarse increments anyway
+					feet: v.value === null ? null : Math.round((v.value * 3.28084) / 100) * 100
+				}
+			];
+		});
+	} catch {
+		return [];
+	}
+}
+
+function ceilingAt(blocks: CeilingBlock[], atMs: number): number | null {
+	return blocks.find((b) => atMs >= b.startMs && atMs < b.endMs)?.feet ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Day and night descriptions for the 7-day list
+// ---------------------------------------------------------------------------
+// AccuWeather describes each day in a short phrase ("Mostly cloudy with a shower", "A couple
+// of morning showers") and each night separately ("Night: Cloudy, a couple of t-storms"). The
+// daily weather_code can't say that - it names only the single worst condition of the whole
+// 24 hours - so both phrases are composed from the hourly series for that period instead:
+// cloud cover picks the sky word, and the wet hours decide whether, how much, and when.
+
+type PrecipFamily =
+	| 'drizzle'
+	| 'freezing drizzle'
+	| 'showers'
+	| 'rain'
+	| 'freezing rain'
+	| 'wintry mix'
+	| 'snow showers'
+	| 'snow'
+	| 'thunderstorms';
+
+const WMO_PRECIP: Record<number, { family: PrecipFamily; heavy: boolean }> = {
+	51: { family: 'drizzle', heavy: false },
+	53: { family: 'drizzle', heavy: false },
+	55: { family: 'drizzle', heavy: false },
+	56: { family: 'freezing drizzle', heavy: false },
+	57: { family: 'freezing drizzle', heavy: false },
+	61: { family: 'rain', heavy: false },
+	63: { family: 'rain', heavy: false },
+	65: { family: 'rain', heavy: true },
+	66: { family: 'freezing rain', heavy: false },
+	67: { family: 'freezing rain', heavy: true },
+	68: { family: 'wintry mix', heavy: false },
+	71: { family: 'snow', heavy: false },
+	73: { family: 'snow', heavy: false },
+	75: { family: 'snow', heavy: true },
+	77: { family: 'snow', heavy: false },
+	79: { family: 'wintry mix', heavy: false },
+	80: { family: 'showers', heavy: false },
+	81: { family: 'showers', heavy: false },
+	82: { family: 'showers', heavy: true },
+	85: { family: 'snow showers', heavy: false },
+	86: { family: 'snow showers', heavy: true },
+	95: { family: 'thunderstorms', heavy: false },
+	96: { family: 'thunderstorms', heavy: false },
+	99: { family: 'thunderstorms', heavy: false }
+};
+
+/**
+ * `singular` is null for mass nouns ("rain", "snow"), which take "a little ..." / "periods of
+ * ..." rather than "a ..." / "a couple of ...". `code` is the WMO code whose icon represents
+ * the family (and `heavyCode` its heavy form), so the row's icon always agrees with its text.
+ */
+const PRECIP_NOUNS: Record<PrecipFamily, { singular: string | null; plural: string; code: number; heavyCode: number }> = {
+	drizzle: { singular: null, plural: 'drizzle', code: 51, heavyCode: 51 },
+	'freezing drizzle': { singular: null, plural: 'freezing drizzle', code: 56, heavyCode: 56 },
+	showers: { singular: 'shower', plural: 'showers', code: 80, heavyCode: 82 },
+	rain: { singular: null, plural: 'rain', code: 61, heavyCode: 65 },
+	'freezing rain': { singular: null, plural: 'freezing rain', code: 66, heavyCode: 67 },
+	'wintry mix': { singular: null, plural: 'wintry mix', code: 68, heavyCode: 68 },
+	'snow showers': { singular: 'snow shower', plural: 'snow showers', code: 85, heavyCode: 86 },
+	snow: { singular: null, plural: 'snow', code: 71, heavyCode: 75 },
+	thunderstorms: { singular: 'thunderstorm', plural: 'thunderstorms', code: 95, heavyCode: 95 }
+};
+
+const SKY_WORDS_DAY = ['Sunny', 'Mostly sunny', 'Partly sunny', 'Mostly cloudy', 'Cloudy'];
+const SKY_WORDS_NIGHT = ['Clear', 'Mostly clear', 'Partly cloudy', 'Mostly cloudy', 'Cloudy'];
+// One WMO code per sky bucket, so the dry icon comes from the same lookup (and the same
+// night variants) as everywhere else.
+const SKY_BUCKET_CODES = [0, 1, 2, 3, 3];
+
+interface PeriodHour {
+	hourOfDay: number;
+	code: number;
+	cloud: number;
+	/** Percent chance of precipitation this hour, when the forecast has one. */
+	chance?: number | null;
+}
+
+/**
+ * At or above this chance an hour is described as wet even when the model's single
+ * deterministic run is dry there. AccuWeather's own wording follows the probability, not the
+ * model run: its 10-day list says "an afternoon shower" at 55% and "a couple of morning
+ * showers" at 72%, but plain sky wording at 25% and below. Without this, a row could read
+ * "Partly sunny" right beside a 56% chance of precipitation.
+ */
+const LIKELY_PRECIP_CHANCE = 50;
+
+function precipKindOf(hour: PeriodHour): { family: PrecipFamily; heavy: boolean } | null {
+	const coded = WMO_PRECIP[hour.code];
+	if (coded) return coded;
+	return (hour.chance ?? 0) >= LIKELY_PRECIP_CHANCE ? { family: 'showers', heavy: false } : null;
+}
+
+const SEGMENT_ADJECTIVE: Record<DaySegment, string> = {
+	overnight: 'overnight',
+	morning: 'morning',
+	afternoon: 'afternoon',
+	evening: 'evening'
+};
+const SEGMENT_TRAILING: Record<DaySegment, string> = {
+	overnight: 'overnight',
+	morning: 'in the morning',
+	afternoon: 'in the afternoon',
+	evening: 'in the evening'
+};
+
+function withIndefiniteArticle(phrase: string): string {
+	return /^[aeiou]/i.test(phrase) ? `an ${phrase}` : `a ${phrase}`;
+}
+
+/**
+ * How much of the period was wet, said the way a forecaster would: a count of discrete
+ * showers/storms for the countable families, a duration for the rest.
+ */
+function quantifyPrecip(family: PrecipFamily, wetHours: number, totalHours: number, heavy: boolean, timing: DaySegment | null): string {
+	const noun = PRECIP_NOUNS[family];
+	const heavyWord = heavy && family !== 'thunderstorms' ? 'heavy ' : '';
+	const fraction = wetHours / totalHours;
+
+	// One or two brief spells read best with the time folded in as an adjective:
+	// "an afternoon shower", "a couple of morning showers", "a little overnight rain".
+	if (timing && (noun.singular ? wetHours <= 3 : wetHours <= 2)) {
+		const when = SEGMENT_ADJECTIVE[timing];
+		if (noun.singular) {
+			return wetHours === 1
+				? withIndefiniteArticle(`${when} ${heavyWord}${noun.singular}`)
+				: `a couple of ${when} ${heavyWord}${noun.plural}`;
+		}
+		return `a little ${when} ${heavyWord}${noun.plural}`;
+	}
+
+	let core: string;
+	if (noun.singular) {
+		core = wetHours === 1 ? `a ${heavyWord}${noun.singular}` : wetHours <= 3 ? `a couple of ${heavyWord}${noun.plural}` : `${heavyWord}${noun.plural}`;
+	} else {
+		core = wetHours <= 2 ? `a little ${heavyWord}${noun.plural}` : fraction < 0.6 ? `periods of ${heavyWord}${noun.plural}` : `${heavyWord}${noun.plural}`;
+	}
+	return timing ? `${core} ${SEGMENT_TRAILING[timing]}` : core;
+}
+
+function capitalizeFirst(text: string): string {
+	return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * Null for an empty period. `isDay` only changes the vocabulary ("Sunny" vs "Clear") and which
+ * icon variants are used; which hours belong to the period is the caller's decision.
+ */
+export function describePeriod(hours: PeriodHour[], isDay: boolean): { text: string; icon: string } | null {
+	if (hours.length === 0) return null;
+	const total = hours.length;
+
+	const meanCloud = hours.reduce((sum, h) => sum + h.cloud, 0) / total;
+	// Eighths of the sky, the same cut-points forecasters use for sunny/partly/mostly/cloudy.
+	const bucket = meanCloud < 12.5 ? 0 : meanCloud < 37.5 ? 1 : meanCloud < 62.5 ? 2 : meanCloud < 87.5 ? 3 : 4;
+	const sky = (isDay ? SKY_WORDS_DAY : SKY_WORDS_NIGHT)[bucket];
+
+	const wet = hours.filter((h) => precipKindOf(h) !== null);
+	if (wet.length === 0) {
+		return { text: sky, icon: wmoToCondition(SKY_BUCKET_CODES[bucket], isDay).icon };
+	}
+
+	const counts = new Map<PrecipFamily, number>();
+	let heavyHours = 0;
+	for (const h of wet) {
+		const kind = precipKindOf(h)!;
+		counts.set(kind.family, (counts.get(kind.family) ?? 0) + 1);
+		if (kind.heavy) heavyHours++;
+	}
+	const count = (family: PrecipFamily) => counts.get(family) ?? 0;
+
+	// A day with both rain and snow in it is a mix, not whichever happened to win by an hour.
+	const snowy = count('snow') + count('snow showers');
+	const rainy = count('rain') + count('showers') + count('drizzle');
+	// Rain and snow in one period, or hours the blend already called a wintry mix.
+	const isMix = (snowy > 0 && rainy > 0) || count('wintry mix') > 0;
+
+	// Models flip between drizzle, rain and showers codes hour to hour within one wet spell, so
+	// how MUCH it rained comes from the whole class of like precipitation, not just the single
+	// code that happened to be most common - otherwise 4 drizzle + 3 rain + 2 shower hours
+	// would be described as "periods of drizzle" and undercounted at 4.
+	const classOf: Record<PrecipFamily, string> = {
+		drizzle: 'liquid',
+		showers: 'liquid',
+		rain: 'liquid',
+		'snow showers': 'snow',
+		snow: 'snow',
+		'freezing drizzle': 'freezing',
+		'freezing rain': 'freezing',
+		'wintry mix': 'mix',
+		thunderstorms: 'thunder'
+	};
+	const classHours = new Map<string, number>();
+	for (const [family, n] of counts) classHours.set(classOf[family], (classHours.get(classOf[family]) ?? 0) + n);
+
+	// Severity breaks ties, so a 50/50 day reads "thunderstorms", not "showers".
+	const severity: PrecipFamily[] = ['drizzle', 'showers', 'rain', 'snow showers', 'snow', 'wintry mix', 'freezing drizzle', 'freezing rain', 'thunderstorms'];
+	const bySize = (a: [PrecipFamily, number], b: [PrecipFamily, number]) =>
+		(classHours.get(classOf[b[0]]) ?? 0) - (classHours.get(classOf[a[0]]) ?? 0) || b[1] - a[1] || severity.indexOf(b[0]) - severity.indexOf(a[0]);
+	const primary = [...counts.entries()].sort(bySize)[0][0];
+	const primaryHours = isMix ? wet.length : (classHours.get(classOf[primary]) ?? 0);
+	const heavy = heavyHours / wet.length >= 0.4;
+
+	// Timing is only worth stating when ALL the wet hours fall in one part of the day.
+	const segments = new Set(wet.map((h) => segmentOfHour(h.hourOfDay)));
+	const timing = segments.size === 1 ? [...segments][0] : null;
+
+	const lead = isMix ? 'wintry mix' : null;
+	let main: string;
+	if (lead) {
+		main = `${wet.length <= 2 ? 'a little ' : primaryHours / total < 0.6 ? 'periods of ' : ''}${lead}${timing ? ` ${SEGMENT_TRAILING[timing]}` : ''}`;
+	} else {
+		main = quantifyPrecip(primary, primaryHours, total, heavy, timing);
+	}
+
+	// Anything dangerous that isn't the headline still gets named.
+	const extras: string[] = [];
+	if (!isMix && primary !== 'thunderstorms' && count('thunderstorms') > 0) {
+		const t = count('thunderstorms');
+		extras.push(t === 1 ? 'a thunderstorm' : t <= 3 ? 'a couple of thunderstorms' : 'thunderstorms');
+	}
+	if (primary !== 'freezing rain' && primary !== 'freezing drizzle' && count('freezing rain') + count('freezing drizzle') > 0) {
+		extras.push(count('freezing rain') + count('freezing drizzle') <= 2 ? 'a little freezing rain' : 'freezing rain');
+	}
+	const withExtras = [main, ...extras].join(' and ');
+
+	// A spell that fills most of the period is the whole story - no sky word needed. A timed
+	// one is too ("A couple of morning showers"). Otherwise it's weather laid over a sky.
+	const steady = primaryHours / total >= 0.6;
+	const text = timing || steady ? capitalizeFirst(withExtras) : `${sky} with ${withExtras}`;
+
+	// Thunder trumps everything for the icon; otherwise the headline family, in its heavy
+	// form when most of the wet hours were heavy.
+	const iconCode = count('thunderstorms') > 0 ? 95 : isMix ? 68 : heavy ? PRECIP_NOUNS[primary].heavyCode : PRECIP_NOUNS[primary].code;
+	return { text, icon: wmoToCondition(iconCode, isDay).icon };
+}
+
+// The forecast is the AVERAGE of four global models rather than Open-Meteo's default pick.
+// The default ("best_match") is NOAA's GFS for most of the US, and on 2026-11-13 GFS alone
+// forecast snow for Philadelphia while ECMWF, ICON and GEM all said rain - one outlier ran
+// cold and the widget printed it as fact. Averaging the numbers (temperature, precipitation,
+// cloud, wind...) lets a lone model be outvoted. A weather *code* can't be averaged, so each
+// hour's condition is re-derived from the averaged numbers (see blendedCode).
+const FORECAST_MODELS = ['gfs_seamless', 'ecmwf_ifs025', 'icon_seamless', 'gem_seamless'] as const;
+
+const CURRENT_VARS =
+	'temperature_2m,apparent_temperature,weather_code,is_day,precipitation,snowfall,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,pressure_msl,cloud_cover,visibility';
+
+type Series = (number | string | null | undefined)[];
+type ModelResponse = { error?: boolean; reason?: string; utc_offset_seconds: number; hourly: Record<string, Series>; daily: Record<string, Series> };
+
+// A poll that fails leaves the previous forecast on screen for the whole 45-minute interval,
+// and connection timeouts to Open-Meteo do happen (seen from the Unraid host), so a network
+// failure or a 5xx is retried a couple of times before it counts. A 4xx is not - that is
+// the request's fault and would fail the same way again.
+async function getJson<T>(url: string, attempts = 3): Promise<T> {
+	let lastError: Error = new Error('forecast request failed');
+	for (let attempt = 1; attempt <= attempts; attempt++) {
+		try {
+			const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+			if (res.ok) return (await res.json()) as T;
+			lastError = new Error(`Forecast API returned ${res.status}`);
+			if (res.status < 500) throw lastError;
+		} catch (err) {
+			lastError = err as Error;
+			if (lastError.message.startsWith('Forecast API returned 4')) throw lastError;
+		}
+		if (attempt < attempts) await new Promise((r) => setTimeout(r, 1000 * attempt));
+	}
+	throw lastError;
+}
+
+/** Mean of the models that reported a value; null when none did (a model's range can end before the others'). */
+function meanOf(values: (number | string | null | undefined)[], digits = 1): number | null {
+	const nums = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+	if (!nums.length) return null;
+	const scale = 10 ** digits;
+	return Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * scale) / scale;
+}
+
+/** Average of compass bearings - 350 and 10 degrees are 20 apart, not 180. */
+function meanBearing(values: (number | string | null | undefined)[]): number | null {
+	const nums = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+	if (!nums.length) return null;
+	const x = nums.reduce((a, d) => a + Math.cos((d * Math.PI) / 180), 0);
+	const y = nums.reduce((a, d) => a + Math.sin((d * Math.PI) / 180), 0);
+	return (Math.round((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
+}
+
+/**
+ * One WMO code for an hour, from the models' averaged numbers.
+ *  - Wet when the averaged precipitation is at least 0.1 mm/h, so one wet model among
+ *    three dry ones doesn't make rain, but an average of real rain does.
+ *  - What falls depends on the averaged temperature: at or below 0.5C snow; up to 4C a
+ *    "wintry mix" if ANY model has snow (the models disagree on snow-versus-rain, which is
+ *    what a mix is); warmer is rain or drizzle (drizzle when most wet models say drizzle).
+ *  - Thunder and fog need half the models to agree; a thunderstorm is hail (96/99) when
+ *    half the models that call thunder also call hail.
+ *  - Near freezing, half the models calling freezing rain makes freezing rain, and models
+ *    split between snow and freezing rain make sleet (WMO 79) - ice pellets are exactly
+ *    what falls in the layer where that disagreement lives.
+ *  - Dry hours take their sky from the averaged cloud cover.
+ */
+function blendedCode(h: {
+	tempC: number;
+	precipMm: number;
+	cloud: number;
+	codes: (number | null)[];
+	anySnow: boolean;
+}): number {
+	const codes = h.codes.filter((c): c is number => c !== null);
+	const half = codes.length / 2;
+	const votes = (pred: (c: number) => boolean) => codes.filter(pred).length;
+
+	if (h.precipMm >= 0.1) {
+		const thunder = votes((c) => c === 95 || c === 96 || c === 99);
+		if (thunder >= half && half > 0) {
+			const hail = votes((c) => c === 96 || c === 99);
+			if (hail * 2 >= thunder) return votes((c) => c === 99) * 2 >= hail ? 99 : 96;
+			return 95;
+		}
+		const freezing = votes((c) => c === 56 || c === 57 || c === 66 || c === 67);
+		const snowVotes = votes((c) => (c >= 71 && c <= 77) || c === 85 || c === 86);
+		if (h.tempC <= 1.5 && freezing > 0 && snowVotes > 0) return 79;
+		if (h.tempC <= 1.5 && freezing >= half && half > 0) return h.precipMm < 1 ? 66 : 67;
+		if (h.tempC <= 0.5) return h.precipMm < 0.5 ? 71 : h.precipMm < 1.5 ? 73 : 75;
+		if (h.tempC <= 4 && h.anySnow) return 68;
+		const drizzle = votes((c) => c >= 51 && c <= 57) > votes((c) => (c >= 61 && c <= 67) || (c >= 80 && c <= 82));
+		if (drizzle) return h.precipMm < 0.3 ? 51 : h.precipMm < 0.6 ? 53 : 55;
+		return h.precipMm < 1 ? 61 : h.precipMm < 4 ? 63 : 65;
+	}
+	if (half > 0 && votes((c) => c === 45 || c === 48) >= half) return 45;
+	return h.cloud < 12.5 ? 0 : h.cloud < 37.5 ? 1 : h.cloud < 62.5 ? 2 : 3;
+}
+
+/**
+ * Folds a multi-model response (every variable repeated once per model, suffixed with the
+ * model's name) into the single-model shape the rest of fetchForecast reads, including a
+ * `current` block taken from the blended hour we are in. Throws when fewer than two models
+ * came back with data, so the caller falls back to the plain default model.
+ */
+function blendModels(raw: ModelResponse, unit: 'celsius' | 'fahrenheit', precipUnit: PrecipUnit): unknown {
+	if (raw.error) throw new Error(raw.reason ?? 'forecast error');
+	const col = (group: 'hourly' | 'daily', name: string): Series[] =>
+		FORECAST_MODELS.map((m) => raw[group][`${name}_${m}`]).filter((s): s is Series => Array.isArray(s));
+	const live = col('hourly', 'temperature_2m').filter((s) => s.some((v) => typeof v === 'number'));
+	if (live.length < 2) throw new Error(`only ${live.length} forecast model(s) returned data`);
+
+	const times = raw.hourly.time as string[];
+	const n = times.length;
+	const mean = (name: string, digits = 1) => {
+		const cols = col('hourly', name);
+		return Array.from({ length: n }, (_, i) => meanOf(cols.map((c) => c[i]), digits));
+	};
+
+	const temp = mean('temperature_2m');
+	const precip = mean('precipitation', 3);
+	const cloud = mean('cloud_cover', 0);
+	const codeCols = col('hourly', 'weather_code');
+	const snowCols = col('hourly', 'snowfall');
+	const mmPerUnit = precipUnit === 'in' ? 25.4 : 1;
+	// 10:1 snow-to-liquid, the usual rule of thumb - 1 in of water is 10 in of snow, 1 mm is 1 cm.
+	const snowRatio = precipUnit === 'in' ? 10 : 1;
+
+	const weather_code: number[] = [];
+	const snowfall: number[] = [];
+	for (let i = 0; i < n; i++) {
+		const codes = codeCols.map((c) => (typeof c[i] === 'number' ? (c[i] as number) : null));
+		const anySnow =
+			snowCols.some((c) => typeof c[i] === 'number' && (c[i] as number) > 0) ||
+			codes.some((c) => c !== null && ((c >= 71 && c <= 77) || c === 85 || c === 86));
+		const code = blendedCode({
+			tempC: toCelsius(temp[i] ?? 0, unit),
+			precipMm: (precip[i] ?? 0) * mmPerUnit,
+			cloud: cloud[i] ?? 0,
+			codes,
+			anySnow
+		});
+		weather_code.push(code);
+		snowfall.push(code >= 71 && code <= 75 ? (precip[i] ?? 0) * snowRatio : 0);
+	}
+
+	const hourly: Record<string, Series> = {
+		time: times,
+		temperature_2m: temp,
+		apparent_temperature: mean('apparent_temperature'),
+		weather_code,
+		is_day: (col('hourly', 'is_day')[0] ?? []) as Series,
+		precipitation: precip.map((v) => v ?? 0),
+		snowfall,
+		precipitation_probability: mean('precipitation_probability', 0),
+		relative_humidity_2m: mean('relative_humidity_2m', 0),
+		dew_point_2m: mean('dew_point_2m'),
+		wind_speed_10m: mean('wind_speed_10m'),
+		wind_gusts_10m: mean('wind_gusts_10m'),
+		wind_direction_10m: Array.from({ length: n }, (_, i) => meanBearing(col('hourly', 'wind_direction_10m').map((c) => c[i]))),
+		pressure_msl: mean('pressure_msl'),
+		cloud_cover: cloud,
+		visibility: mean('visibility')
+	};
+
+	// Daily: extremes and chances are averaged across models; rain and snow totals are summed
+	// from the blended hours so they always agree with what the hourly strip shows.
+	const dayTimes = raw.daily.time as string[];
+	const dailyMean = (name: string, digits = 1) => {
+		const cols = col('daily', name);
+		return dayTimes.map((_, d) => meanOf(cols.map((c) => c[d]), digits));
+	};
+	const first = (name: string) => (col('daily', name)[0] ?? []) as Series;
+	const sums = (pick: (i: number) => number) =>
+		dayTimes.map((day) => {
+			let total = 0;
+			for (let i = 0; i < n; i++) if (times[i].startsWith(day)) total += pick(i);
+			return Math.round(total * 1000) / 1000;
+		});
+	const daily: Record<string, Series> = {
+		time: dayTimes,
+		temperature_2m_max: dailyMean('temperature_2m_max'),
+		temperature_2m_min: dailyMean('temperature_2m_min'),
+		// Only the fallback when a day has too few hours; midday of the blend stands in.
+		weather_code: dayTimes.map((day) => weather_code[times.findIndex((t) => t.startsWith(`${day}T12`))] ?? 3),
+		sunrise: first('sunrise'),
+		sunset: first('sunset'),
+		precipitation_probability_max: dailyMean('precipitation_probability_max', 0),
+		rain_sum: sums((i) => (snowfall[i] > 0 ? 0 : (precip[i] ?? 0))),
+		showers_sum: dayTimes.map(() => 0),
+		snowfall_sum: sums((i) => snowfall[i])
+	};
+
+	// "Now" is the blended hour we are in, so right-now conditions can't contradict the strip.
+	const nowMs = Date.now();
+	let cur = 0;
+	for (let i = 0; i < n; i++) if (new Date(withUtcOffset(times[i], raw.utc_offset_seconds)).getTime() <= nowMs) cur = i;
+	const current = Object.fromEntries(Object.entries(hourly).map(([k, v]) => [k, v[cur] ?? null]));
+
+	return { ...raw, hourly, daily, current };
+}
+
+/**
+ * The forecast response for the whole widget: the four-model blend, or - when that can't be
+ * built (a model unreachable for the location, the request failing) - Open-Meteo's own
+ * default model, so the widget never goes blank over it.
+ */
+async function fetchForecastJson(baseUrl: string, unit: 'celsius' | 'fahrenheit', precipUnit: PrecipUnit): Promise<unknown> {
+	try {
+		return blendModels(await getJson<ModelResponse>(`${baseUrl}&models=${FORECAST_MODELS.join(',')}`), unit, precipUnit);
+	} catch (err) {
+		logger.error('weather', `Four-model blend unavailable (${(err as Error).message}); using Open-Meteo's default model`);
+		const data = await getJson<{ error?: boolean; reason?: string }>(`${baseUrl}&current=${CURRENT_VARS}`);
+		if (data.error) throw new Error(`Forecast API error: ${data.reason ?? 'unknown'}`);
+		return data;
+	}
+}
+
 export async function fetchForecast(
 	latitude: number,
 	longitude: number,
@@ -678,22 +1351,22 @@ export async function fetchForecast(
 	precipUnit: PrecipUnit,
 	locationName: string | null
 ): Promise<ForecastResult> {
-	const url =
+	const baseUrl =
 		`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
-		`&current=temperature_2m,apparent_temperature,weather_code,is_day,precipitation,snowfall,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl` +
 		// humidity/wind/pressure are per-hour duplicates of what `current` already reports for
 		// right now — the weather page's stat panel swaps to the hovered hour's values, so it
 		// needs the whole series, not just the current hour's.
-		`&hourly=temperature_2m,weather_code,is_day,precipitation,snowfall,precipitation_probability,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl` +
+		`&hourly=temperature_2m,apparent_temperature,weather_code,is_day,precipitation,snowfall,precipitation_probability,relative_humidity_2m,dew_point_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,pressure_msl,cloud_cover,visibility` +
 		`&daily=temperature_2m_max,temperature_2m_min,weather_code,sunrise,sunset,precipitation_probability_max,rain_sum,showers_sum,snowfall_sum` +
 		// precipitation_unit affects amount-based fields (snowfall_sum) — precipitation_probability_max is a
 		// percentage either way, unaffected. "inch" here regardless of the admin's chosen temperature/wind
 		// units — amounts follow the admin's precipUnit, snowfall arriving as cm when metric.
 		`&precipitation_unit=${precipUnit === 'in' ? 'inch' : 'mm'}` +
-		`&temperature_unit=${unit}&wind_speed_unit=${windUnit === 'kph' ? 'kmh' : 'mph'}&timezone=auto&forecast_days=7`;
-	const res = await fetch(url);
-	if (!res.ok) throw new Error(`Forecast API returned ${res.status}`);
-	const data = (await res.json()) as {
+		`&temperature_unit=${unit}&wind_speed_unit=${windUnit === 'kph' ? 'kmh' : 'mph'}&timezone=auto&forecast_days=11`;
+	// The ceiling lookup never throws (see fetchCeilingBlocks), so it can't fail the forecast
+	// it is fetched alongside.
+	const [forecastJson, ceilingBlocks] = await Promise.all([fetchForecastJson(baseUrl, unit, precipUnit), fetchCeilingBlocks(latitude, longitude)]);
+	const data = forecastJson as {
 		utc_offset_seconds: number;
 		current: {
 			temperature_2m: number;
@@ -703,22 +1376,31 @@ export async function fetchForecast(
 			precipitation: number;
 			snowfall: number;
 			relative_humidity_2m: number;
+			dew_point_2m: number;
 			wind_speed_10m: number;
+			wind_gusts_10m: number;
 			wind_direction_10m: number;
 			pressure_msl: number;
+			cloud_cover: number;
+			visibility: number | null;
 		};
 		hourly: {
 			time: string[];
 			temperature_2m: number[];
+			apparent_temperature: number[];
 			weather_code: number[];
 			is_day: number[];
 			precipitation: number[];
 			snowfall: number[];
 			precipitation_probability: number[];
 			relative_humidity_2m: number[];
+			dew_point_2m: number[];
 			wind_speed_10m: number[];
+			wind_gusts_10m: number[];
 			wind_direction_10m: number[];
 			pressure_msl: number[];
+			cloud_cover: number[];
+			visibility: (number | null)[];
 		};
 		daily: {
 			time: string[];
@@ -758,6 +1440,31 @@ export async function fetchForecast(
 	const todayIdx = Math.max(0, data.daily.time.indexOf(todayStr));
 	const tomorrowIdx = todayIdx + 1;
 
+	// One builder for both "right now" and each hour, so the two can never drift apart — the
+	// weather page renders whichever one is being pointed at through a single code path.
+	const detailsFor = (
+		tempValue: number,
+		dewValue: number,
+		humidity: number,
+		windGust: number,
+		cloudCover: number,
+		visibilityMeters: number | null | undefined,
+		atMs: number
+	): ConditionDetails => {
+		const dewC = toCelsius(dewValue, unit);
+		const indoor = describeIndoorHumidity(dewC);
+		return {
+			windGust,
+			cloudCover,
+			visibility: formatVisibility(visibilityMeters, windUnit),
+			dewPoint: dewValue,
+			indoorHumidity: estimateIndoorHumidity(toCelsius(tempValue, unit), dewC, humidity),
+			indoorHumidityLabel: indoor.label,
+			indoorHumidityLevel: indoor.level,
+			cloudCeilingFt: ceilingAt(ceilingBlocks, atMs)
+		};
+	};
+
 	const currentCondition = wmoToCondition(data.current.weather_code, data.current.is_day === 1);
 	const pressure = pressureUnit === 'inHg' ? hPaToInHg(data.current.pressure_msl) : data.current.pressure_msl;
 	const current: CurrentConditions = {
@@ -774,6 +1481,15 @@ export async function fetchForecast(
 		windSpeed: data.current.wind_speed_10m,
 		windDirection: degreesToCompass(data.current.wind_direction_10m),
 		pressure: pressureUnit === 'inHg' ? Math.round(pressure * 100) / 100 : Math.round(pressure),
+		...detailsFor(
+			data.current.temperature_2m,
+			data.current.dew_point_2m,
+			data.current.relative_humidity_2m,
+			data.current.wind_gusts_10m,
+			data.current.cloud_cover,
+			data.current.visibility,
+			now
+		),
 		sunrise: withUtcOffset(data.daily.sunrise[todayIdx], data.utc_offset_seconds),
 		sunset: withUtcOffset(data.daily.sunset[todayIdx], data.utc_offset_seconds)
 	};
@@ -790,6 +1506,8 @@ export async function fetchForecast(
 		return {
 			time,
 			temp: data.hourly.temperature_2m[idx],
+			feelsLike: data.hourly.apparent_temperature[idx],
+			conditionKind: conditionKindOfCode(data.hourly.weather_code[idx]),
 			conditionText: condition.text,
 			icon: condition.icon,
 			humidity: data.hourly.relative_humidity_2m[idx],
@@ -798,18 +1516,76 @@ export async function fetchForecast(
 			precipIsSnow: (data.hourly.snowfall[idx] ?? 0) > 0,
 			windSpeed: data.hourly.wind_speed_10m[idx],
 			windDirection: degreesToCompass(data.hourly.wind_direction_10m[idx]),
-			pressure: pressureUnit === 'inHg' ? Math.round(hourPressure * 100) / 100 : Math.round(hourPressure)
+			pressure: pressureUnit === 'inHg' ? Math.round(hourPressure * 100) / 100 : Math.round(hourPressure),
+			...detailsFor(
+				data.hourly.temperature_2m[idx],
+				data.hourly.dew_point_2m[idx],
+				data.hourly.relative_humidity_2m[idx],
+				data.hourly.wind_gusts_10m[idx],
+				data.hourly.cloud_cover[idx],
+				data.hourly.visibility[idx],
+				new Date(time).getTime()
+			)
 		};
 	});
 
-	const daily = data.daily.time.map((date, i) => {
-		const condition = wmoToCondition(data.daily.weather_code[i]);
+	// Per-day descriptions come from the hourly series, split into the day proper (daylight hours)
+	// and the night that follows it (last light to the next first light). Daylight comes from
+	// Open-Meteo's own is_day flag, so the split tracks the season and latitude by itself.
+	const hourDates = hourlyTimes.map((t) => t.slice(0, 10));
+	const hourOfDayAt = (i: number) => Number(hourlyTimes[i].slice(11, 13));
+	const indicesForDate = (date: string) => hourDates.flatMap((d, i) => (d === date ? [i] : []));
+	const periodHours = (indices: number[]): PeriodHour[] =>
+		indices.map((i) => ({
+			hourOfDay: hourOfDayAt(i),
+			code: data.hourly.weather_code[i],
+			cloud: data.hourly.cloud_cover[i] ?? 0,
+			chance: data.hourly.precipitation_probability[i] ?? null
+		}));
+
+	// Starts at TODAY in the location's own calendar (todayIdx), not at whatever day the API
+	// anchored to, and runs ten days from there (the request asks for eleven, so the tenth
+	// day's night still has the next morning to describe).
+	const daily = data.daily.time.slice(todayIdx, todayIdx + 10).map((date, k) => {
+		const d = todayIdx + k;
+		const dateIdxs = indicesForDate(date);
+		const nextDate = data.daily.time[d + 1];
+		const nextIdxs = nextDate ? indicesForDate(nextDate) : [];
+
+		let dayIdxs = dateIdxs.filter((i) => data.hourly.is_day[i] === 1);
+		// Polar night has no daylight hours at all; fall back to the middle of the day so the
+		// row still describes something rather than going blank.
+		if (dayIdxs.length === 0) dayIdxs = dateIdxs.filter((i) => hourOfDayAt(i) >= 9 && hourOfDayAt(i) <= 16);
+
+		const nightStart = dayIdxs.length > 0 ? dayIdxs[dayIdxs.length - 1] + 1 : (dateIdxs[0] ?? 0);
+		const nextFirstLight = nextIdxs.find((i) => data.hourly.is_day[i] === 1);
+		const nightEnd = nextFirstLight ?? (nextIdxs.length > 0 ? nextIdxs[0] + 6 : data.hourly.time.length);
+		let nightIdxs = Array.from({ length: Math.max(0, Math.min(nightEnd, data.hourly.time.length) - nightStart) }, (_, n) => nightStart + n);
+		// Midnight sun: it never gets dark, so the "night" would be empty. Use late evening to
+		// early morning instead.
+		if (nightIdxs.length === 0) {
+			nightIdxs = [...dateIdxs.filter((i) => hourOfDayAt(i) >= 22), ...nextIdxs.filter((i) => hourOfDayAt(i) <= 5)];
+		}
+
+		const fallback = wmoToCondition(data.daily.weather_code[d]);
+		const day = describePeriod(periodHours(dayIdxs), true) ?? fallback;
+		const night = describePeriod(periodHours(nightIdxs), false);
 		return {
 			date,
-			tempMax: data.daily.temperature_2m_max[i],
-			tempMin: data.daily.temperature_2m_min[i],
-			conditionText: condition.text,
-			icon: condition.icon
+			tempMax: data.daily.temperature_2m_max[d],
+			tempMin: data.daily.temperature_2m_min[d],
+			conditionText: day.text,
+			icon: day.icon,
+			nightDescription: night?.text ?? '',
+			nightIcon: night?.icon ?? '',
+			// A night cut short by the end of the forecast would report a low that's too high
+			// (the cold hours are the ones after midnight), so it isn't claimed.
+			nightLow: nightIdxs.length >= 6 ? Math.min(...nightIdxs.map((i) => data.hourly.temperature_2m[i])) : null,
+			precipitationChance: data.daily.precipitation_probability_max[d] ?? null,
+			nightPrecipitationChance: (() => {
+				const chances = nightIdxs.map((i) => data.hourly.precipitation_probability[i]).filter((c): c is number => c !== null && c !== undefined);
+				return chances.length > 0 ? Math.max(...chances) : null;
+			})()
 		};
 	});
 
@@ -861,11 +1637,32 @@ export interface WeatherAlertResult {
 	headline: string;
 	severity: string;
 	expires: string;
+	onset: string | null;
+	ends: string | null;
+	description: string | null;
+	instruction: string | null;
+	areaDesc: string | null;
+	senderName: string | null;
 }
 
-// US National Weather Service — free, no key, no account, covers the US and territories
-// only. A non-US location will reliably fail this call; that's expected, not an error
-// (see poller.ts, which treats a failure here as "no alerts" rather than propagating it).
+/**
+ * NWS descriptions are written as "* WHAT...", "* WHERE...", "* WHEN...", "* IMPACTS..."
+ * sections. The page already shows where and when, so the short form is WHAT plus IMPACTS;
+ * a description in any other shape keeps its first paragraph.
+ */
+export function condenseAlertText(text: string | null | undefined): string | null {
+	if (!text) return null;
+	const flat = (t: string) => t.replace(/\s+/g, ' ').trim();
+	const section = (name: string) => {
+		const m = new RegExp(`\\*\\s*${name}\\.\\.\\.([\\s\\S]*?)(?=\\n\\s*\\*\\s*[A-Z ]+\\.\\.\\.|$)`).exec(text);
+		return m ? flat(m[1]) : '';
+	};
+	const what = section('WHAT');
+	const impacts = section('IMPACTS');
+	if (what || impacts) return [what, impacts].filter(Boolean).join(' ');
+	return flat(text.split(/\n\s*\n/)[0] ?? text) || null;
+}
+
 export async function fetchActiveAlerts(latitude: number, longitude: number): Promise<WeatherAlertResult[]> {
 	const url = `https://api.weather.gov/alerts/active?point=${latitude},${longitude}`;
 	const res = await fetch(url, {
@@ -877,13 +1674,33 @@ export async function fetchActiveAlerts(latitude: number, longitude: number): Pr
 	});
 	if (!res.ok) throw new Error(`NWS alerts API returned ${res.status}`);
 	const data = (await res.json()) as {
-		features: { id: string; properties: { event: string; headline: string; severity: string; expires: string } }[];
+		features: {
+			id: string;
+			properties: {
+				event: string;
+				headline: string;
+				severity: string;
+				expires: string;
+				onset?: string | null;
+				ends?: string | null;
+				description?: string | null;
+				instruction?: string | null;
+				areaDesc?: string | null;
+				senderName?: string | null;
+			};
+		}[];
 	};
 	return data.features.map((f) => ({
 		id: f.id,
 		event: f.properties.event,
 		headline: f.properties.headline,
 		severity: f.properties.severity,
-		expires: f.properties.expires
+		expires: f.properties.expires,
+		onset: f.properties.onset ?? null,
+		ends: f.properties.ends ?? null,
+		description: condenseAlertText(f.properties.description),
+		instruction: f.properties.instruction ? f.properties.instruction.replace(/\s+/g, ' ').trim() : null,
+		areaDesc: f.properties.areaDesc ?? null,
+		senderName: f.properties.senderName ?? null
 	}));
 }

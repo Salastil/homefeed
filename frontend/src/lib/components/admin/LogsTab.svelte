@@ -3,7 +3,8 @@
 	import type { LogEntry, PipelineStats, SynthesisRun } from '$lib/adminTypes';
 	import { getLogs, getPipelineStats, getSynthesisRuns, cancelSynthesis } from '$lib/adminApi';
 
-	let { logs: initial }: { logs: LogEntry[] } = $props();
+	/** aiOn: the AI writer is on; its synthesis tiles and history only mean something then. */
+	let { logs: initial, aiOn = true }: { logs: LogEntry[]; aiOn?: boolean } = $props();
 	let logs = $state([...initial]);
 	let stats = $state<PipelineStats | null>(null);
 	let synthesisRuns = $state<SynthesisRun[]>([]);
@@ -98,6 +99,7 @@
 			<span class="tile-value">{stats.backlog.awaitingEmbeddingItems}</span>
 			<span class="tile-sub">need an embed() call before they can cluster</span>
 		</div>
+		{#if aiOn}
 		<div class="tile">
 			<span class="tile-label">Held for publishing</span>
 			<span class="tile-value">{stats.backlog.clusters.itemsOnHold}</span>
@@ -108,11 +110,15 @@
 				{/if}
 			</span>
 		</div>
+		{/if}
+		{#if aiOn}
 		<div class="tile">
 			<span class="tile-label">Awaiting synthesis</span>
 			<span class="tile-value">{stats.backlog.clusters.readyNowNeedingSynthesis}</span>
 			<span class="tile-sub">multi-source cluster{stats.backlog.clusters.readyNowNeedingSynthesis === 1 ? '' : 's'} ready, needs an AI merge</span>
 		</div>
+		{/if}
+		{#if aiOn}
 		<div class="tile">
 			<span class="tile-label">Estimated to clear</span>
 			<span class="tile-value">{formatEta(stats.estimatedMinutesToClear)}</span>
@@ -124,6 +130,8 @@
 				{/if}
 			</span>
 		</div>
+		{/if}
+		{#if aiOn}
 		<div class="tile">
 			<span class="tile-label">Ollama right now</span>
 			{#if stats.ollama.inFlight}
@@ -143,19 +151,23 @@
 				</span>
 			{/if}
 		</div>
+		{/if}
 		<div class="tile">
 			<span class="tile-label">Last direct-publish tick</span>
 			<span class="tile-value">{stats.lastDirectCycle ? stats.lastDirectCycle.published : '—'}</span>
 			<span class="tile-sub">{formatAgo(stats.lastDirectCycle?.at ?? null)}</span>
 		</div>
+		{#if aiOn}
 		<div class="tile">
 			<span class="tile-label">Last synthesis tick</span>
 			<span class="tile-value">{stats.lastSynthesisCycle ? stats.lastSynthesisCycle.published : '—'}</span>
 			<span class="tile-sub">{formatAgo(stats.lastSynthesisCycle?.at ?? null)}</span>
 		</div>
+		{/if}
 	</div>
 {/if}
 
+{#if aiOn}
 <div class="section-head">
 	<span class="section-title">Synthesis history</span>
 	<span class="section-sub">
@@ -201,6 +213,7 @@
 		</tbody>
 	</table>
 </div>
+{/if}
 
 <div class="toolbar">
 	<div class="filters">

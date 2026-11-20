@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { registerAuth } from './api/auth.js';
 import { registerPublicRoutes } from './api/public.js';
+import { registerStorylineRoutes } from './api/storylines.js';
 import { registerAdminRoutes } from './api/admin.js';
 import { registerMediaProxy } from './api/mediaProxy.js';
 import { registerTelegramMediaProxy } from './api/telegramMediaProxy.js';
@@ -62,6 +63,7 @@ async function buildApp(): Promise<FastifyInstance> {
 
 	await registerAuth(app);
 	await registerPublicRoutes(app);
+	await registerStorylineRoutes(app);
 	await registerAdminRoutes(app);
 	await registerPrivateAccess(app);
 

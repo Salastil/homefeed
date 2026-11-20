@@ -7,8 +7,50 @@ import * as settingsDb from '../storage/db/settings.js';
 import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
 import { getKv } from '../storage/db/widgetKv.js';
 import type { WidgetReport } from '../widgets/report.js';
-import type { MergedArticle, Tag } from '../storage/db/types.js';
+import type { MergedArticle, Tag, WidgetSlot } from '../storage/db/types.js';
+
 import { hasPrivateAccess } from './privateAccess.js';
+
+/** Plug-in widgets that render in the top bar rather than the widget row. */
+export const TOP_BAR_WIDGETS = new Set(['searchbar']);
+/** Widgets shown in the ticker strip under the widget row (issue #1, comment 622, option B). */
+export const TICKER_WIDGETS = new Set(['stocks', 'poe2']);
+/** A placeholder slot id: an open position in the widget row, kept until a new widget fills it. */
+export const EMPTY_SLOT = 'empty';
+
+/**
+ * The widget row's slots, from the admin's layout (Widgets tab) or, when none is saved, from
+ * the widget order. Top-bar and ticker widgets never take a slot; where the Markets/PoE2 slot
+ * used to be there is an open slot instead. Disabled widgets are dropped, empty slots removed
+ * (an explicit open slot stays), and any enabled widget the saved layout doesn't mention gets
+ * a slot of its own at the end, so a newly installed widget still shows.
+ */
+export function resolveWidgetSlots(saved: WidgetSlot[], enabledInOrder: string[]): WidgetSlot[] {
+	const rowWidgets = enabledInOrder.filter((id) => !TOP_BAR_WIDGETS.has(id) && !TICKER_WIDGETS.has(id));
+	const enabled = new Set([...rowWidgets, EMPTY_SLOT]);
+	let slots: WidgetSlot[];
+	if (saved.length > 0) {
+		slots = saved.map((s) => {
+			const kept = s.widgets.filter((w) => enabled.has(w));
+			// A slot that only held ticker widgets becomes the open slot.
+			const wasTicker = kept.length === 0 && s.widgets.some((w) => TICKER_WIDGETS.has(w));
+			return { widgets: wasTicker ? [EMPTY_SLOT] : kept, rotateSeconds: s.rotateSeconds || 8 };
+		});
+	} else {
+		slots = [];
+		for (const id of enabledInOrder) {
+			if (TOP_BAR_WIDGETS.has(id)) continue;
+			if (TICKER_WIDGETS.has(id)) {
+				if (!slots.some((s) => s.widgets[0] === EMPTY_SLOT)) slots.push({ widgets: [EMPTY_SLOT], rotateSeconds: 8 });
+				continue;
+			}
+			slots.push({ widgets: [id], rotateSeconds: 8 });
+		}
+	}
+	const placed = new Set(slots.flatMap((s) => s.widgets));
+	for (const id of rowWidgets) if (!placed.has(id)) slots.push({ widgets: [id], rotateSeconds: 8 });
+	return slots.filter((s) => s.widgets.length > 0);
+}
 
 // The DB keeps article.video.url as the real upstream URL (video-proxy.ts needs it to
 // know what to fetch) — this rewrites it to the proxy route for any API response, so
@@ -22,7 +64,7 @@ function presentArticle(article: MergedArticle): MergedArticle {
 
 export async function registerPublicRoutes(app: FastifyInstance) {
 	app.get('/api/feed', async (req) => {
-		const { category, geo, eventId, tag, before, limit } = req.query as Record<string, string | undefined>;
+		const { category, geo, eventId, tag, kind, before, limit } = req.query as Record<string, string | undefined>;
 		return articlesDb
 			.queryFeed(
 				{
@@ -30,6 +72,7 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 					geo,
 					eventId,
 					tag,
+					kind: kind === 'wire' || kind === 'general' ? kind : undefined,
 					before,
 					limit: limit ? Number(limit) : undefined
 				},
@@ -109,12 +152,20 @@ export async function registerPublicRoutes(app: FastifyInstance) {
 	// looks an id up there when it isn't one of the 4 built-in keys, and skips it entirely
 	// if not found (disabled) — see widgets/registry.ts, GenericWidgetCard/DynamicWidgetSlot.
 	app.get('/api/widgets', async () => {
-		const { widgets, widgetOrder } = settingsDb.getSettings();
-		const pluggable = installedWidgetsDb
-			.listInstalled()
+		const { widgets, widgetOrder, widgetSlots } = settingsDb.getSettings();
+		const installed = installedWidgetsDb.listInstalled();
+		const pluggable = installed
 			.filter((w) => w.source === 'uploaded' && w.enabled)
 			.map((w) => ({ id: w.id, displayName: w.displayName, frontendEntry: w.frontendEntry }));
-		return { ...widgets, order: widgetOrder, pluggable };
+		const enabledInOrder = installed.filter((w) => w.enabled).map((w) => w.id);
+		return {
+			...widgets,
+			order: widgetOrder,
+			pluggable,
+			slots: resolveWidgetSlots(widgetSlots, enabledInOrder),
+			topBar: enabledInOrder.filter((id) => TOP_BAR_WIDGETS.has(id)),
+			ticker: enabledInOrder.filter((id) => TICKER_WIDGETS.has(id))
+		};
 	});
 
 	// Generic live-data feed any widget (built-in or uploaded) can publish to via

@@ -18,6 +18,7 @@
 	import BookmarksTab from './BookmarksTab.svelte';
 	import Poe2Tab from './Poe2Tab.svelte';
 	import SearchEnginesTab from './SearchEnginesTab.svelte';
+	import WidgetRowEditor from './WidgetRowEditor.svelte';
 
 	let {
 		settings,
@@ -123,6 +124,8 @@
 		}
 	}
 </script>
+
+<WidgetRowEditor {settings} {installed} order={widgetOrder} titles={{ ...BUILTIN_TITLES, stocks: 'Markets' }} />
 
 {#each widgetOrder as key, i (key)}
 	{@const w = installedById.get(key)}
