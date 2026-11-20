@@ -32,6 +32,9 @@
 	--serif: 'Newsreader Variable', Georgia, 'Times New Roman', serif;
 	--mono: 'IBM Plex Mono', 'SF Mono', Menlo, Consolas, monospace;
 	--radius: 8px;
+	/* The whole UI is drawn at 90%: everything fits better on the board, as browser zoom at 90%
+	   showed. Viewport-sized boxes divide by it so they still fill the window. */
+	--ui-zoom: 0.9;
 
 	/* legacy aliases */
 	--surface-0: var(--s0);
@@ -80,6 +83,10 @@
 
 * {
 	box-sizing: border-box;
+}
+
+html {
+	zoom: var(--ui-zoom);
 }
 
 html,

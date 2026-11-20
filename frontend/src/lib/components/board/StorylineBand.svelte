@@ -94,7 +94,10 @@
 	let band: HTMLElement | undefined = $state();
 	function open(it: Item, title: string, members: LiteArticle[], nodeId: string, rowEl: EventTarget | null) {
 		const row = (rowEl as HTMLElement | null)?.closest('.st') as HTMLElement | null;
-		const anchor = (row ?? band)?.getBoundingClientRect().bottom ?? 0;
+		const el = row ?? band;
+		// Rects come back in screen pixels, but the sheet's `top` is applied inside the zoomed
+		// page (--ui-zoom), so convert back or it lands 10% higher than the row.
+		const anchor = el ? el.getBoundingClientRect().bottom / ((el as HTMLElement & { currentCSSZoom?: number }).currentCSSZoom ?? 1) : 0;
 		onNode({
 			title,
 			members,

@@ -385,7 +385,7 @@
 		max-width: 430px;
 		position: sticky;
 		top: 16px;
-		max-height: calc(100vh - 32px);
+		max-height: calc(100vh / var(--ui-zoom) - 32px);
 		overflow: auto;
 		margin: 0;
 	}

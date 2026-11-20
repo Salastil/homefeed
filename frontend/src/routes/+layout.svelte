@@ -131,8 +131,8 @@
 
 <style>
 	.app {
-		height: 100vh;
-		height: 100dvh;
+		height: calc(100vh / var(--ui-zoom));
+		height: calc(100dvh / var(--ui-zoom));
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
@@ -155,7 +155,7 @@
 	@media (max-width: 760px) {
 		.app {
 			height: auto;
-			min-height: 100dvh;
+			min-height: calc(100dvh / var(--ui-zoom));
 			overflow: visible;
 			padding: 10px 12px;
 		}

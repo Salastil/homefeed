@@ -40,7 +40,7 @@
 		font-size: 14px;
 	}
 	.admin-shell {
-		min-height: 100vh;
+		min-height: calc(100vh / var(--ui-zoom));
 	}
 	.admin-inner {
 		padding-top: 20px;

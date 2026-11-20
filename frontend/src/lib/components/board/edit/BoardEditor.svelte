@@ -81,7 +81,7 @@
 		top: 12px;
 		right: 12px;
 		bottom: 12px;
-		width: min(420px, calc(100vw - 24px));
+		width: min(420px, calc(100vw / var(--ui-zoom) - 24px));
 		z-index: 60;
 		background: var(--s1);
 		border: 1px solid var(--bd);

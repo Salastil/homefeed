@@ -294,11 +294,11 @@
 	.pal {
 		position: fixed;
 		z-index: 81;
-		top: 12vh;
+		top: calc(12vh / var(--ui-zoom));
 		left: 50%;
 		transform: translateX(-50%);
-		width: min(620px, calc(100vw - 24px));
-		max-height: 72vh;
+		width: min(620px, calc(100vw / var(--ui-zoom) - 24px));
+		max-height: calc(72vh / var(--ui-zoom));
 		display: flex;
 		flex-direction: column;
 		background: var(--s1);
