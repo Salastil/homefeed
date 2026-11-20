@@ -124,6 +124,40 @@ function deleteRows(rows: { id: string; local_path: string }[]) {
 	return rows.length;
 }
 
+/**
+ * Removes the media rows of many articles and returns their files' paths, for the caller to
+ * delete once its transaction has committed (so a rolled-back delete never loses files).
+ */
+export function deleteMediaRowsForArticles(articleIds: string[]): string[] {
+	const paths: string[] = [];
+	for (let i = 0; i < articleIds.length; i += 500) {
+		const chunk = articleIds.slice(i, i + 500);
+		const marks = chunk.map(() => '?').join(',');
+		const rows = db.prepare(`SELECT local_path FROM media_assets WHERE article_id IN (${marks})`).all(...chunk) as { local_path: string }[];
+		paths.push(...rows.map((r) => r.local_path));
+		db.prepare(`DELETE FROM media_assets WHERE article_id IN (${marks})`).run(...chunk);
+	}
+	return paths;
+}
+
+/** Same as deleteMediaRowsForArticles, for raw content items. */
+export function deleteMediaRowsForItems(itemIds: string[]): string[] {
+	const paths: string[] = [];
+	for (let i = 0; i < itemIds.length; i += 500) {
+		const chunk = itemIds.slice(i, i + 500);
+		const marks = chunk.map(() => '?').join(',');
+		const rows = db.prepare(`SELECT local_path FROM media_assets WHERE content_item_id IN (${marks})`).all(...chunk) as { local_path: string }[];
+		paths.push(...rows.map((r) => r.local_path));
+		db.prepare(`DELETE FROM media_assets WHERE content_item_id IN (${marks})`).run(...chunk);
+	}
+	return paths;
+}
+
+/** Deletes media files in the background, after the rows that pointed at them are gone. */
+export function removeMediaFiles(paths: string[]) {
+	for (const p of paths) fs.rm(p, () => {});
+}
+
 export function deleteMediaByArticleId(articleId: string): number {
 	const rows = db.prepare('SELECT id, local_path FROM media_assets WHERE article_id = ?').all(articleId) as {
 		id: string;

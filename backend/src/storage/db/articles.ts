@@ -199,6 +199,20 @@ export function getArticles(ids: string[]): MergedArticle[] {
 		.map(rowToArticle);
 }
 
+/** Every article's id and the content items it was built from - without the bodies, embeddings and the rest of each row. */
+export function articleItemRefs(): { id: string; itemIds: string[] }[] {
+	const rows = db.prepare('SELECT id, sources FROM merged_articles').all() as { id: string; sources: string }[];
+	return rows.map((r) => ({ id: r.id, itemIds: (JSON.parse(r.sources) as { itemId: string }[]).map((s) => s.itemId) }));
+}
+
+/** Deletes many articles with a few statements (run it inside inTransaction). */
+export function deleteArticles(ids: string[]) {
+	for (let i = 0; i < ids.length; i += 500) {
+		const chunk = ids.slice(i, i + 500);
+		db.prepare(`DELETE FROM merged_articles WHERE id IN (${chunk.map(() => '?').join(',')})`).run(...chunk);
+	}
+}
+
 export function deleteArticle(id: string) {
 	db.prepare('DELETE FROM merged_articles WHERE id = ?').run(id);
 }

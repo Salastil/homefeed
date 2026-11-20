@@ -8,7 +8,7 @@ import * as eventsDb from '../storage/db/events.js';
 import * as articlesDb from '../storage/db/articles.js';
 import * as categoriesDb from '../storage/db/categories.js';
 import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
-import { clearSourceContent, reissueSourceContent, reissueArticle, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
+import { clearSourceContent, deleteSourceAndContent, reissueSourceContent, reissueArticle, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
 import { totalStorageBytes } from '../storage/media/index.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import { publishEventRecap } from '../pipeline/publish.js';
@@ -237,8 +237,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		// Deleting a source deletes its raw content and any article composed entirely
 		// from it too — otherwise stale articles from a source the admin just removed
 		// keep showing up on the site pointing at nothing.
-		clearSourceContent(id);
-		sourcesDb.deleteSource(id);
+		deleteSourceAndContent(id);
 		return reply.code(204).send();
 	});
 

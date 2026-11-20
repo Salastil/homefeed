@@ -7,7 +7,9 @@
 
 import * as contentItemsDb from './db/contentItems.js';
 import * as articlesDb from './db/articles.js';
-import { deleteMediaByArticleId, deleteMediaByContentItemIds, deleteAllMedia } from './media/index.js';
+import * as sourcesDb from './db/sources.js';
+import { inTransaction } from './db/index.js';
+import { deleteMediaRowsForArticles, deleteMediaRowsForItems, removeMediaFiles, deleteAllMedia } from './media/index.js';
 import { logger } from './db/logs.js';
 
 export interface ClearResult {
@@ -29,24 +31,40 @@ export interface ReissueResult {
  * supports undoing.
  */
 export function clearSourceContent(sourceId: string): ClearResult {
-	const items = contentItemsDb.itemsForSource(sourceId);
-	const itemIds = new Set(items.map((i) => i.id));
+	const { result, files } = inTransaction(() => clearInside(sourceId));
+	removeMediaFiles(files);
+	logger.info('admin', `Cleared content for source ${sourceId}: ${result.itemsDeleted} item(s), ${result.articlesDeleted} article(s)`);
+	return result;
+}
 
-	let articlesDeleted = 0;
-	if (itemIds.size > 0) {
-		for (const article of articlesDb.allArticlesNewestFirst()) {
-			if (article.sources.length > 0 && article.sources.every((s) => itemIds.has(s.itemId))) {
-				deleteMediaByArticleId(article.id);
-				articlesDb.deleteArticle(article.id);
-				articlesDeleted++;
-			}
-		}
-		deleteMediaByContentItemIds([...itemIds]);
-	}
+/** Deletes a source together with everything it ingested, as one transaction (DELETE /api/admin/sources/:id). */
+export function deleteSourceAndContent(sourceId: string): ClearResult {
+	const { result, files } = inTransaction(() => {
+		const out = clearInside(sourceId);
+		sourcesDb.deleteSource(sourceId);
+		return out;
+	});
+	removeMediaFiles(files);
+	logger.info('admin', `Deleted source ${sourceId}: ${result.itemsDeleted} item(s), ${result.articlesDeleted} article(s)`);
+	return result;
+}
 
+/** Articles built only from these items - the ones a source's removal must take with it. */
+function articlesOnlyFrom(itemIds: Set<string>): string[] {
+	if (itemIds.size === 0) return [];
+	return articlesDb
+		.articleItemRefs()
+		.filter((a) => a.itemIds.length > 0 && a.itemIds.every((id) => itemIds.has(id)))
+		.map((a) => a.id);
+}
+
+function clearInside(sourceId: string): { result: ClearResult; files: string[] } {
+	const itemIds = new Set(contentItemsDb.itemIdsForSource(sourceId));
+	const articleIds = articlesOnlyFrom(itemIds);
+	const files = [...deleteMediaRowsForArticles(articleIds), ...deleteMediaRowsForItems([...itemIds])];
+	articlesDb.deleteArticles(articleIds);
 	contentItemsDb.deleteContentItemsForSource(sourceId);
-	logger.info('admin', `Cleared content for source ${sourceId}: ${itemIds.size} item(s), ${articlesDeleted} article(s)`);
-	return { itemsDeleted: itemIds.size, articlesDeleted };
+	return { result: { itemsDeleted: itemIds.size, articlesDeleted: articleIds.length }, files };
 }
 
 /**
@@ -62,28 +80,19 @@ export function clearSourceContent(sourceId: string): ClearResult {
  * there's no supported way to un-merge just one contributor's share back out of it.
  */
 export function reissueSourceContent(sourceId: string): ReissueResult {
-	const items = contentItemsDb.itemsForSource(sourceId);
-	const itemIds = new Set(items.map((i) => i.id));
-
-	let articlesDeleted = 0;
-	const requeueIds = new Set<string>();
-	if (itemIds.size > 0) {
-		for (const article of articlesDb.allArticlesNewestFirst()) {
-			if (article.sources.length > 0 && article.sources.every((s) => itemIds.has(s.itemId))) {
-				deleteMediaByArticleId(article.id);
-				articlesDb.deleteArticle(article.id);
-				articlesDeleted++;
-				for (const s of article.sources) requeueIds.add(s.itemId);
-			}
-		}
-	}
-
-	contentItemsDb.resetClusterForItems([...requeueIds]);
-	logger.info(
-		'admin',
-		`Reissuing content for source ${sourceId}: ${articlesDeleted} article(s) deleted, ${requeueIds.size} item(s) requeued`
-	);
-	return { articlesDeleted, itemsRequeued: requeueIds.size };
+	const { articleIds, requeue, files } = inTransaction(() => {
+		const itemIds = new Set(contentItemsDb.itemIdsForSource(sourceId));
+		const refs = articlesDb.articleItemRefs().filter((a) => a.itemIds.length > 0 && a.itemIds.every((id) => itemIds.has(id)));
+		const ids = refs.map((a) => a.id);
+		const requeueIds = [...new Set(refs.flatMap((a) => a.itemIds))];
+		const paths = deleteMediaRowsForArticles(ids);
+		articlesDb.deleteArticles(ids);
+		contentItemsDb.resetClusterForItems(requeueIds);
+		return { articleIds: ids, requeue: requeueIds, files: paths };
+	});
+	removeMediaFiles(files);
+	logger.info('admin', `Reissuing content for source ${sourceId}: ${articleIds.length} article(s) deleted, ${requeue.length} item(s) requeued`);
+	return { articlesDeleted: articleIds.length, itemsRequeued: requeue.length };
 }
 
 /**
@@ -101,9 +110,13 @@ export function reissueArticle(articleId: string): ReissueResult | null {
 	if (!article) return null;
 
 	const itemIds = article.sources.map((s) => s.itemId);
-	deleteMediaByArticleId(article.id);
-	articlesDb.deleteArticle(article.id);
-	contentItemsDb.resetClusterForItems(itemIds);
+	const files = inTransaction(() => {
+		const paths = deleteMediaRowsForArticles([article.id]);
+		articlesDb.deleteArticle(article.id);
+		contentItemsDb.resetClusterForItems(itemIds);
+		return paths;
+	});
+	removeMediaFiles(files);
 
 	logger.info('admin', `Reissuing article ${articleId}: deleted, ${itemIds.length} item(s) requeued`);
 	return { articlesDeleted: 1, itemsRequeued: itemIds.length };
@@ -111,11 +124,15 @@ export function reissueArticle(articleId: string): ReissueResult | null {
 
 /** Wipes every published article and its media, keeping raw ingested items intact so they can be re-synthesized fresh. */
 export function clearAllArticles(): number {
-	const articles = articlesDb.allArticlesNewestFirst();
-	for (const article of articles) deleteMediaByArticleId(article.id);
-	articlesDb.deleteAllArticles();
-	logger.info('admin', `Cleared all articles: ${articles.length} removed`);
-	return articles.length;
+	const { count, files } = inTransaction(() => {
+		const ids = articlesDb.articleItemRefs().map((a) => a.id);
+		const paths = deleteMediaRowsForArticles(ids);
+		articlesDb.deleteAllArticles();
+		return { count: ids.length, files: paths };
+	});
+	removeMediaFiles(files);
+	logger.info('admin', `Cleared all articles: ${count} removed`);
+	return count;
 }
 
 /** Wipes every locally-stored media file (both candidate and published tiers). */
