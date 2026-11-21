@@ -118,7 +118,7 @@ export const telegramAdapter: SourceAdapter = {
 	async fetch(source: Source): Promise<FetchedItem[]> {
 		const client = getClient();
 		if (!client) {
-			logger.warn('telegram', `No connected Telegram account — skipping source "${source.name}"`);
+			logger.warn('telegram', `No connected Telegram account — skipping source "${source.name}"`, { feed: source.name, sourceId: source.id });
 			return [];
 		}
 		if (!source.url) return [];
@@ -131,7 +131,7 @@ export const telegramAdapter: SourceAdapter = {
 			entity = result.entity;
 			messages = result.messages as unknown as TgMessage[];
 		} catch (err) {
-			logger.error('telegram', `Failed to resolve/fetch channel "${identifier}" for source "${source.name}": ${(err as Error).message}`);
+			logger.error('telegram', `Failed to resolve/fetch channel "${identifier}" for source "${source.name}": ${(err as Error).message}`, { feed: source.name, sourceId: source.id });
 			return [];
 		}
 
@@ -143,7 +143,7 @@ export const telegramAdapter: SourceAdapter = {
 		// as the "Forwarded by @X" attribution — never the identity actually displayed.
 		const pollingChannelUsername: string | undefined = entity?.username;
 		if (!pollingChannelUsername) {
-			logger.warn('telegram', `"${source.name}" has no public username — private channels aren't supported yet, skipping`);
+			logger.warn('telegram', `"${source.name}" has no public username — private channels aren't supported yet, skipping`, { feed: source.name, sourceId: source.id });
 			return [];
 		}
 		const pollingChannelName: string = entity?.title ?? pollingChannelUsername;

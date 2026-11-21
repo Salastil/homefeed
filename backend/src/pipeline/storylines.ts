@@ -537,7 +537,10 @@ async function processArticle(id: string, provider: InferenceProvider, model: st
 	try {
 		v = normalize(await provider.embed(embedTextOf(a), { model }));
 	} catch (err) {
-		logger.error('storylines', `Embedding failed for "${a.title.slice(0, 80)}": ${(err as Error).message}`);
+		logger.error('storylines', `Embedding failed for "${a.title.slice(0, 80)}": ${(err as Error).message}`, {
+			feed: [...new Set(a.sources.map((s) => s.sourceName))].join(', ') || null,
+			articleId: a.id
+		});
 		return { ok: false, placed: false };
 	}
 	stl.setArticleEmbedding(a.id, v);

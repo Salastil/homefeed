@@ -106,6 +106,11 @@ export function itemsForSource(sourceId: string): ContentItem[] {
 	return rows.map(rowToItem);
 }
 
+/** Just the ids of a source's items, for deleting without loading every row. */
+export function itemIdsForSource(sourceId: string): string[] {
+	return (db.prepare('SELECT id FROM content_items WHERE source_id = ?').all(sourceId) as { id: string }[]).map((r) => r.id);
+}
+
 export function deleteContentItemsForSource(sourceId: string) {
 	db.prepare('DELETE FROM content_items WHERE source_id = ?').run(sourceId);
 }

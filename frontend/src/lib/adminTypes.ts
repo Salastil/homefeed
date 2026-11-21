@@ -339,6 +339,12 @@ export interface LogEntry {
 	level: 'info' | 'warn' | 'error';
 	source: string;
 	message: string;
+	/** The feed (source name, or tracked item) the line is about, if any. */
+	feed: string | null;
+	/** That source's id, for linking to it. */
+	sourceId: string | null;
+	/** The article the line is about, for linking to it. */
+	articleId: string | null;
 }
 
 /** One completed synthesis (merge or event recap) call — persisted benchmark history, not a rolling sample (see backend's storage/db/synthesisRuns.ts). */

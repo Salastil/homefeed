@@ -8,7 +8,7 @@ import * as eventsDb from '../storage/db/events.js';
 import * as articlesDb from '../storage/db/articles.js';
 import * as categoriesDb from '../storage/db/categories.js';
 import * as installedWidgetsDb from '../storage/db/installedWidgets.js';
-import { clearSourceContent, reissueSourceContent, reissueArticle, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
+import { clearSourceContent, deleteSourceAndContent, reissueSourceContent, reissueArticle, clearAllArticles, clearAllMedia } from '../storage/contentCascade.js';
 import { totalStorageBytes } from '../storage/media/index.js';
 import { OllamaProvider } from '../inference/ollama-provider.js';
 import { publishEventRecap } from '../pipeline/publish.js';
@@ -211,7 +211,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const created = sourcesDb.createSource(req.body as any);
 		// Poll immediately rather than waiting for the next scheduler tick (up to 1 minute)
 		// — the admin adding a feed expects to see it start working right away.
-		pollSourceNow(created).catch((err) => logger.error('poller', `Immediate poll failed for "${created.name}": ${err.message}`));
+		pollSourceNow(created).catch((err) => logger.error('poller', `Immediate poll failed for "${created.name}": ${err.message}`, { feed: created.name, sourceId: created.id }));
 		return reply.code(201).send(created);
 	});
 
@@ -237,8 +237,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		// Deleting a source deletes its raw content and any article composed entirely
 		// from it too — otherwise stale articles from a source the admin just removed
 		// keep showing up on the site pointing at nothing.
-		clearSourceContent(id);
-		sourcesDb.deleteSource(id);
+		deleteSourceAndContent(id);
 		return reply.code(204).send();
 	});
 
@@ -266,7 +265,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		if (!source) return reply.code(404).send({ error: 'not found' });
 
 		const ingested = await pollSourceNow(source);
-		logger.info('poller', `Manual poll of "${source.name}" — ${ingested} new item(s)`);
+		logger.info('poller', `Manual poll of "${source.name}" — ${ingested} new item(s)`, { feed: source.name, sourceId: source.id });
 		return { ingested, source: sourcesDb.getSource(id) };
 	});
 
@@ -342,7 +341,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		try {
 			const article = await publishEventRecap(providers, settings, event, constituents);
 			eventsDb.markRecapped(event.id);
-			logger.info('events', `Manually forced recap for "${event.name}" from ${constituents.length} article(s)`);
+			logger.info('events', `Manually forced recap for "${event.name}" from ${constituents.length} article(s)`, { feed: `${event.name} (tracked)`, articleId: article.id });
 			return { published: true, title: article.title };
 		} catch (err) {
 			return reply.code(502).send({ error: `Recap failed: ${(err as Error).message}` });

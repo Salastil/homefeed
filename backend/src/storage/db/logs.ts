@@ -8,17 +8,33 @@ export interface LogEntry {
 	level: LogLevel;
 	source: string;
 	message: string;
+	/** The feed (source name, or tracked item) the line is about, when it is about one. */
+	feed: string | null;
+	/** That source's id, so the admin log can open it. */
+	sourceId: string | null;
+	/** The article the line is about (published, failed, re-embedded...), so the admin log can link it. */
+	articleId: string | null;
+}
+
+/** What a log line is about. Every field is optional; lines about nothing in particular pass none. */
+export interface LogContext {
+	feed?: string | null;
+	sourceId?: string | null;
+	articleId?: string | null;
 }
 
 const MAX_LOGS = 2000;
 let sinceLastPrune = 0;
 
-function insertLog(level: LogLevel, source: string, message: string) {
-	db.prepare('INSERT INTO logs (timestamp, level, source, message) VALUES (?, ?, ?, ?)').run(
+function insertLog(level: LogLevel, source: string, message: string, ctx: LogContext = {}) {
+	db.prepare('INSERT INTO logs (timestamp, level, source, message, feed, source_id, article_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
 		new Date().toISOString(),
 		level,
 		source,
-		message
+		message,
+		ctx.feed ?? null,
+		ctx.sourceId ?? null,
+		ctx.articleId ?? null
 	);
 
 	// Cheap periodic prune rather than checking row count on every insert.
@@ -31,21 +47,38 @@ function insertLog(level: LogLevel, source: string, message: string) {
 	}
 }
 
+const line = (source: string, message: string, ctx?: LogContext) => `[${source}] ${message}${ctx?.feed ? ` · ${ctx.feed}` : ''}`;
+
 /** Writes to both the logs table (for the admin panel) and the console (for the terminal). */
 export const logger = {
-	info(source: string, message: string) {
-		console.log(`[${source}] ${message}`);
-		insertLog('info', source, message);
+	info(source: string, message: string, ctx?: LogContext) {
+		console.log(line(source, message, ctx));
+		insertLog('info', source, message, ctx);
 	},
-	warn(source: string, message: string) {
-		console.warn(`[${source}] ${message}`);
-		insertLog('warn', source, message);
+	warn(source: string, message: string, ctx?: LogContext) {
+		console.warn(line(source, message, ctx));
+		insertLog('warn', source, message, ctx);
 	},
-	error(source: string, message: string) {
-		console.error(`[${source}] ${message}`);
-		insertLog('error', source, message);
+	error(source: string, message: string, ctx?: LogContext) {
+		console.error(line(source, message, ctx));
+		insertLog('error', source, message, ctx);
 	}
 };
+
+/** Log context for an item or article from one source: its feed name and id. */
+export function feedOf(sourceId: string | null | undefined): LogContext {
+	if (!sourceId) return {};
+	const row = db.prepare('SELECT name FROM sources WHERE id = ?').get(sourceId) as { name: string } | undefined;
+	return { feed: row?.name ?? 'deleted source', sourceId };
+}
+
+/** Log context for something built from several sources' items: every feed, by name; the id only when there is one. */
+export function feedsOf(sourceIds: (string | null | undefined)[]): LogContext {
+	const ids = [...new Set(sourceIds.filter((x): x is string => !!x))];
+	if (ids.length === 1) return feedOf(ids[0]);
+	const names = ids.map((id) => (db.prepare('SELECT name FROM sources WHERE id = ?').get(id) as { name: string } | undefined)?.name ?? 'deleted source');
+	return names.length ? { feed: names.join(', ') } : {};
+}
 
 export function listLogs(filters: { level?: LogLevel; limit?: number } = {}): LogEntry[] {
 	const limit = Math.min(filters.limit ?? 200, 1000);
@@ -58,5 +91,14 @@ export function listLogs(filters: { level?: LogLevel; limit?: number } = {}): Lo
 	sql += ' ORDER BY id DESC LIMIT ?';
 	params.push(limit);
 	const rows = db.prepare(sql).all(...(params as any[])) as any[];
-	return rows.map((r) => ({ id: r.id, timestamp: r.timestamp, level: r.level, source: r.source, message: r.message }));
+	return rows.map((r) => ({
+		id: r.id,
+		timestamp: r.timestamp,
+		level: r.level,
+		source: r.source,
+		message: r.message,
+		feed: r.feed ?? null,
+		sourceId: r.source_id ?? null,
+		articleId: r.article_id ?? null
+	}));
 }

@@ -1,5 +1,5 @@
 import type { InferenceProvider } from '../inference/provider.js';
-import { logger } from '../storage/db/logs.js';
+import { logger, feedOf } from '../storage/db/logs.js';
 import * as contentItems from '../storage/db/contentItems.js';
 import type { ContentItem } from '../storage/db/types.js';
 
@@ -20,7 +20,7 @@ export async function embedPendingItems(
 			contentItems.setEmbedding(item.id, embedding);
 			withEmbeddings.push({ ...item, embedding });
 		} catch (err) {
-			logger.error('synthesis', `Embedding failed for item ${item.id}: ${(err as Error).message}`);
+			logger.error('synthesis', `Embedding failed for "${item.title}": ${(err as Error).message}`, feedOf(item.sourceId));
 		}
 	}
 	return withEmbeddings;

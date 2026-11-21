@@ -242,7 +242,17 @@
 				{log.level === 'info' ? 'standard' : log.level}
 			</span>
 			<span class="source">{log.source}</span>
-			<span class="message">{log.message}</span>
+			<span class="feed" title={log.feed ?? ''}>
+				{#if log.feed && log.sourceId}
+					<a href="/admin/settings?tab=sources&source={log.sourceId}">{log.feed}</a>
+				{:else if log.feed}
+					{log.feed}
+				{/if}
+			</span>
+			<span class="message">
+				{log.message}
+				{#if log.articleId}<a class="open" href="/article/{log.articleId}" target="_blank" rel="noreferrer">open ↗</a>{/if}
+			</span>
 		</div>
 	{/each}
 </div>
@@ -437,7 +447,7 @@
 	}
 	.log-row {
 		display: grid;
-		grid-template-columns: 76px 66px 90px 1fr;
+		grid-template-columns: 76px 66px 90px minmax(0, 150px) 1fr;
 		gap: 10px;
 		padding: 6px 12px;
 		font-size: 12px;
@@ -467,5 +477,21 @@
 	.message {
 		color: var(--text-primary);
 		word-break: break-word;
+	}
+	.feed {
+		color: var(--text-secondary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.feed a {
+		color: inherit;
+	}
+	.feed a:hover {
+		color: var(--text-primary);
+	}
+	.open {
+		margin-left: 8px;
+		white-space: nowrap;
 	}
 </style>

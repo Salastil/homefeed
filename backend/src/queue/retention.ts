@@ -10,6 +10,7 @@ import {
 	totalStorageBytes
 } from '../storage/media/index.js';
 import { logger } from '../storage/db/logs.js';
+import { inTransaction } from '../storage/db/index.js';
 import type { GlobalSettings } from '../storage/db/types.js';
 
 /**
@@ -23,7 +24,7 @@ export function runRetentionSweep(settings: GlobalSettings) {
 	if (retention.rawItemMaxAgeDays != null) {
 		const stale = contentItemsDb.itemsOlderThan(retention.rawItemMaxAgeDays);
 		if (stale.length > 0) {
-			contentItemsDb.deleteContentItems(stale.map((i) => i.id));
+			inTransaction(() => contentItemsDb.deleteContentItems(stale.map((i) => i.id)));
 			logger.info('retention', `Pruned ${stale.length} raw item(s) older than ${retention.rawItemMaxAgeDays}d`);
 		}
 	}
@@ -31,21 +32,26 @@ export function runRetentionSweep(settings: GlobalSettings) {
 	if (retention.publishedArticleMaxAgeDays != null) {
 		const eventOverrides = new Map(eventsDb.listEvents().map((e) => [e.id, e.retentionOverrideDays]));
 		const stale = articlesDb.articlesOlderThan(retention.publishedArticleMaxAgeDays);
-		let pruned = 0;
-		for (const article of stale) {
-			const override = article.eventId ? eventOverrides.get(article.eventId) : undefined;
-			if (override === null) continue; // explicit "Forever" override
-			if (override !== undefined) {
-				const overrideCutoff = Date.now() - override * 86_400_000;
-				if (new Date(article.publishedAt).getTime() > overrideCutoff) continue;
+		// One transaction for the whole pass: one disk sync rather than two per article, and
+		// the server isn't held up between them (see inTransaction).
+		const pruned = inTransaction(() => {
+			let pruned = 0;
+			for (const article of stale) {
+				const override = article.eventId ? eventOverrides.get(article.eventId) : undefined;
+				if (override === null) continue; // explicit "Forever" override
+				if (override !== undefined) {
+					const overrideCutoff = Date.now() - override * 86_400_000;
+					if (new Date(article.publishedAt).getTime() > overrideCutoff) continue;
+				}
+				// Media first, always — merged_articles has no FK to media_assets, so a bare
+				// deleteArticle() strands the asset and its bytes keep counting against the
+				// storage cap for good (see contentCascade.ts, which pairs these everywhere else).
+				deleteMediaByArticleId(article.id);
+				articlesDb.deleteArticle(article.id);
+				pruned++;
 			}
-			// Media first, always — merged_articles has no FK to media_assets, so a bare
-			// deleteArticle() strands the asset and its bytes keep counting against the
-			// storage cap for good (see contentCascade.ts, which pairs these everywhere else).
-			deleteMediaByArticleId(article.id);
-			articlesDb.deleteArticle(article.id);
-			pruned++;
-		}
+			return pruned;
+		});
 		if (pruned > 0) {
 			logger.info('retention', `Pruned ${pruned} published article(s) older than ${retention.publishedArticleMaxAgeDays}d`);
 		}
@@ -92,14 +98,17 @@ function enforceStorageCap(capValue: number, unit: 'MB' | 'GB') {
 	// is back under the cap. Guaranteed to stop before running out of articles, since
 	// floorBytes <= capBytes above.
 	const oldest = articlesDb.allArticlesNewestFirst().reverse(); // oldest first — retention needs everything, not the feed's page size
-	let deleted = 0;
-	for (const article of oldest) {
-		if (used <= capBytes) break;
-		deleteMediaByArticleId(article.id);
-		articlesDb.deleteArticle(article.id);
-		deleted++;
-		used = totalStorageBytes();
-	}
+	const deleted = inTransaction(() => {
+		let n = 0;
+		for (const article of oldest) {
+			if (used <= capBytes) break;
+			deleteMediaByArticleId(article.id);
+			articlesDb.deleteArticle(article.id);
+			n++;
+			used = totalStorageBytes();
+		}
+		return n;
+	});
 	if (deleted > 0) {
 		logger.info('retention', `Storage cap (${capValue}${unit}) exceeded — removed ${deleted} oldest article(s), now at ${formatBytes(used)}`);
 	}

@@ -17,6 +17,29 @@ export const db = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 
+let txDepth = 0;
+/**
+ * Runs `fn` in one transaction: a single commit (one disk sync) however many rows it
+ * writes. node:sqlite is synchronous and runs on the event loop, so a bulk delete done as
+ * thousands of separate auto-commits froze the whole server for minutes (deleting a
+ * 1,500-item source, 2026-11-20). Nested calls join the outer transaction.
+ */
+export function inTransaction<T>(fn: () => T): T {
+	if (txDepth > 0) return fn();
+	db.exec('BEGIN IMMEDIATE');
+	txDepth++;
+	try {
+		const out = fn();
+		db.exec('COMMIT');
+		return out;
+	} catch (err) {
+		db.exec('ROLLBACK');
+		throw err;
+	} finally {
+		txDepth--;
+	}
+}
+
 export function migrate() {
 	const tableExists = (name: string) =>
 		!!db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(name);
@@ -150,6 +173,8 @@ export function migrate() {
 			article_id TEXT
 		);
 		CREATE INDEX IF NOT EXISTS idx_media_tier ON media_assets(tier);
+		CREATE INDEX IF NOT EXISTS idx_media_article ON media_assets(article_id);
+		CREATE INDEX IF NOT EXISTS idx_media_item ON media_assets(content_item_id);
 
 		CREATE TABLE IF NOT EXISTS tags (
 			id TEXT PRIMARY KEY,
@@ -537,6 +562,12 @@ export function migrate() {
 		db.exec("ALTER TABLE global_settings ADD COLUMN board_layout TEXT NOT NULL DEFAULT '{}'");
 	}
 	// Defaults to on so an existing install keeps writing exactly as before until the admin flips it.
+	// Log lines say which feed they're about and link the article they're about.
+	if (!hasColumn('logs', 'feed')) {
+		db.exec('ALTER TABLE logs ADD COLUMN feed TEXT');
+		db.exec('ALTER TABLE logs ADD COLUMN source_id TEXT');
+		db.exec('ALTER TABLE logs ADD COLUMN article_id TEXT');
+	}
 	if (!hasColumn('global_settings', 'ai_writer_enabled')) {
 		db.exec('ALTER TABLE global_settings ADD COLUMN ai_writer_enabled INTEGER NOT NULL DEFAULT 1');
 	}
