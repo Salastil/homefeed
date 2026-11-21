@@ -6,7 +6,7 @@
 	 */
 	import { onMount } from 'svelte';
 	import type { AdminSource } from '$lib/adminTypes';
-	import { deleteCategory, getBoardOverview, getSources, pollSourceNow, updateCategory, updateSettings, type BoardLayoutCfg, type BoardOverview } from '$lib/adminApi';
+	import { deleteCategory, getBoardOverview, getSources, pollSourceNow, setColumnAi, updateCategory, updateSettings, type BoardLayoutCfg, type BoardOverview } from '$lib/adminApi';
 	import * as ops from '$lib/boardLayoutOps';
 	import { admin, boardChanged } from '$lib/adminSession.svelte';
 	import { COLUMN_SWATCHES, columnColor, relTime } from '$lib/text';
@@ -184,8 +184,12 @@
 			<input type="checkbox" checked={col.isPrivate} onchange={() => patch({ isPrivate: !col.isPrivate })} disabled={busy} />
 			<span>Private<em>Only visitors who unlock private columns see it.</em></span>
 		</label>
+	{/if}
+	{#if col.kind === 'wire'}
+		<p class="hint">AI rewrite: none. Posts in Wire always publish as posted.</p>
+	{:else}
 		<label class="check" class:muted={!admin.aiWriterEnabled}>
-			<input type="checkbox" checked={!col.disableAi} onchange={() => patch({ disableAi: !col.disableAi })} disabled={busy} />
+			<input type="checkbox" checked={!col.disableAi} onchange={() => run(async () => (ov = await setColumnAi(col, col.disableAi)))} disabled={busy} />
 			<span>AI rewrite<em>{admin.aiWriterEnabled ? 'Merge and rewrite stories in this column.' : 'The AI writer is off, so nothing is rewritten.'}</em></span>
 		</label>
 	{/if}

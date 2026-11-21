@@ -2,6 +2,7 @@ import type { AiProviders, InferenceProvider } from '../inference/provider.js';
 import * as contentItemsDb from '../storage/db/contentItems.js';
 import * as sourcesDb from '../storage/db/sources.js';
 import * as categoriesDb from '../storage/db/categories.js';
+import { columnAiOff } from './aiScope.js';
 import * as eventsDb from '../storage/db/events.js';
 import { embedPendingItems } from '../pipeline/embedding.js';
 import { clusterItems } from '../pipeline/clustering.js';
@@ -44,16 +45,6 @@ function primaryCategoryRank(item: ContentItem, rankByName: Map<string, number>,
 		if (rank !== undefined && rank < best) best = rank;
 	}
 	return best;
-}
-
-/** True if any of the item's source's categories (same leading-segment match as primaryCategoryRank) has AI disabled. */
-function inAiDisabledCategory(item: ContentItem, disabledNames: Set<string>, sourcesById: Map<string, Source>): boolean {
-	const source = sourcesById.get(item.sourceId);
-	for (const cat of source?.category ?? []) {
-		const leading = cat.split(':')[0].trim().toLowerCase();
-		if (disabledNames.has(leading)) return true;
-	}
-	return false;
 }
 
 /**
@@ -173,8 +164,8 @@ export async function runDirectPublishCycle(settings: GlobalSettings, embeddingP
 	);
 	const [typeDirectItems, remaining] = partition(items, (item) => directPublishSourceIds.has(item.sourceId));
 
-	const aiDisabledCategoryNames = new Set(categories.filter((c) => c.disableAi).map((c) => c.name.toLowerCase()));
-	const [categoryDirectItems] = partition(remaining, (item) => inAiDisabledCategory(item, aiDisabledCategoryNames, sourcesById));
+	const aiOff = columnAiOff(settings, categories, sourcesById);
+	const [categoryDirectItems] = partition(remaining, (item) => aiOff(item));
 
 	const publishedTypeDirect = await publishItemsDirect(
 		typeDirectItems,
@@ -189,7 +180,7 @@ export async function runDirectPublishCycle(settings: GlobalSettings, embeddingP
 		categoryDirectItems,
 		settings,
 		activeEvents,
-		() => 'AI disabled for category',
+		() => 'AI rewrite off for its column',
 		'Direct publish failed'
 	);
 
@@ -229,9 +220,9 @@ export async function runSynthesisCycle(providers: AiProviders, settings: Global
 	const directPublishSourceIds = new Set(
 		[...sourcesById.values()].filter((s) => s.type === 'youtube' || s.type === 'nitter' || s.type === 'telegram').map((s) => s.id)
 	);
-	const aiDisabledCategoryNames = new Set(categories.filter((c) => c.disableAi).map((c) => c.name.toLowerCase()));
+	const aiOff = columnAiOff(settings, categories, sourcesById);
 	const mergeableItems = items.filter(
-		(item) => !directPublishSourceIds.has(item.sourceId) && !inAiDisabledCategory(item, aiDisabledCategoryNames, sourcesById)
+		(item) => !directPublishSourceIds.has(item.sourceId) && !aiOff(item)
 	);
 
 	const ranked = mergeableItems

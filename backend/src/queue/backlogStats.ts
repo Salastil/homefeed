@@ -1,6 +1,7 @@
 import * as contentItemsDb from '../storage/db/contentItems.js';
 import * as sourcesDb from '../storage/db/sources.js';
 import * as categoriesDb from '../storage/db/categories.js';
+import { columnAiOff } from './aiScope.js';
 import { clusterItems } from '../pipeline/clustering.js';
 import type { ContentItem, GlobalSettings, Source } from '../storage/db/types.js';
 
@@ -24,14 +25,6 @@ export function recordSynthesisCycle(published: number): void {
 
 export function getLastCycles(): { lastDirectCycle: CycleRecord | null; lastSynthesisCycle: CycleRecord | null } {
 	return { lastDirectCycle, lastSynthesisCycle };
-}
-
-function inAiDisabledCategory(item: ContentItem, disabledNames: Set<string>, sourcesById: Map<string, Source>): boolean {
-	const source = sourcesById.get(item.sourceId);
-	for (const cat of source?.category ?? []) {
-		if (disabledNames.has(cat.split(':')[0].trim().toLowerCase())) return true;
-	}
-	return false;
 }
 
 export interface BacklogSnapshot {
@@ -68,12 +61,12 @@ export function getBacklogSnapshot(settings: GlobalSettings): BacklogSnapshot {
 	const directPublishSourceIds = new Set(
 		[...sourcesById.values()].filter((s) => s.type === 'youtube' || s.type === 'nitter' || s.type === 'telegram').map((s) => s.id)
 	);
-	const aiDisabledCategoryNames = new Set(categories.filter((c) => c.disableAi).map((c) => c.name.toLowerCase()));
+	const aiOff = columnAiOff(settings, categories, sourcesById);
 
 	const directEligible: ContentItem[] = [];
 	const mergeable: ContentItem[] = [];
 	for (const item of items) {
-		if (!settings.aiWriterEnabled || directPublishSourceIds.has(item.sourceId) || inAiDisabledCategory(item, aiDisabledCategoryNames, sourcesById)) {
+		if (!settings.aiWriterEnabled || directPublishSourceIds.has(item.sourceId) || aiOff(item)) {
 			directEligible.push(item);
 		} else {
 			mergeable.push(item);

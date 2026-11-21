@@ -82,7 +82,8 @@ function boardOverview() {
 			id: null,
 			name: 'Wire',
 			isPrivate: false,
-			disableAi: false,
+			// Posts always publish as they are (queue/priorityQueue.ts), whatever the switches say.
+			disableAi: true,
 			sources: sources.filter((s) => (s.type === 'nitter' || s.type === 'telegram') && !s.category.some((c) => named.has(c))).map((s) => s.name)
 		},
 		{
@@ -91,7 +92,7 @@ function boardOverview() {
 			id: null,
 			name: 'General',
 			isPrivate: false,
-			disableAi: false,
+			disableAi: !settings.generalAiRewrite,
 			sources: sources.filter((s) => s.type !== 'nitter' && s.type !== 'telegram' && !s.category.some((c) => named.has(c))).map((s) => s.name)
 		}
 	];
@@ -365,6 +366,23 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 			embedding: embeddingResult.status === 'fulfilled' ? embeddingResult.value : [],
 			synthesis: synthesisResult.status === 'fulfilled' ? synthesisResult.value : []
 		};
+	});
+
+	// The AI writer page polls this for what its server has installed right now. With host and
+	// port it asks that server instead of the saved one (the page's Test button), so a new
+	// address shows its models before it's saved.
+	app.get('/api/admin/models/synthesis', async (req, reply) => {
+		const q = req.query as { host?: string; port?: string };
+		const settings = settingsDb.getSettings();
+		const host = q.host || settings.synthesisServiceHost;
+		const port = q.port ? Number(q.port) : settings.synthesisServicePort;
+		if (!Number.isFinite(port)) return reply.code(400).send({ error: 'port must be a number' });
+		try {
+			const models = await new OllamaProvider(host, port).listModelDetails();
+			return { connected: true, host, port, models, checkedAt: new Date().toISOString() };
+		} catch (err) {
+			return { connected: false, host, port, models: [], error: (err as Error).message, checkedAt: new Date().toISOString() };
+		}
 	});
 
 	app.get('/api/admin/ai-status', async () => {

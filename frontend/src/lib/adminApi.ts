@@ -6,6 +6,7 @@ import type {
 	AdminTrackedEvent,
 	CategoryPriority,
 	ModelCatalog,
+	SynthesisModelList,
 	AiStatus,
 	AiStatusBySlot,
 	TelegramStatus,
@@ -140,6 +141,16 @@ export const getBoardOverview = (fetchFn?: typeof fetch) => request<BoardOvervie
 export const updateCategory = (id: string, patch: { name?: string; isPrivate?: boolean; disableAi?: boolean }, fetchFn?: typeof fetch) =>
 	request<BoardOverview>(`/api/admin/categories/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
 
+/**
+ * A column's "AI rewrite" switch: categories keep it on the category, General keeps it in the
+ * settings, and Wire has none (posts always publish as they are), so it's left unchanged.
+ */
+export async function setColumnAi(col: BoardColumnInfo, on: boolean, fetchFn?: typeof fetch): Promise<BoardOverview> {
+	if (col.kind === 'category' && col.id) return updateCategory(col.id, { disableAi: !on }, fetchFn);
+	if (col.kind === 'general') await updateSettings({ generalAiRewrite: on }, fetchFn);
+	return getBoardOverview(fetchFn);
+}
+
 export const deleteCategory = (id: string, fetchFn?: typeof fetch) =>
 	request<void>(`/api/admin/categories/${id}`, { method: 'DELETE' }, fetchFn);
 
@@ -224,6 +235,14 @@ export const forceRecap = (id: string, fetchFn?: typeof fetch) =>
 // Models / AI service
 export const getModels = (fetchFn?: typeof fetch) =>
 	request<ModelCatalog>('/api/admin/models', {}, fetchFn);
+
+/** What the writer's server has installed; with host/port, asks that server instead of the saved one. */
+export const getSynthesisModels = (target?: { host: string; port: number | string }, fetchFn?: typeof fetch) =>
+	request<SynthesisModelList>(
+		`/api/admin/models/synthesis${target ? `?host=${encodeURIComponent(target.host)}&port=${encodeURIComponent(target.port)}` : ''}`,
+		{},
+		fetchFn
+	);
 
 export const getAiStatus = (fetchFn?: typeof fetch) =>
 	request<AiStatusBySlot>('/api/admin/ai-status', {}, fetchFn);

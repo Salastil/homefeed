@@ -155,6 +155,34 @@ export class OllamaProvider implements InferenceProvider {
 		return data.models.map((m) => m.name);
 	}
 
+	/**
+	 * The server's installed models with what /api/tags says about each, for the AI writer's
+	 * model picker. `embeddingOnly` marks models that can't write, which the picker leaves out:
+	 * newer Ollama lists each model's capabilities (no "completion" means it only embeds); for
+	 * older ones, a BERT-family encoder or "embed" in the name.
+	 */
+	async listModelDetails(): Promise<OllamaModelInfo[]> {
+		const res = await fetch(`${this.base()}/api/tags`, { signal: AbortSignal.timeout(3000) });
+		if (!res.ok) throw new Error(`Ollama listModels failed: ${res.status}`);
+		const data = (await res.json()) as {
+			models: { name: string; size?: number; modified_at?: string; capabilities?: string[]; details?: { family?: string; families?: string[] | null; parameter_size?: string; quantization_level?: string } }[];
+		};
+		return data.models.map((m) => {
+			const families = [m.details?.family, ...(m.details?.families ?? [])].filter(Boolean).map((f) => f!.toLowerCase());
+			return {
+				name: m.name,
+				sizeBytes: m.size ?? null,
+				parameterSize: m.details?.parameter_size || null,
+				quantization: m.details?.quantization_level || null,
+				family: m.details?.family || null,
+				modifiedAt: m.modified_at ?? null,
+				embeddingOnly: m.capabilities?.length
+					? !m.capabilities.includes('completion')
+					: /embed/i.test(m.name) || families.some((f) => /bert|roberta/.test(f))
+			};
+		});
+	}
+
 	async isReachable(): Promise<boolean> {
 		try {
 			const res = await fetch(`${this.base()}/api/tags`, { signal: AbortSignal.timeout(3000) });
@@ -191,4 +219,16 @@ export class OllamaProvider implements InferenceProvider {
 			return null;
 		}
 	}
+}
+
+export interface OllamaModelInfo {
+	name: string;
+	sizeBytes: number | null;
+	/** e.g. "8.2B" */
+	parameterSize: string | null;
+	/** e.g. "Q4_K_M" */
+	quantization: string | null;
+	family: string | null;
+	modifiedAt: string | null;
+	embeddingOnly: boolean;
 }

@@ -176,6 +176,8 @@ export interface AdminSearchEngine {
 export interface AdminSettings {
 	/** Master switch for the generative AI writer: off, every item publishes as its own article and no recaps are written. */
 	aiWriterEnabled: boolean;
+	/** "AI rewrite" for the built-in General column (articles from sources with no column). */
+	generalAiRewrite: boolean;
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	holdBeforePublishMinutes: number;
 	tagDedupThreshold: number;
@@ -275,6 +277,26 @@ export interface ForceRecapResult {
 	title?: string;
 	/** Set when published is false — why nothing was generated (no sources assigned, nothing new since last recap). */
 	reason?: string;
+}
+
+/** One installed model on the AI writer's server, from GET /api/admin/models/synthesis. */
+export interface SynthesisModelInfo {
+	name: string;
+	sizeBytes: number | null;
+	parameterSize: string | null;
+	quantization: string | null;
+	family: string | null;
+	modifiedAt: string | null;
+	/** An embedding model, which can't write articles. */
+	embeddingOnly: boolean;
+}
+export interface SynthesisModelList {
+	connected: boolean;
+	host: string;
+	port: number;
+	models: SynthesisModelInfo[];
+	error?: string;
+	checkedAt: string;
 }
 
 export interface ModelCatalog {
