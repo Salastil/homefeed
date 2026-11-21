@@ -444,6 +444,11 @@ export async function publishDirect(
  * merge, so an LLM rewrite would only add risk (hallucinated attribution, altered
  * facts) for no synthesis benefit. See priorityQueue.ts's runSynthesisCycle.
  */
+function isPostSource(sourceId: string): boolean {
+	const type = sources.getSource(sourceId)?.type;
+	return type === 'nitter' || type === 'telegram';
+}
+
 export async function publishCluster(
 	providers: AiProviders,
 	settings: GlobalSettings,
@@ -510,8 +515,10 @@ export async function publishCluster(
 		body,
 		heroImage,
 		video,
-		tweet: null, // tweets never reach clustering — see priorityQueue.ts's direct-publish bypass
-		telegramMessage: null, // telegram messages never reach clustering either — same bypass
+		// Posts reach clustering only from the Wire column with its AI rewrite on (queue/aiScope.ts);
+		// a story merged from them is an article, kept in Wire by fromPosts below.
+		tweet: null,
+		telegramMessage: null,
 		category,
 		geo,
 		eventId: opts.eventId ?? items[0]?.eventId ?? null,
@@ -526,6 +533,7 @@ export async function publishCluster(
 		nextArticleId: null,
 		topStories: anyPushesToTopStories(items),
 		isRecap: false,
+		fromPosts: items.every((i) => isPostSource(i.sourceId)),
 		synthesisInfo: { model: settings.selectedModels.synthesis, genTokensPerSec: generateStats.genTokensPerSec, durationMs: generateStats.totalDurationMs }
 	});
 

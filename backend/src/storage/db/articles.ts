@@ -26,6 +26,7 @@ function rowToArticle(row: any): MergedArticle {
 		tweet: row.tweet ? JSON.parse(row.tweet) : null,
 		telegramMessage: row.telegram_message ? JSON.parse(row.telegram_message) : null,
 		isRecap: !!row.is_recap,
+		fromPosts: !!row.from_posts,
 		synthesisInfo: row.synthesis_model
 			? { model: row.synthesis_model, genTokensPerSec: row.synthesis_gen_tokens_per_sec, durationMs: row.synthesis_duration_ms }
 			: null
@@ -36,8 +37,8 @@ export function insertArticle(article: Omit<MergedArticle, 'id'>): MergedArticle
 	const id = `art-${randomUUID()}`;
 	db.prepare(
 		`INSERT INTO merged_articles
-		 (id, title, body, hero_image, video, category, geo, event_id, source_count, sources, published_at, updated_at, merge_confidence, tags, thread_id, previous_article_id, next_article_id, top_stories, tweet, telegram_message, is_recap, synthesis_model, synthesis_gen_tokens_per_sec, synthesis_duration_ms)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		 (id, title, body, hero_image, video, category, geo, event_id, source_count, sources, published_at, updated_at, merge_confidence, tags, thread_id, previous_article_id, next_article_id, top_stories, tweet, telegram_message, is_recap, synthesis_model, synthesis_gen_tokens_per_sec, synthesis_duration_ms, from_posts)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		id,
 		article.title,
@@ -62,7 +63,8 @@ export function insertArticle(article: Omit<MergedArticle, 'id'>): MergedArticle
 		article.isRecap ? 1 : 0,
 		article.synthesisInfo?.model ?? null,
 		article.synthesisInfo?.genTokensPerSec ?? null,
-		article.synthesisInfo?.durationMs ?? null
+		article.synthesisInfo?.durationMs ?? null,
+		article.fromPosts ? 1 : 0
 	);
 	if (article.previousArticleId) {
 		db.prepare('UPDATE merged_articles SET next_article_id = ? WHERE id = ?').run(id, article.previousArticleId);
@@ -134,7 +136,7 @@ export function queryFeed(
 		params.push(`%"${filters.tag}"%`);
 	}
 	if (filters.kind) {
-		sql += filters.kind === 'wire' ? ' AND (tweet IS NOT NULL OR telegram_message IS NOT NULL)' : ' AND tweet IS NULL AND telegram_message IS NULL';
+		sql += filters.kind === 'wire' ? ' AND (tweet IS NOT NULL OR telegram_message IS NOT NULL OR from_posts = 1)' : ' AND tweet IS NULL AND telegram_message IS NULL AND from_posts = 0';
 		sql += " AND category = '[]' AND event_id IS NULL";
 	}
 	if (filters.before) {

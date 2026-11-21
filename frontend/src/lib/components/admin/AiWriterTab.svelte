@@ -323,25 +323,22 @@
 
 		<div class="panel">
 			<div class="ph"><span class="pt">Where it runs</span></div>
-			<p class="hint">Columns it rewrites, in board order. The same switch is on Board columns and each column's Edit sheet. YouTube videos always publish as they are, whatever their column.</p>
+			<p class="hint">
+				Columns it rewrites, in board order. The same switch is on Board columns and each column's Edit sheet. Wire's switch covers X and Telegram
+				posts with no column; posts in your own columns, and YouTube videos, always publish as they are.
+			</p>
 			<div class="chips">
 				{#each boardColumns as c (c.key)}
-					{#if c.kind === 'wire'}
-						<span class="chip locked" style:--cc={columnColor(c.name, ov?.layout.colors[c.key])} title="Wire holds X and Telegram posts, which always publish as posted.">
-							<i></i>{c.name}<span class="mono small">as posted</span>
-						</span>
-					{:else}
-						<button
-							class="chip"
-							class:on={!c.disableAi}
-							class:hid={ov?.layout.hidden.includes(c.key)}
-							style:--cc={columnColor(c.name, ov?.layout.colors[c.key])}
-							title={c.kind === 'general' ? 'General: articles from sources with no column' : ov?.layout.hidden.includes(c.key) ? 'Hidden from the board' : ''}
-							onclick={() => toggleColumn(c)}
-						>
-							<i></i>{c.name}<span class="mono small">{c.disableAi ? 'no AI' : 'AI'}</span>
-						</button>
-					{/if}
+					<button
+						class="chip"
+						class:on={!c.disableAi}
+						class:hid={ov?.layout.hidden.includes(c.key)}
+						style:--cc={columnColor(c.name, ov?.layout.colors[c.key])}
+						title={c.kind === 'general' ? 'General: articles from sources with no column' : c.kind === 'wire' ? 'Wire: X and Telegram posts from sources with no column' : ov?.layout.hidden.includes(c.key) ? 'Hidden from the board' : ''}
+						onclick={() => toggleColumn(c)}
+					>
+						<i></i>{c.name}<span class="mono small">{c.disableAi ? 'no AI' : 'AI'}</span>
+					</button>
 				{/each}
 			</div>
 		</div>
@@ -484,10 +481,6 @@
 	.re {
 		min-height: 22px;
 		padding: 0 6px;
-	}
-	.chip.locked {
-		border-style: dashed;
-		cursor: default;
 	}
 	.chip.hid {
 		opacity: 0.6;

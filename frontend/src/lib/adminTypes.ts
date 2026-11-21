@@ -178,6 +178,8 @@ export interface AdminSettings {
 	aiWriterEnabled: boolean;
 	/** "AI rewrite" for the built-in General column (articles from sources with no column). */
 	generalAiRewrite: boolean;
+	/** "AI rewrite" for the built-in Wire column (X and Telegram posts with no column). Off by default. */
+	wireAiRewrite: boolean;
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	holdBeforePublishMinutes: number;
 	tagDedupThreshold: number;

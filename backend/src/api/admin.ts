@@ -82,8 +82,7 @@ function boardOverview() {
 			id: null,
 			name: 'Wire',
 			isPrivate: false,
-			// Posts always publish as they are (queue/priorityQueue.ts), whatever the switches say.
-			disableAi: true,
+			disableAi: !settings.wireAiRewrite,
 			sources: sources.filter((s) => (s.type === 'nitter' || s.type === 'telegram') && !s.category.some((c) => named.has(c))).map((s) => s.name)
 		},
 		{

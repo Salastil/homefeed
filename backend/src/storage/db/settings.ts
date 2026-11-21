@@ -32,6 +32,7 @@ function rowToSettings(row: any): GlobalSettings {
 	return {
 		aiWriterEnabled: row.ai_writer_enabled === undefined ? true : !!row.ai_writer_enabled,
 		generalAiRewrite: row.general_ai_rewrite === undefined ? true : !!row.general_ai_rewrite,
+		wireAiRewrite: !!row.wire_ai_rewrite,
 		mergeStrictness: row.merge_strictness,
 		holdBeforePublishMinutes: row.hold_before_publish_minutes,
 		tagDedupThreshold: row.tag_dedup_threshold,
@@ -181,7 +182,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 	// out of sync — node:sqlite binds each by its `$name` key, not position.
 	db.prepare(
 		`UPDATE global_settings SET
-			ai_writer_enabled=$ai_writer_enabled, general_ai_rewrite=$general_ai_rewrite,
+			ai_writer_enabled=$ai_writer_enabled, general_ai_rewrite=$general_ai_rewrite, wire_ai_rewrite=$wire_ai_rewrite,
 			merge_strictness=$merge_strictness,
 			hold_before_publish_minutes=$hold_before_publish_minutes,
 			tag_dedup_threshold=$tag_dedup_threshold, tag_expiry_days=$tag_expiry_days,
@@ -201,6 +202,7 @@ export function updateSettings(patch: Partial<GlobalSettings>): GlobalSettings {
 	).run({
 		$ai_writer_enabled: merged.aiWriterEnabled ? 1 : 0,
 		$general_ai_rewrite: merged.generalAiRewrite ? 1 : 0,
+		$wire_ai_rewrite: merged.wireAiRewrite ? 1 : 0,
 		$merge_strictness: merged.mergeStrictness,
 		$hold_before_publish_minutes: merged.holdBeforePublishMinutes,
 		$tag_dedup_threshold: merged.tagDedupThreshold,

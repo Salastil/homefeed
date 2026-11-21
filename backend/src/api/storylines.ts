@@ -292,8 +292,9 @@ export async function registerStorylineRoutes(app: FastifyInstance) {
 				items: items.map(lite)
 			};
 		});
-		const POST = '(tweet IS NOT NULL OR telegram_message IS NOT NULL)';
-		const NOT_POST = '(tweet IS NULL AND telegram_message IS NULL)';
+		// A Wire story the AI rewrote from several posts has no post of its own; from_posts keeps it in Wire.
+		const POST = '(tweet IS NOT NULL OR telegram_message IS NOT NULL OR from_posts = 1)';
+		const NOT_POST = '(tweet IS NULL AND telegram_message IS NULL AND from_posts = 0)';
 		const LOOSE = "category = '[]' AND event_id IS NULL";
 		const special = [
 			{ key: 'wire', name: 'Wire', where: `${POST} AND ${LOOSE}` },

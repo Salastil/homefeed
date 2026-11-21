@@ -2,7 +2,7 @@ import type { AiProviders, InferenceProvider } from '../inference/provider.js';
 import * as contentItemsDb from '../storage/db/contentItems.js';
 import * as sourcesDb from '../storage/db/sources.js';
 import * as categoriesDb from '../storage/db/categories.js';
-import { columnAiOff } from './aiScope.js';
+import { aiScope } from './aiScope.js';
 import * as eventsDb from '../storage/db/events.js';
 import { embedPendingItems } from '../pipeline/embedding.js';
 import { clusterItems } from '../pipeline/clustering.js';
@@ -159,12 +159,9 @@ export async function runDirectPublishCycle(settings: GlobalSettings, embeddingP
 	const sourcesById = new Map(sourcesDb.listSources().map((s) => [s.id, s]));
 	const categories = categoriesDb.listCategories();
 
-	const directPublishSourceIds = new Set(
-		[...sourcesById.values()].filter((s) => s.type === 'youtube' || s.type === 'nitter' || s.type === 'telegram').map((s) => s.id)
-	);
+	const { directSourceIds: directPublishSourceIds, columnAiOff: aiOff } = aiScope(settings, categories, sourcesById);
 	const [typeDirectItems, remaining] = partition(items, (item) => directPublishSourceIds.has(item.sourceId));
 
-	const aiOff = columnAiOff(settings, categories, sourcesById);
 	const [categoryDirectItems] = partition(remaining, (item) => aiOff(item));
 
 	const publishedTypeDirect = await publishItemsDirect(
@@ -217,10 +214,7 @@ export async function runSynthesisCycle(providers: AiProviders, settings: Global
 	// job (its own guarded tick, so a slow merge backlog here never blocks them) — excluded
 	// here too since a batch just ingested this instant may still be unclustered when this
 	// runs before that cycle's own pass gets to it.
-	const directPublishSourceIds = new Set(
-		[...sourcesById.values()].filter((s) => s.type === 'youtube' || s.type === 'nitter' || s.type === 'telegram').map((s) => s.id)
-	);
-	const aiOff = columnAiOff(settings, categories, sourcesById);
+	const { directSourceIds: directPublishSourceIds, columnAiOff: aiOff } = aiScope(settings, categories, sourcesById);
 	const mergeableItems = items.filter(
 		(item) => !directPublishSourceIds.has(item.sourceId) && !aiOff(item)
 	);

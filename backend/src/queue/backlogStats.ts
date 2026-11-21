@@ -1,7 +1,7 @@
 import * as contentItemsDb from '../storage/db/contentItems.js';
 import * as sourcesDb from '../storage/db/sources.js';
 import * as categoriesDb from '../storage/db/categories.js';
-import { columnAiOff } from './aiScope.js';
+import { aiScope } from './aiScope.js';
 import { clusterItems } from '../pipeline/clustering.js';
 import type { ContentItem, GlobalSettings, Source } from '../storage/db/types.js';
 
@@ -58,10 +58,7 @@ export function getBacklogSnapshot(settings: GlobalSettings): BacklogSnapshot {
 	const sourcesById = new Map(sourcesDb.listSources().map((s) => [s.id, s]));
 	const categories = categoriesDb.listCategories();
 
-	const directPublishSourceIds = new Set(
-		[...sourcesById.values()].filter((s) => s.type === 'youtube' || s.type === 'nitter' || s.type === 'telegram').map((s) => s.id)
-	);
-	const aiOff = columnAiOff(settings, categories, sourcesById);
+	const { directSourceIds: directPublishSourceIds, columnAiOff: aiOff } = aiScope(settings, categories, sourcesById);
 
 	const directEligible: ContentItem[] = [];
 	const mergeable: ContentItem[] = [];

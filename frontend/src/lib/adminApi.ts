@@ -141,13 +141,11 @@ export const getBoardOverview = (fetchFn?: typeof fetch) => request<BoardOvervie
 export const updateCategory = (id: string, patch: { name?: string; isPrivate?: boolean; disableAi?: boolean }, fetchFn?: typeof fetch) =>
 	request<BoardOverview>(`/api/admin/categories/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, fetchFn);
 
-/**
- * A column's "AI rewrite" switch: categories keep it on the category, General keeps it in the
- * settings, and Wire has none (posts always publish as they are), so it's left unchanged.
- */
+/** A column's "AI rewrite" switch: categories keep it on the category, Wire and General in the settings. */
 export async function setColumnAi(col: BoardColumnInfo, on: boolean, fetchFn?: typeof fetch): Promise<BoardOverview> {
 	if (col.kind === 'category' && col.id) return updateCategory(col.id, { disableAi: !on }, fetchFn);
 	if (col.kind === 'general') await updateSettings({ generalAiRewrite: on }, fetchFn);
+	if (col.kind === 'wire') await updateSettings({ wireAiRewrite: on }, fetchFn);
 	return getBoardOverview(fetchFn);
 }
 
