@@ -63,7 +63,7 @@ async function resolveFeedUrl(source: Source): Promise<string | null> {
 
 	const resolvedId = await resolveChannelIdFromPage(pageUrl);
 	if (!resolvedId) {
-		logger.warn('youtube', `Couldn't resolve a channel ID from "${raw}" — double-check the handle/URL`);
+		logger.warn('youtube', `Couldn't resolve a channel ID from "${raw}" — double-check the handle/URL`, { feed: source.name, sourceId: source.id });
 		return null;
 	}
 	return `https://www.youtube.com/feeds/videos.xml?channel_id=${resolvedId}`;
@@ -103,7 +103,7 @@ export const youtubeAdapter: SourceAdapter = {
 	async fetch(source: Source): Promise<FetchedItem[]> {
 		const url = await resolveFeedUrl(source);
 		if (!url) {
-			logger.warn('youtube', `Source "${source.name}" has no usable url, channelId, or playlistId configured — skipping`);
+			logger.warn('youtube', `Source "${source.name}" has no usable url, channelId, or playlistId configured — skipping`, { feed: source.name, sourceId: source.id });
 			return [];
 		}
 

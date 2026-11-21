@@ -562,6 +562,12 @@ export function migrate() {
 		db.exec("ALTER TABLE global_settings ADD COLUMN board_layout TEXT NOT NULL DEFAULT '{}'");
 	}
 	// Defaults to on so an existing install keeps writing exactly as before until the admin flips it.
+	// Log lines say which feed they're about and link the article they're about.
+	if (!hasColumn('logs', 'feed')) {
+		db.exec('ALTER TABLE logs ADD COLUMN feed TEXT');
+		db.exec('ALTER TABLE logs ADD COLUMN source_id TEXT');
+		db.exec('ALTER TABLE logs ADD COLUMN article_id TEXT');
+	}
 	if (!hasColumn('global_settings', 'ai_writer_enabled')) {
 		db.exec('ALTER TABLE global_settings ADD COLUMN ai_writer_enabled INTEGER NOT NULL DEFAULT 1');
 	}

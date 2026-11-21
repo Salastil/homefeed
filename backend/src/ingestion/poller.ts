@@ -76,16 +76,16 @@ async function pollOne(source: Source): Promise<number> {
 		for (const item of fetched) {
 			if (contentItemsDb.existsByLink(item.link)) continue;
 
-			const finalItem = FOLLOWS_LINK_FOR_FULL_ARTICLE.includes(source.type) ? await withFullArticle(item) : item;
+			const finalItem = FOLLOWS_LINK_FOR_FULL_ARTICLE.includes(source.type) ? await withFullArticle(item, source) : item;
 
 			contentItemsDb.insertContentItem(toContentItem(source, finalItem));
 			ingested++;
 		}
 		sourcesDb.markPolled(source.id, null);
-		logger.info('poller', `Polled "${source.name}" (${source.type}) — ${ingested} new item(s)`);
+		logger.info('poller', `Polled "${source.name}" (${source.type}) — ${ingested} new item(s)`, { feed: source.name, sourceId: source.id });
 	} catch (err) {
 		const message = (err as Error).message;
-		logger.error('poller', `Source "${source.name}" failed: ${message}`);
+		logger.error('poller', `Source "${source.name}" failed: ${message}`, { feed: source.name, sourceId: source.id });
 		sourcesDb.markPolled(source.id, message);
 	}
 	return ingested;
@@ -96,14 +96,15 @@ async function pollOne(source: Source): Promise<number> {
  * the actual extracted article, per the "capture the real article, not the RSS teaser"
  * requirement. Falls back to the feed's own fields untouched if extraction fails.
  */
-async function withFullArticle(item: FetchedItem): Promise<FetchedItem> {
+async function withFullArticle(item: FetchedItem, source: Source): Promise<FetchedItem> {
+	const ctx = { feed: source.name, sourceId: source.id };
 	const full = await fetchFullArticle(item.link);
 	if (!full) {
-		logger.warn('poller', `Using feed summary for "${item.title}" (full article capture failed)`);
+		logger.warn('poller', `Using feed summary for "${item.title}" (full article capture failed)`, ctx);
 		return item;
 	}
 
-	logger.info('poller', `Captured full article for "${full.title || item.title}"`);
+	logger.info('poller', `Captured full article for "${full.title || item.title}"`, ctx);
 	return {
 		...item,
 		title: full.title || item.title,

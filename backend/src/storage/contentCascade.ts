@@ -10,7 +10,7 @@ import * as articlesDb from './db/articles.js';
 import * as sourcesDb from './db/sources.js';
 import { inTransaction } from './db/index.js';
 import { deleteMediaRowsForArticles, deleteMediaRowsForItems, removeMediaFiles, deleteAllMedia } from './media/index.js';
-import { logger } from './db/logs.js';
+import { logger, feedOf } from './db/logs.js';
 
 export interface ClearResult {
 	itemsDeleted: number;
@@ -31,21 +31,24 @@ export interface ReissueResult {
  * supports undoing.
  */
 export function clearSourceContent(sourceId: string): ClearResult {
+	const ctx = feedOf(sourceId);
 	const { result, files } = inTransaction(() => clearInside(sourceId));
 	removeMediaFiles(files);
-	logger.info('admin', `Cleared content for source ${sourceId}: ${result.itemsDeleted} item(s), ${result.articlesDeleted} article(s)`);
+	logger.info('admin', `Cleared content for "${ctx.feed}": ${result.itemsDeleted} item(s), ${result.articlesDeleted} article(s)`, ctx);
 	return result;
 }
 
 /** Deletes a source together with everything it ingested, as one transaction (DELETE /api/admin/sources/:id). */
 export function deleteSourceAndContent(sourceId: string): ClearResult {
+	// Looked up before the delete, while the source still has a name.
+	const ctx = feedOf(sourceId);
 	const { result, files } = inTransaction(() => {
 		const out = clearInside(sourceId);
 		sourcesDb.deleteSource(sourceId);
 		return out;
 	});
 	removeMediaFiles(files);
-	logger.info('admin', `Deleted source ${sourceId}: ${result.itemsDeleted} item(s), ${result.articlesDeleted} article(s)`);
+	logger.info('admin', `Deleted source "${ctx.feed}": ${result.itemsDeleted} item(s), ${result.articlesDeleted} article(s)`, { feed: ctx.feed });
 	return result;
 }
 
@@ -91,7 +94,8 @@ export function reissueSourceContent(sourceId: string): ReissueResult {
 		return { articleIds: ids, requeue: requeueIds, files: paths };
 	});
 	removeMediaFiles(files);
-	logger.info('admin', `Reissuing content for source ${sourceId}: ${articleIds.length} article(s) deleted, ${requeue.length} item(s) requeued`);
+	const ctx = feedOf(sourceId);
+	logger.info('admin', `Reissuing content for "${ctx.feed}": ${articleIds.length} article(s) deleted, ${requeue.length} item(s) requeued`, ctx);
 	return { articlesDeleted: articleIds.length, itemsRequeued: requeue.length };
 }
 

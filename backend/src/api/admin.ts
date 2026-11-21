@@ -211,7 +211,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		const created = sourcesDb.createSource(req.body as any);
 		// Poll immediately rather than waiting for the next scheduler tick (up to 1 minute)
 		// — the admin adding a feed expects to see it start working right away.
-		pollSourceNow(created).catch((err) => logger.error('poller', `Immediate poll failed for "${created.name}": ${err.message}`));
+		pollSourceNow(created).catch((err) => logger.error('poller', `Immediate poll failed for "${created.name}": ${err.message}`, { feed: created.name, sourceId: created.id }));
 		return reply.code(201).send(created);
 	});
 
@@ -265,7 +265,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		if (!source) return reply.code(404).send({ error: 'not found' });
 
 		const ingested = await pollSourceNow(source);
-		logger.info('poller', `Manual poll of "${source.name}" — ${ingested} new item(s)`);
+		logger.info('poller', `Manual poll of "${source.name}" — ${ingested} new item(s)`, { feed: source.name, sourceId: source.id });
 		return { ingested, source: sourcesDb.getSource(id) };
 	});
 
@@ -341,7 +341,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 		try {
 			const article = await publishEventRecap(providers, settings, event, constituents);
 			eventsDb.markRecapped(event.id);
-			logger.info('events', `Manually forced recap for "${event.name}" from ${constituents.length} article(s)`);
+			logger.info('events', `Manually forced recap for "${event.name}" from ${constituents.length} article(s)`, { feed: `${event.name} (tracked)`, articleId: article.id });
 			return { published: true, title: article.title };
 		} catch (err) {
 			return reply.code(502).send({ error: `Recap failed: ${(err as Error).message}` });

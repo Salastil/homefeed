@@ -6,7 +6,7 @@ import * as eventsDb from '../storage/db/events.js';
 import { embedPendingItems } from '../pipeline/embedding.js';
 import { clusterItems } from '../pipeline/clustering.js';
 import { publishCluster, publishDirect } from '../pipeline/publish.js';
-import { logger } from '../storage/db/logs.js';
+import { logger, feedOf, feedsOf } from '../storage/db/logs.js';
 import * as backlogStats from './backlogStats.js';
 import type { GlobalSettings, ContentItem, TrackedEvent, Source } from '../storage/db/types.js';
 
@@ -85,9 +85,9 @@ async function publishItemsDirect(
 			const article = await publishDirect(item, settings, { eventId, embeddingProvider });
 			contentItemsDb.assignCluster([item.id], article.id);
 			published++;
-			logger.info('synthesis', `Published "${article.title}" directly (${describeSuccess(item)})`);
+			logger.info('synthesis', `Published "${article.title}" directly (${describeSuccess(item)})`, { ...feedOf(item.sourceId), articleId: article.id });
 		} catch (err) {
-			logger.error('synthesis', `${failureLabel} for "${item.title}": ${(err as Error).message}`);
+			logger.error('synthesis', `${failureLabel} for "${item.title}": ${(err as Error).message}`, feedOf(item.sourceId));
 		} finally {
 			directPublishInFlight.delete(item.id);
 		}
@@ -274,12 +274,12 @@ export async function runSynthesisCycle(providers: AiProviders, settings: Global
 				cluster.id
 			);
 			published++;
-			logger.info(
-				'synthesis',
-				`Published "${article.title}" from ${cluster.items.length} source(s)`
-			);
+			logger.info('synthesis', `Published "${article.title}" from ${cluster.items.length} source(s)`, {
+				...feedsOf(cluster.items.map((i) => i.sourceId)),
+				articleId: article.id
+			});
 		} catch (err) {
-			logger.error('synthesis', `Failed to publish cluster: ${(err as Error).message}`);
+			logger.error('synthesis', `Failed to publish cluster: ${(err as Error).message}`, feedsOf(cluster.items.map((i) => i.sourceId)));
 		}
 	}
 

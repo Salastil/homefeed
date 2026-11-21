@@ -5,7 +5,7 @@ import { synthesizeArticle, synthesizeRecap } from './synthesis.js';
 import { selectBestImage, faviconUrlFor } from './image-selection.js';
 import { downloadAndStore, promoteToPublished, storeMediaBuffer } from '../storage/media/index.js';
 import { downloadMessageMedia, downloadMessageThumb, downloadChannelAvatar } from '../telegram/client.js';
-import { logger } from '../storage/db/logs.js';
+import { logger, feedOf } from '../storage/db/logs.js';
 import * as articles from '../storage/db/articles.js';
 import * as tags from '../storage/db/tags.js';
 import * as sources from '../storage/db/sources.js';
@@ -288,7 +288,7 @@ async function resolveTelegramAvatarUrl(
 		const stored = storeMediaBuffer(buffer, '.jpg', `telegram-avatar:${channelUsername}`, 'published', {});
 		return { url: stored.servedPath, storedMediaId: stored.id };
 	} catch (err) {
-		logger.error('telegram', `Failed to self-host avatar for "${channelUsername}": ${(err as Error).message}`);
+		logger.error('telegram', `Failed to self-host avatar for "${channelUsername}": ${(err as Error).message}`, { feed: channelUsername });
 		return { url: null, storedMediaId: null };
 	}
 }
@@ -397,7 +397,7 @@ export async function publishDirect(
 		try {
 			tagIds = await resolveTagsByEmbedding(opts.embeddingProvider, item, settings);
 		} catch (err) {
-			logger.error('synthesis', `Tag matching failed for "${item.title}": ${(err as Error).message}`);
+			logger.error('synthesis', `Tag matching failed for "${item.title}": ${(err as Error).message}`, feedOf(item.sourceId));
 		}
 	}
 

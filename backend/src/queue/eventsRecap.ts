@@ -50,9 +50,9 @@ export async function runEventRecaps(providers: AiProviders, settings: GlobalSet
 			const article = await publishEventRecap(providers, settings, event, constituents);
 			eventsDb.markRecapped(event.id);
 			published++;
-			logger.info('events', `Published recap for "${event.name}" from ${constituents.length} article(s)`);
+			logger.info('events', `Published recap for "${event.name}" from ${constituents.length} article(s)`, { feed: `${event.name} (tracked)`, articleId: article.id });
 		} catch (err) {
-			logger.error('events', `Recap failed for "${event.name}": ${(err as Error).message}`);
+			logger.error('events', `Recap failed for "${event.name}": ${(err as Error).message}`, { feed: `${event.name} (tracked)` });
 		}
 	}
 

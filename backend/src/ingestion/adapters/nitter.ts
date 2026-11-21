@@ -153,7 +153,7 @@ export const nitterAdapter: SourceAdapter = {
 			if (!item.link || !item.guid) continue;
 			const tweetId = extractTweetId(item);
 			if (!tweetId) {
-				logger.warn('nitter', `Couldn't extract a tweet ID from "${item.link}" — skipping`);
+				logger.warn('nitter', `Couldn't extract a tweet ID from "${item.link}" — skipping`, { feed: source.name, sourceId: source.id });
 				continue;
 			}
 
