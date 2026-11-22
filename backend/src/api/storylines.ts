@@ -196,10 +196,18 @@ export async function registerStorylineRoutes(app: FastifyInstance) {
 		const storylines = all
 			.filter((p) => p.state !== 'closed' && isShown(p, settings.minItems, settings.minSources))
 			.sort((a, b) => b.score - a.score);
+		// Closed in the last 24 hours - the same set the closed pane lists first. One that
+		// closed then went quiet up to closeHours before that.
 		const dayAgo = new Date(now - 24 * HOUR).toISOString();
 		const closedToday = stl
-			.storylinesTouchedSince('news', dayAgo)
-			.filter((row) => storylineState(row, settings, now) === 'closed' && row.itemCount >= settings.minItems && row.sourceCount >= settings.minSources).length;
+			.storylinesTouchedSince('news', new Date(now - (24 + Math.max(settings.closeHours, 1)) * HOUR).toISOString())
+			.filter(
+				(row) =>
+					storylineState(row, settings, now) === 'closed' &&
+					closesAt(row, settings) >= dayAgo &&
+					row.itemCount >= settings.minItems &&
+					row.sourceCount >= settings.minSources
+			).length;
 
 		const events = settings.includeEvents
 			? eventsDb.listActiveEvents().map((ev) => {

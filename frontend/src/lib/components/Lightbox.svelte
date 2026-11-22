@@ -221,7 +221,7 @@
 						style:width={fitted ? `${fitted.w}px` : null}
 						style:height={fitted ? `${fitted.h}px` : null}
 						style:transform="translate({tx}px, {ty}px) scale({scale})"
-						onload={(e) => (natural = { w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+						onload={(e) => { const im = e.currentTarget as HTMLImageElement; natural = { w: im.naturalWidth, h: im.naturalHeight }; }}
 						onpointerdown={down}
 						onpointermove={move}
 						onpointerup={up}

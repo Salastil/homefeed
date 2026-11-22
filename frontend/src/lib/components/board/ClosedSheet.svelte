@@ -41,16 +41,14 @@
 		};
 	});
 
-	// Day groups by when each one closed: Today, Yesterday, then the weekday and date.
+	// Groups by when each one closed: the last 24 hours first (the chip's "Closed today"
+	// count), then one group per earlier day.
 	const groups = $derived.by(() => {
 		const out: { label: string; items: ClosedStoryline[] }[] = [];
-		const today = new Date(clock.now);
-		today.setHours(0, 0, 0, 0);
+		const dayAgo = clock.now - 86_400_000;
 		for (const s of list ?? []) {
-			const d = new Date(s.closesAt);
-			d.setHours(0, 0, 0, 0);
-			const back = Math.round((today.getTime() - d.getTime()) / 86_400_000);
-			const label = back <= 0 ? 'Today' : back === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+			const at = Date.parse(s.closesAt);
+			const label = at >= dayAgo ? 'Last 24 hours' : new Date(at).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 			const last = out.at(-1);
 			if (last?.label === label) last.items.push(s);
 			else out.push({ label, items: [s] });
