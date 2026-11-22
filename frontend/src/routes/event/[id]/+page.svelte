@@ -401,4 +401,44 @@
 	.none.big {
 		font-size: 13px;
 	}
+	/* Phones: header wraps, the three panels stack (developments, the selected one's tiles,
+	   single posts) and the page scrolls (see +layout.svelte). Both lists stop at a fixed height;
+	   rows that don't fit become "+N earlier". */
+	@media (max-width: 760px) {
+		.tpage {
+			flex: none;
+			grid-template-rows: auto auto;
+		}
+		.ehead {
+			gap: 10px 14px;
+			padding: 10px 12px;
+		}
+		.et {
+			flex: 1 1 100%;
+			flex-wrap: wrap;
+			gap: 6px 10px;
+		}
+		.estats {
+			flex-wrap: wrap;
+			gap: 4px 14px;
+		}
+		.sp {
+			display: none;
+		}
+		.lower {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.dvb,
+		.sgb {
+			flex: none;
+			max-height: 320px;
+		}
+		.stt {
+			font-size: 18px;
+			-webkit-line-clamp: 3;
+		}
+		h1 {
+			font-size: 22px;
+		}
+	}
 </style>

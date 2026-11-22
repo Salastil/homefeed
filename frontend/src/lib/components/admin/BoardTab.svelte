@@ -11,6 +11,7 @@
 		createCategory,
 		deleteCategory,
 		getBoardOverview,
+		setColumnAi,
 		updateCategory,
 		updateSettings,
 		type BoardLayoutCfg,
@@ -161,7 +162,7 @@
 			<span class="src" title={fedBy(key)}>{fedBy(key)}</span>
 			{@render sw(!layout?.hidden.includes(key), 'Board', () => toggleBoard(key))}
 			{@render sw(c.isPrivate, 'Private', c.id ? () => patchCategory(c.id!, { isPrivate: !c.isPrivate }) : null)}
-			<span class:aioff={!admin.aiWriterEnabled} title={admin.aiWriterEnabled ? '' : 'The AI writer is off, so no column is rewritten'}>{@render sw(!c.disableAi, 'AI', c.id ? () => patchCategory(c.id!, { disableAi: !c.disableAi }) : null)}</span>
+			<span class:aioff={!admin.aiWriterEnabled} title={admin.aiWriterEnabled ? '' : 'The AI writer is off, so no column is rewritten'}>{@render sw(!c.disableAi, 'AI', () => run(async () => (ov = await setColumnAi(c, c.disableAi))))}</span>
 			<span class="act">
 				{#if inGroup}
 					<button aria-label="Earlier in rotation" disabled={k === 0} onclick={() => moveWithin(slotIndex, k, -1)}>↑</button>

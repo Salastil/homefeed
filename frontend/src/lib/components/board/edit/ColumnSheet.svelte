@@ -6,7 +6,7 @@
 	 */
 	import { onMount } from 'svelte';
 	import type { AdminSource } from '$lib/adminTypes';
-	import { deleteCategory, getBoardOverview, getSources, pollSourceNow, updateCategory, updateSettings, type BoardLayoutCfg, type BoardOverview } from '$lib/adminApi';
+	import { deleteCategory, getBoardOverview, getSources, pollSourceNow, setColumnAi, updateCategory, updateSettings, type BoardLayoutCfg, type BoardOverview } from '$lib/adminApi';
 	import * as ops from '$lib/boardLayoutOps';
 	import { admin, boardChanged } from '$lib/adminSession.svelte';
 	import { COLUMN_SWATCHES, columnColor, relTime } from '$lib/text';
@@ -51,6 +51,13 @@
 		(ov?.columns ?? []).filter((c) => c.kind === 'category').map((c) => ({ name: c.name, color: columnColor(c.name, ov?.layout.colors[c.key]) }))
 	);
 	const TYPE_SHORT: Record<string, string> = { rss: 'RSS', api: 'API', youtube: 'YT', nitter: 'X', telegram: 'TG' };
+	const aiHint = $derived(
+		!admin.aiWriterEnabled
+			? 'The AI writer is off, so nothing is rewritten.'
+			: col?.kind === 'wire'
+				? 'Merge posts about the same story into one rewritten article. Off, each post publishes as posted.'
+				: 'Merge and rewrite stories in this column.'
+	);
 	const feedHref = $derived(col ? (col.kind === 'category' ? `/category/${slugify(col.name)}` : `/feed/${col.kind}`) : '/');
 
 	async function run(fn: () => Promise<unknown>) {
@@ -184,11 +191,11 @@
 			<input type="checkbox" checked={col.isPrivate} onchange={() => patch({ isPrivate: !col.isPrivate })} disabled={busy} />
 			<span>Private<em>Only visitors who unlock private columns see it.</em></span>
 		</label>
-		<label class="check" class:muted={!admin.aiWriterEnabled}>
-			<input type="checkbox" checked={!col.disableAi} onchange={() => patch({ disableAi: !col.disableAi })} disabled={busy} />
-			<span>AI rewrite<em>{admin.aiWriterEnabled ? 'Merge and rewrite stories in this column.' : 'The AI writer is off, so nothing is rewritten.'}</em></span>
-		</label>
 	{/if}
+	<label class="check" class:muted={!admin.aiWriterEnabled}>
+		<input type="checkbox" checked={!col.disableAi} onchange={() => run(async () => (ov = await setColumnAi(col, col.disableAi)))} disabled={busy} />
+		<span>AI rewrite<em>{aiHint}</em></span>
+	</label>
 
 	<div class="fld">
 		<span class="lbl">Place on the board</span>

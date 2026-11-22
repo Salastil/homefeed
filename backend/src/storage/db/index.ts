@@ -571,6 +571,15 @@ export function migrate() {
 	if (!hasColumn('global_settings', 'ai_writer_enabled')) {
 		db.exec('ALTER TABLE global_settings ADD COLUMN ai_writer_enabled INTEGER NOT NULL DEFAULT 1');
 	}
+	if (!hasColumn('global_settings', 'general_ai_rewrite')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN general_ai_rewrite INTEGER NOT NULL DEFAULT 1');
+	}
+	if (!hasColumn('global_settings', 'wire_ai_rewrite')) {
+		db.exec('ALTER TABLE global_settings ADD COLUMN wire_ai_rewrite INTEGER NOT NULL DEFAULT 0');
+	}
+	if (!hasColumn('merged_articles', 'from_posts')) {
+		db.exec('ALTER TABLE merged_articles ADD COLUMN from_posts INTEGER NOT NULL DEFAULT 0');
+	}
 	if (!hasColumn('global_settings', 'storyline_settings')) {
 		db.exec("ALTER TABLE global_settings ADD COLUMN storyline_settings TEXT NOT NULL DEFAULT '{}'");
 		db.exec("ALTER TABLE global_settings ADD COLUMN widget_slots TEXT NOT NULL DEFAULT '[]'");

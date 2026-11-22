@@ -89,6 +89,14 @@ html {
 	zoom: var(--ui-zoom);
 }
 
+/* Phones: the 90% board scale only helps a wide screen fit more columns; on a phone it just
+   makes the text small, so draw at full size there. */
+@media (max-width: 760px) {
+	:root {
+		--ui-zoom: 1;
+	}
+}
+
 html,
 body {
 	margin: 0;

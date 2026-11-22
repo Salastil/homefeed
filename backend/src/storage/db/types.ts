@@ -157,6 +157,8 @@ export interface MergedArticle {
 	topStories: boolean;
 	/** True only for the AI-written periodic summary of a tracked event (see eventsRecap.ts) — distinguishes it from the individual articles published under the same eventId. */
 	isRecap: boolean;
+	/** Written by the AI from X/Telegram posts only (Wire's AI rewrite), so it stays in the Wire column though it has no post of its own. */
+	fromPosts?: boolean;
 	/** Which model wrote this article, how fast, and how long it took — null for a direct-published (single-source, no synthesis) article, which never ran through pipeline/synthesis.ts at all. */
 	synthesisInfo: { model: string; genTokensPerSec: number | null; durationMs: number } | null;
 }
@@ -370,6 +372,10 @@ export interface WidgetSlot {
 export interface GlobalSettings {
 	/** Master switch for the generative AI writer (admin → AI writer). Off: every item publishes as its own article with its source's text (runPassthroughCycle) and no recaps are written; the per-category "AI rewrite" toggles only matter while this is on. Embeddings (storylines, tags) run either way. */
 	aiWriterEnabled: boolean;
+	/** "AI rewrite" for the built-in General column (articles from sources with no column); categories carry their own disableAi. The Wire column (X/Telegram posts) never goes to the writer. */
+	generalAiRewrite: boolean;
+	/** "AI rewrite" for the built-in Wire column: off (the default), X and Telegram posts with no column publish as posted; on, they merge and rewrite like articles (queue/aiScope.ts). */
+	wireAiRewrite: boolean;
 	mergeStrictness: 1 | 2 | 3 | 4 | 5;
 	holdBeforePublishMinutes: number;
 	tagDedupThreshold: number;

@@ -7,8 +7,8 @@
 	 * strictness, hold, follow-ups, writing style) and Models (the synthesis server and model).
 	 */
 	import { onMount } from 'svelte';
-	import type { AdminSettings, AiStatusBySlot, ModelCatalog } from '$lib/adminTypes';
-	import { getAiStatus, getBoardOverview, getModelContext, testAiConnection, updateCategory, updateSettings, type BoardOverview } from '$lib/adminApi';
+	import type { AdminSettings, AiStatusBySlot, ModelCatalog, SynthesisModelInfo } from '$lib/adminTypes';
+	import { getBoardOverview, getModelContext, getSynthesisModels, setColumnAi, updateSettings, type BoardColumnInfo, type BoardOverview } from '$lib/adminApi';
 	import { saver } from '$lib/adminSaver.svelte';
 	import { admin } from '$lib/adminSession.svelte';
 	import { columnColor } from '$lib/text';
@@ -79,16 +79,68 @@
 	const saveConn = () =>
 		conn.run(async () => {
 			await updateSettings({ synthesisServiceHost: host, synthesisServicePort: port });
-			status = (await getAiStatus()).synthesis;
+			saved = { host, port };
+			tested = null;
+			await refreshModels();
 		});
+
+	// The model list comes from the server itself: asked when the page opens, every 30 s while
+	// it's visible, and on ↻. Until the first answer, the names from the page load stand in.
+	// svelte-ignore state_referenced_locally
+	let saved = $state({ host: settings.synthesisServiceHost, port: settings.synthesisServicePort });
+	// svelte-ignore state_referenced_locally
+	let installed = $state<SynthesisModelInfo[]>(
+		models.synthesis.map((name) => ({ name, sizeBytes: null, parameterSize: null, quantization: null, family: null, modifiedAt: null, embeddingOnly: false }))
+	);
+	let checkedAt = $state<string | null>(null);
+	let refreshing = $state(false);
+	/** The Test button's answer for an address that isn't saved yet. */
+	let tested = $state<{ host: string; port: number; connected: boolean; count: number } | null>(null);
+
+	async function refreshModels() {
+		refreshing = true;
+		try {
+			const r = await getSynthesisModels();
+			status = { ...status, connected: r.connected, host: r.host, port: r.port };
+			if (r.connected) installed = r.models;
+			checkedAt = r.checkedAt;
+		} catch {
+			// The backend itself didn't answer; keep what's shown.
+		} finally {
+			refreshing = false;
+		}
+	}
 	async function test() {
 		testing = true;
 		try {
-			status = await testAiConnection(host, port);
+			const r = await getSynthesisModels({ host, port });
+			const same = r.host === saved.host && Number(r.port) === Number(saved.port);
+			if (same) {
+				tested = null;
+				status = { ...status, connected: r.connected };
+				if (r.connected) installed = r.models;
+				checkedAt = r.checkedAt;
+			} else {
+				tested = { host: r.host, port: r.port, connected: r.connected, count: r.models.filter((m) => !m.embeddingOnly).length };
+			}
 		} finally {
 			testing = false;
 		}
 	}
+	onMount(() => {
+		refreshModels();
+		const timer = setInterval(() => document.visibilityState === 'visible' && refreshModels(), 30_000);
+		const onVisible = () => document.visibilityState === 'visible' && refreshModels();
+		document.addEventListener('visibilitychange', onVisible);
+		return () => {
+			clearInterval(timer);
+			document.removeEventListener('visibilitychange', onVisible);
+		};
+	});
+	const writers = $derived(installed.filter((m) => !m.embeddingOnly));
+	const missing = $derived(!!s.synthesisModel && status.connected && checkedAt !== null && !writers.some((m) => m.name === s.synthesisModel));
+	const gb = (b: number | null) => (b ? `${(b / 1e9).toFixed(1)} GB` : '');
+	const describe = (m: SynthesisModelInfo) => [m.parameterSize, m.quantization, gb(m.sizeBytes)].filter(Boolean).join(' · ');
 
 	// The context-window slider's ceiling is the selected model's own reported maximum.
 	const FALLBACK_MAX_CTX = 32768;
@@ -110,17 +162,23 @@
 	// Mirrors LANGUAGE_SCRIPTS in backend/src/pipeline/synthesis.ts (a value not listed there
 	// is still asked for, just not verified).
 	const LANGUAGES = ['English', 'Spanish', 'French', 'German', 'Portuguese', 'Italian', 'Dutch', 'Polish', 'Turkish', 'Vietnamese', 'Indonesian', 'Russian', 'Ukrainian', 'Greek', 'Chinese (Simplified)', 'Japanese', 'Korean', 'Arabic', 'Hebrew', 'Hindi'];
-	const synthModels = $derived(models.synthesis.includes(s.synthesisModel) || !s.synthesisModel ? models.synthesis : [s.synthesisModel, ...models.synthesis]);
 
-	// Per-column scope: the same "AI rewrite" switch as Board columns.
+	// Per-column scope: the same "AI rewrite" switch as Board columns, for every column on the
+	// board including the built-in Wire and General, in board order.
 	let ov = $state<BoardOverview | null>(null);
 	onMount(async () => {
 		admin.aiWriterEnabled = s.aiWriterEnabled;
 		ov = await getBoardOverview().catch(() => null);
 	});
-	const cats = $derived((ov?.columns ?? []).filter((c) => c.kind === 'category'));
-	async function toggleColumn(id: string, disableAi: boolean) {
-		ov = await updateCategory(id, { disableAi });
+	const boardColumns = $derived.by(() => {
+		if (!ov) return [];
+		const byKey = new Map(ov.columns.map((c) => [c.key, c]));
+		const order = [...ov.layout.slots.flatMap((sl) => sl.columns), ...ov.layout.hidden];
+		const listed = order.map((k) => byKey.get(k)).filter((c): c is BoardColumnInfo => !!c);
+		return [...listed, ...ov.columns.filter((c) => !order.includes(c.key))];
+	});
+	async function toggleColumn(c: BoardColumnInfo) {
+		ov = await setColumnAi(c, c.disableAi);
 	}
 </script>
 
@@ -221,15 +279,37 @@
 				<SaveStatus status={conn.status} />
 			</div>
 			<p class="hint">
-				{#if status.connected}<span class="ok">✓ Connected · {status.host}:{status.port}</span>{:else}<span class="err">✕ Unreachable</span>{/if}
-				· separate from the embedding server, which is under <a href="/admin/settings?tab=connections#ai-servers">Connections</a>.
+				{#if tested}
+					{#if tested.connected}<span class="ok">✓ {tested.host}:{tested.port} answers · {tested.count} model{tested.count === 1 ? '' : 's'}</span>{:else}<span class="err">✕ {tested.host}:{tested.port} doesn't answer</span>{/if}
+					· not saved; Save to use it.
+				{:else}
+					{#if status.connected}<span class="ok">✓ Connected · {status.host}:{status.port} · {writers.length} model{writers.length === 1 ? '' : 's'}</span>{:else}<span class="err">✕ Unreachable</span>{/if}
+					· separate from the embedding server, which is under <a href="/admin/settings?tab=connections#ai-servers">Connections</a>.
+				{/if}
 			</p>
-			<label class="fld">
-				<span class="lbl">Model</span>
-				<select bind:value={s.synthesisModel} onchange={saveModel}>
-					{#each synthModels as m (m)}<option value={m}>{m}</option>{/each}
+			<div class="fld">
+				<div class="lblrow">
+					<span class="lbl">Model</span>
+					<span class="sp"></span>
+					<span class="lbl" title={checkedAt ? `Asked the server at ${new Date(checkedAt).toLocaleTimeString()}` : ''}>
+						{refreshing ? 'Asking the server…' : checkedAt ? `Checked ${new Date(checkedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}` : 'From the last page load'}
+					</span>
+					<button class="ghost re" onclick={refreshModels} disabled={refreshing} aria-label="Ask the server for its models again" title="Ask the server again">↻</button>
+				</div>
+				<select bind:value={s.synthesisModel} onchange={saveModel} aria-label="Synthesis model">
+					{#if missing || (!writers.length && s.synthesisModel)}
+						<option value={s.synthesisModel}>{s.synthesisModel}{missing ? ' (not on this server)' : ''}</option>
+					{/if}
+					{#each writers as m (m.name)}
+						<option value={m.name}>{m.name}{describe(m) ? ` — ${describe(m)}` : ''}</option>
+					{/each}
 				</select>
-			</label>
+				{#if missing}
+					<p class="hint err">This model isn't installed on {status.host}. The writer fails until you pick another or run <code>ollama pull {s.synthesisModel}</code> there.</p>
+				{:else if status.connected && checkedAt && !writers.length}
+					<p class="hint err">The server has no models that can write. Pull one with <code>ollama pull</code>.</p>
+				{/if}
+			</div>
 			<label class="check">
 				<input type="checkbox" bind:checked={s.synthesisDisableThinking} onchange={saveModel} />
 				<span>Skip hidden reasoning (think: false)<em>For reasoning models (Qwen3, DeepSeek-R1). It saves time and is ignored by other models.</em></span>
@@ -243,10 +323,20 @@
 
 		<div class="panel">
 			<div class="ph"><span class="pt">Where it runs</span></div>
-			<p class="hint">Columns it rewrites. The same switch is on Board columns. X, Telegram and YouTube posts always publish as they are.</p>
+			<p class="hint">
+				Columns it rewrites, in board order. The same switch is on Board columns and each column's Edit sheet. Wire's switch covers X and Telegram
+				posts with no column; posts in your own columns, and YouTube videos, always publish as they are.
+			</p>
 			<div class="chips">
-				{#each cats as c (c.key)}
-					<button class="chip" class:on={!c.disableAi} style:--cc={columnColor(c.name, ov?.layout.colors[c.key])} onclick={() => toggleColumn(c.id!, !c.disableAi)}>
+				{#each boardColumns as c (c.key)}
+					<button
+						class="chip"
+						class:on={!c.disableAi}
+						class:hid={ov?.layout.hidden.includes(c.key)}
+						style:--cc={columnColor(c.name, ov?.layout.colors[c.key])}
+						title={c.kind === 'general' ? 'General: articles from sources with no column' : c.kind === 'wire' ? 'Wire: X and Telegram posts from sources with no column' : ov?.layout.hidden.includes(c.key) ? 'Hidden from the board' : ''}
+						onclick={() => toggleColumn(c)}
+					>
 						<i></i>{c.name}<span class="mono small">{c.disableAi ? 'no AI' : 'AI'}</span>
 					</button>
 				{/each}
@@ -378,5 +468,28 @@
 	.small {
 		font-size: 10px;
 		opacity: 0.8;
+	}
+	.lblrow {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-bottom: 5px;
+	}
+	.lblrow .lbl {
+		margin: 0;
+	}
+	.re {
+		min-height: 22px;
+		padding: 0 6px;
+	}
+	.chip.hid {
+		opacity: 0.6;
+	}
+	.hint.err {
+		color: var(--dn);
+	}
+	code {
+		font-family: var(--mono);
+		font-size: 11px;
 	}
 </style>

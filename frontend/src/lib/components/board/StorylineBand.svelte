@@ -298,4 +298,40 @@
 		font-size: 12.5px;
 		color: var(--tx3);
 	}
+	/* Phones: the header wraps (title + pager on the first line, the counts under it) and the
+	   chip row scrolls sideways instead of cutting off. */
+	@media (max-width: 760px) {
+		.band {
+			padding: 4px 12px 8px;
+		}
+		.bh {
+			flex-wrap: wrap;
+			gap: 2px 10px;
+		}
+		.bh > em {
+			order: 5;
+		}
+		.pager {
+			margin-left: auto;
+		}
+		.pager button {
+			width: 28px;
+			height: 28px;
+		}
+		.sp {
+			display: none;
+		}
+		.chip.arch {
+			order: 6;
+		}
+		.chips {
+			overflow-x: auto;
+			scrollbar-width: none;
+			margin: 0 -12px;
+			padding: 8px 12px 0;
+		}
+		.chips::-webkit-scrollbar {
+			display: none;
+		}
+	}
 </style>
