@@ -349,4 +349,68 @@
 		font-size: 12px;
 		color: var(--tx3);
 	}
+	/* Phones: picture and headline side by side, the timeline under them with its two newest
+	   updates. Hybrid's big row is drawn the same way - there's no board height to match. */
+	@media (max-width: 760px) {
+		.st,
+		.st.big {
+			grid-template-columns: 104px minmax(0, 1fr);
+			gap: 10px 12px;
+			padding: 10px 0;
+		}
+		.thumb,
+		.big .thumb {
+			width: 104px;
+			height: 78px;
+			border-radius: 8px;
+		}
+		.big .thumb::after {
+			height: 3px;
+		}
+		.sh,
+		.big .sh {
+			border-left-width: 3px;
+			padding-left: 10px;
+		}
+		.sname,
+		.big .sname {
+			font-size: 11px;
+			margin: 5px 0 2px;
+		}
+		.slab,
+		.big .slab {
+			font-size: 17px;
+			line-height: 1.2;
+			-webkit-line-clamp: 3;
+		}
+		.smeta,
+		.big .smeta {
+			font-size: 11px;
+			margin-top: 4px;
+		}
+		.tl {
+			grid-column: 1 / -1;
+			grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+		}
+		.tl > button:nth-of-type(n + 3),
+		.gapn {
+			display: none;
+		}
+		.big .nd b {
+			font-size: 11px;
+			margin-bottom: 2px;
+		}
+		.big .nd p {
+			font-size: 13px;
+			-webkit-line-clamp: 3;
+		}
+		.nd p {
+			font-size: 13px;
+			-webkit-line-clamp: 3;
+		}
+		.big .nd i {
+			font-size: 11px;
+			margin-top: 3px;
+		}
+	}
 </style>

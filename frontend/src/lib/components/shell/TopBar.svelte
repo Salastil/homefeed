@@ -171,4 +171,34 @@
 		background: var(--s1);
 		text-decoration: none;
 	}
+	/* Phones: brand and controls share the first line, the top-bar widgets (search) take the
+	   whole second line. */
+	@media (max-width: 760px) {
+		.top {
+			flex-wrap: wrap;
+			gap: 8px 12px;
+		}
+		.brand {
+			gap: 8px;
+		}
+		.brand > b {
+			font-size: 20px;
+		}
+		.bar-widgets {
+			order: 3;
+			flex: 1 1 100%;
+		}
+		.bar-widgets:empty {
+			display: none;
+		}
+		.ctl {
+			gap: 8px;
+		}
+		.editing {
+			display: none;
+		}
+		.icon {
+			padding: 6px;
+		}
+	}
 </style>

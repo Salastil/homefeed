@@ -82,4 +82,26 @@
 			grid-template-columns: 1fr 1fr !important;
 		}
 	}
+	/* Phones: one tile at a time in a swipeable strip, the next one peeking in at the edge, so
+	   the widgets cost one tile's height instead of pushing the news a screen down. Bleeds to
+	   the screen edges so a tile can scroll fully into view. */
+	@media (max-width: 760px) {
+		.row {
+			display: flex;
+			gap: 8px;
+			overflow-x: auto;
+			scroll-snap-type: x mandatory;
+			scrollbar-width: none;
+			margin: 0 -12px;
+			padding: 0 12px;
+			scroll-padding: 0 12px;
+		}
+		.row::-webkit-scrollbar {
+			display: none;
+		}
+		.ws {
+			flex: 0 0 min(88%, 380px);
+			scroll-snap-align: start;
+		}
+	}
 </style>

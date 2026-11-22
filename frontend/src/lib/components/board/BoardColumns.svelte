@@ -12,6 +12,7 @@
 	import { authorOf, cleanPost, columnColor, imageOf, isPost, relTime, textOf } from '$lib/text';
 	import { slugify } from '$lib/format';
 	import { admin } from '$lib/adminSession.svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 
 	let {
 		columns,
@@ -23,6 +24,8 @@
 	const MIN_COL = 240;
 	const QUIET_MS = 48 * 3_600_000;
 	const NEW_MS = 6 * 60_000;
+	/** The phone layout (same breakpoint as the styles): columns stack one under another. */
+	const phone = new MediaQuery('max-width: 760px', false);
 	let width = $state(1600);
 
 	const inPanel = $derived.by(() => {
@@ -76,7 +79,8 @@
 				t.keys.push(...quiet.flatMap((p) => p.keys));
 			}
 		}
-		if (base.autoFold) {
+		// Phones stack the columns (see the styles), so nothing needs folding to fit.
+		if (base.autoFold && !phone.current) {
 			const room = Math.max(2, Math.floor((width + 10) / (MIN_COL + 10)));
 			// Every pass removes one position, so this ends; the cap is a second guard.
 			for (let guard = 0; pos.length > room && guard < 100; guard++) {
@@ -397,5 +401,45 @@
 		padding: 12px;
 		font-size: 12px;
 		color: var(--tx3);
+	}
+	/* Phones: the columns stack full width, one under another, each as tall as its four items;
+	   the page scrolls there (see +layout.svelte). */
+	@media (max-width: 760px) {
+		.cols {
+			grid-template-columns: minmax(0, 1fr) !important;
+			flex: none;
+		}
+		.ch {
+			padding: 11px 12px;
+		}
+		.rtabs {
+			overflow-x: auto;
+			scrollbar-width: none;
+		}
+		.rtabs::-webkit-scrollbar {
+			display: none;
+		}
+		.rtabs button {
+			font-size: 12px;
+			padding: 4px 9px;
+		}
+		.cb {
+			grid-template-rows: none;
+		}
+		.r {
+			padding: 10px 12px;
+		}
+		.ti {
+			font-size: 15px;
+			-webkit-line-clamp: 3;
+		}
+		.tx {
+			font-size: 14px;
+			-webkit-line-clamp: 3;
+		}
+		.th {
+			width: 72px;
+			height: 72px;
+		}
 	}
 </style>

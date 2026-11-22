@@ -1167,7 +1167,7 @@
 	}
 	@media (max-width: 1100px) {
 		.wgrid {
-			grid-template-columns: 1fr;
+			grid-template-columns: minmax(0, 1fr);
 			grid-template-rows: none;
 		}
 		.week {
@@ -1176,6 +1176,80 @@
 		}
 		.stats {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+	/* Phones: the cards stack and the page scrolls (see +layout.svelte); the hero stacks the
+	   big reading over its summary box, and the 10-day rows drop the range bar to fit. */
+	@media (max-width: 760px) {
+		.wpage {
+			flex: none;
+		}
+		.wgrid {
+			flex: none;
+		}
+		.now,
+		.hours,
+		.week {
+			padding: 12px 14px;
+		}
+		.hero {
+			height: auto;
+			grid-template-columns: minmax(0, 1fr);
+			gap: 10px;
+			margin: 6px 0 12px;
+		}
+		.ic {
+			font-size: 48px;
+		}
+		.deg {
+			font-size: 60px;
+		}
+		.cmp {
+			height: 112px;
+			padding: 10px 12px;
+		}
+		.cmpr {
+			gap: 18px;
+		}
+		.wch {
+			flex-wrap: wrap;
+			row-gap: 6px;
+		}
+		.tscale {
+			margin-left: 0;
+		}
+		.legend {
+			margin-left: 0;
+			flex-wrap: wrap;
+			gap: 4px 12px;
+		}
+		.dy {
+			grid-template-columns: 74px 28px minmax(0, 1fr) 50px 30px 30px;
+			gap: 6px;
+			padding: 6px 4px;
+			min-height: 52px;
+		}
+		.rg {
+			display: none;
+		}
+		.dn b {
+			font-size: 13.5px;
+		}
+		.di {
+			font-size: 22px;
+		}
+		.dt b {
+			font-size: 13px;
+			white-space: normal;
+			display: -webkit-box;
+			-webkit-line-clamp: 2;
+			-webkit-box-orient: vertical;
+		}
+		.dp {
+			font-size: 11.5px;
+		}
+		.plot {
+			min-height: 170px;
 		}
 	}
 </style>

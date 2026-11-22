@@ -228,4 +228,32 @@
 		background: rgba(10, 11, 13, 0.75);
 		color: #fff;
 	}
+	/* Phones: the media shrinks to a square thumbnail beside the text, and the card takes
+	   its content's height. */
+	@media (max-width: 760px) {
+		.post {
+			grid-template-columns: minmax(0, 1fr) 96px;
+			gap: 10px;
+			height: auto;
+			padding: 10px 10px 10px 12px;
+		}
+		.post.nomedia {
+			max-height: none;
+		}
+		.box {
+			align-self: start;
+			aspect-ratio: 1;
+			margin-top: 30px;
+		}
+		.tx {
+			font-size: 14px;
+		}
+		/* The name gets the room; the handle is on the post itself. */
+		.h {
+			display: none;
+		}
+		.hd b {
+			flex: 0 1 auto;
+		}
+	}
 </style>

@@ -296,4 +296,25 @@
 		color: var(--acc);
 		margin-top: 4px;
 	}
+	/* Phones: two tiles a row, as many rows as there are tiles, each as tall as its content
+	   (the fixed shapes are for fitting a desktop panel). */
+	@media (max-width: 760px) {
+		.grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+			grid-template-rows: none !important;
+			height: auto;
+			gap: 8px;
+		}
+		.mb:not(.quote) {
+			flex: none;
+			aspect-ratio: 4 / 3;
+		}
+		.mb.quote {
+			flex: none;
+			min-height: 96px;
+		}
+		.quote p {
+			font-size: 15px;
+		}
+	}
 </style>

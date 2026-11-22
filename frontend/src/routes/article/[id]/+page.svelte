@@ -839,4 +839,64 @@
 	.sr .av {
 		border-radius: 50%;
 	}
+	/* Phones: one column - the article, then the storyline / related rail under it - and the
+	   page itself scrolls (see +layout.svelte), so the reader's own scroll, progress line and
+	   pinned title bar step aside. */
+	@media (max-width: 760px) {
+		.crumbs {
+			flex-wrap: wrap;
+			row-gap: 4px;
+		}
+		.cols {
+			flex: none;
+			grid-template-columns: minmax(0, 1fr);
+			gap: 12px;
+		}
+		.panel {
+			overflow: visible;
+		}
+		.prog,
+		.pin {
+			display: none;
+		}
+		.reader {
+			overflow: visible;
+			padding: 18px 16px 24px;
+		}
+		.kick {
+			flex-wrap: wrap;
+		}
+		h1 {
+			font-size: 28px;
+			letter-spacing: -0.3px;
+		}
+		.dek {
+			font-size: 17px;
+		}
+		.body p {
+			font-size: 17px;
+			line-height: 1.6;
+		}
+		blockquote {
+			margin: 16px 0 14px;
+			padding-left: 14px;
+			font-size: 22px;
+		}
+		blockquote.long {
+			font-size: 18px;
+		}
+		.orig {
+			margin-left: 0;
+		}
+		.gallery.multi {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.atiles,
+		.atiles.one {
+			height: auto;
+		}
+		.sc {
+			flex: none;
+		}
+	}
 </style>

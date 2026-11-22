@@ -378,4 +378,71 @@
 		flex: 1;
 		min-height: 0;
 	}
+	/* Phones: header wraps, the update list and the tiles stack, and the page scrolls (see
+	   +layout.svelte). The list stops at a fixed height so a long storyline doesn't push the
+	   tiles a dozen screens down; rows that don't fit become "+N earlier". */
+	@media (max-width: 760px) {
+		.spage {
+			flex: none;
+			grid-template-rows: auto auto;
+		}
+		.shead {
+			flex-wrap: wrap;
+			gap: 10px 12px;
+			padding: 10px 12px;
+		}
+		.back {
+			order: -2;
+		}
+		.cont {
+			order: -1;
+		}
+		.ht {
+			flex: 1 1 0;
+		}
+		.hi {
+			width: 84px;
+			height: 58px;
+		}
+		h1 {
+			font-size: 20px;
+			-webkit-line-clamp: 3;
+		}
+		.sp {
+			display: none;
+		}
+		.hs {
+			flex: 1 1 100%;
+			flex-wrap: wrap;
+			gap: 4px 14px;
+		}
+		.rn {
+			flex-wrap: wrap;
+		}
+		.rn input {
+			width: 100%;
+		}
+		.lower {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.tb {
+			flex: none;
+			max-height: 340px;
+		}
+		.lf {
+			gap: 10px;
+		}
+		.lf span:last-child {
+			display: none;
+		}
+		.detail {
+			padding: 10px 12px 12px;
+		}
+		.dh {
+			flex-wrap: wrap;
+		}
+		.dh button {
+			padding: 6px 12px;
+		}
+	}
 </style>

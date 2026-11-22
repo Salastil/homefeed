@@ -164,4 +164,46 @@
 		border-top: 1px solid var(--bd);
 		padding-top: 8px;
 	}
+	/* Phones: a bottom sheet over the whole screen rather than one hung under the tapped row
+	   (the row can sit anywhere on a scrolled page); the tiles scroll inside it. */
+	@media (max-width: 760px) {
+		.scrim {
+			top: 0 !important;
+		}
+		.sheet {
+			top: auto !important;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			max-height: 86dvh;
+			border-radius: 14px 14px 0 0;
+			padding: 12px 12px 8px;
+		}
+		.shd {
+			flex-direction: column;
+			gap: 10px;
+		}
+		.sk {
+			flex-wrap: wrap;
+			gap: 4px 8px;
+		}
+		.stt {
+			font-size: 18px;
+			-webkit-line-clamp: 3;
+		}
+		.act {
+			margin-left: 0;
+			width: 100%;
+			flex-wrap: wrap;
+		}
+		.x {
+			margin-left: auto;
+		}
+		.body {
+			overflow-y: auto;
+		}
+		.sft span:last-child {
+			display: none;
+		}
+	}
 </style>
