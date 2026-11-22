@@ -11,7 +11,8 @@
 	import { getEventTimeline } from '$lib/api';
 	import { clock, poll } from '$lib/live.svelte';
 	import { fitRows } from '$lib/actions/fitRows';
-	import { authorOf, clockTime, headlineOf, hhmm, imageOf, isPost, storyColor, textOf } from '$lib/text';
+	import { agoShort, authorOf, fullTime, headlineOf, imageOf, isPost, relTime, storyColor, textOf } from '$lib/text';
+	import { hideBroken } from '$lib/actions/hideBroken';
 	import { timeUntil } from '$lib/format';
 	import PostTiles from '$lib/components/tiles/PostTiles.svelte';
 
@@ -40,7 +41,12 @@
 		return `AI recap every ${ev.recapIntervalHours} h when the writer is on · next ${timeUntil(next)} · recaps appear in the developments list like any post`;
 	});
 	const singlesNewest = $derived([...tl.singles].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)));
-	const span = (d: { members: { publishedAt: string }[] }) => `${hhmm(d.members[0].publishedAt)}–${hhmm(d.members[d.members.length - 1].publishedAt)}`;
+	// "over 2h, latest 34m ago" - how long a development ran and how fresh it is, all relative.
+	const span = (d: { firstItemAt: string; lastItemAt: string }) => {
+		const mins = Math.round((Date.parse(d.lastItemAt) - Date.parse(d.firstItemAt)) / 60_000);
+		const over = mins < 1 ? '' : mins < 60 ? `over ${mins}m · ` : `over ${Math.round(mins / 60)}h · `;
+		return `${over}latest ${relTime(d.lastItemAt, clock.now)}`;
+	};
 	const setRange = (h: number) => goto(`?h=${h}`, { keepFocus: true, noScroll: true });
 </script>
 
@@ -68,7 +74,7 @@
 			<div class="dvb" use:fitRows={{ key: devsNewest.map((d) => d.id).join() + selected?.id, onHidden: (n) => (hiddenDevs = n) }}>
 				{#each devsNewest as d (d.id)}
 					<button data-row class="dv" class:on={d.id === selected?.id} onclick={() => (picked = d.id)}>
-						<span class="tm">{hhmm(d.lastItemAt)}</span>
+						<span class="tm" title={fullTime(d.lastItemAt)}>{agoShort(d.lastItemAt, clock.now)}</span>
 						<div>
 							<div class="dtt">{headlineOf(d.members.find((m) => m.id === d.labelArticleId) ?? d.members[0])}</div>
 							<div class="dsub">{d.itemCount} posts · {d.sourceCount} channels · {span(d)}</div>
@@ -84,7 +90,7 @@
 		<div class="detail card">
 			{#if selected}
 				<div class="dh">
-					<div class="sk">Selected development · {selected.itemCount} posts · {selected.sourceCount} channels · {clockTime(selected.firstItemAt)} – {clockTime(selected.lastItemAt)}</div>
+					<div class="sk">Selected development · {selected.itemCount} posts · {selected.sourceCount} channels · {span(selected)}</div>
 					<div class="stt">{headlineOf(selected.members.find((m) => m.id === selected.labelArticleId) ?? selected.members[0])}</div>
 				</div>
 				<div class="body"><PostTiles items={selected.members} /></div>
@@ -100,12 +106,12 @@
 					{@const who = authorOf(a)}
 					{@const img = imageOf(a)}
 					<a data-row class="sr" class:new={clock.now - new Date(a.publishedAt).getTime() < 10 * 60_000} class:art={!isPost(a)} href="/article/{a.id}">
-						<span class="tm">{hhmm(a.publishedAt)}</span>
+						<span class="tm" title={fullTime(a.publishedAt)}>{agoShort(a.publishedAt, clock.now)}</span>
 						<div class="sb">
 							<div class="sw">{#if who.avatar}<img class="sav" src={who.avatar} alt="" loading="lazy" />{/if}<b>{who.name}</b></div>
 							<div class="stx">{isPost(a) ? textOf(a) : a.title}</div>
 						</div>
-						{#if img}<span class="sth"><img src={img.url} alt="" loading="lazy" /></span>{:else if a.hasVideo || (a.tweet?.media ?? a.telegramMessage?.media ?? []).length}<span class="sth vid">▶</span>{/if}
+						{#if img}<span class="sth"><img src={img.url} alt="" loading="lazy" use:hideBroken={'.sth'} /></span>{:else if a.hasVideo || (a.tweet?.media ?? a.telegramMessage?.media ?? []).length}<span class="sth vid">▶</span>{/if}
 					</a>
 				{:else}
 					<p class="none" data-row>None.</p>
@@ -236,7 +242,7 @@
 	}
 	.dv {
 		display: grid;
-		grid-template-columns: 44px 1fr;
+		grid-template-columns: 52px 1fr;
 		gap: 8px;
 		padding: 8px 14px;
 		border: 0;
@@ -320,7 +326,7 @@
 	}
 	.sr {
 		display: grid;
-		grid-template-columns: 40px minmax(0, 1fr) auto;
+		grid-template-columns: 52px minmax(0, 1fr) auto;
 		gap: 8px;
 		align-items: center;
 		padding: 6px 12px;

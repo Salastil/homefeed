@@ -6,7 +6,8 @@
 	 * glance mode by itself.
 	 */
 	import type { LiteArticle } from '$lib/types';
-	import { clockTime } from '$lib/text';
+	import { relTime } from '$lib/text';
+	import { clock } from '$lib/live.svelte';
 	import PostTiles from '../tiles/PostTiles.svelte';
 
 	let {
@@ -48,7 +49,9 @@
 
 	const sorted = $derived([...members].sort((a, b) => a.publishedAt.localeCompare(b.publishedAt)));
 	const sources = $derived(new Set(members.map((m) => m.sourceKey)).size);
-	const span = $derived(sorted.length ? `${clockTime(sorted[0].publishedAt)} – ${clockTime(sorted[sorted.length - 1].publishedAt)}` : '');
+	const span = $derived(
+		!sorted.length ? '' : sorted.length === 1 ? relTime(sorted[0].publishedAt, clock.now) : `${relTime(sorted[0].publishedAt, clock.now)} – ${relTime(sorted[sorted.length - 1].publishedAt, clock.now)}`
+	);
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->

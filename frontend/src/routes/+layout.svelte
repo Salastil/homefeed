@@ -18,6 +18,8 @@
 	import { admin, checkAdmin } from '$lib/adminSession.svelte';
 	import CommandPalette from '$lib/components/admin/CommandPalette.svelte';
 	import BoardEditor from '$lib/components/board/edit/BoardEditor.svelte';
+	import Lightbox from '$lib/components/Lightbox.svelte';
+	import { closeLightbox, lightbox } from '$lib/lightbox.svelte';
 	import type { LayoutData } from './$types';
 
 	let { children, data }: { children: any; data: LayoutData } = $props();
@@ -40,6 +42,12 @@
 			stop();
 			window.removeEventListener('storage', onStorage);
 		};
+	});
+
+	// The lightbox belongs to the page it was opened on.
+	$effect(() => {
+		void $page.url.pathname;
+		closeLightbox();
 	});
 
 	// Edit mode belongs to the board: leaving it ends edit mode.
@@ -68,8 +76,11 @@
 	const isAdmin = $derived($page.url.pathname.startsWith('/admin'));
 
 	// Markets and PoE2 live in the ticker strip under the widget row (issue #1, comment 622,
-	// option B); each appears only while its widget is enabled.
-	const ticker = $derived(data.widgetsEnabled.ticker ?? []);
+	// option B); each appears only while its widget is enabled. Only the board shows it: every
+	// other page (an article, a post, a storyline, the weather...) opens over it, since room
+	// for the item matters more there (issue #3).
+	const onBoard = $derived($page.url.pathname === '/');
+	const ticker = $derived(onBoard ? (data.widgetsEnabled.ticker ?? []) : []);
 	const tickerStocks = $derived(ticker.includes('stocks') ? data.stocks : { ...data.stocks, tickers: [] });
 	const tickerPoe2 = $derived(ticker.includes('poe2') ? data.poe2 : { ...data.poe2, entries: [] });
 
@@ -123,6 +134,10 @@
 {/if}
 {#if admin.valid && admin.palette}
 	<CommandPalette />
+{/if}
+
+{#if lightbox.images}
+	<Lightbox />
 {/if}
 
 {#if showLoginModal}

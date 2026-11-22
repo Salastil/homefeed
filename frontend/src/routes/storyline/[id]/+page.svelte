@@ -9,7 +9,7 @@
 	import { clock, poll } from '$lib/live.svelte';
 	import { fitRows } from '$lib/actions/fitRows';
 	import { resolveMediaUrl } from '$lib/config';
-	import { authorOf, clockTime, headlineOf, hhmm, isPost, storyColor, until } from '$lib/text';
+	import { agoShort, authorOf, fullTime, headlineOf, isPost, relTime, storyColor, until } from '$lib/text';
 	import PostTiles from '$lib/components/tiles/PostTiles.svelte';
 	import { browser } from '$app/environment';
 	import { getApiKey } from '$lib/adminAuth';
@@ -97,7 +97,7 @@
 		<span class="sp"></span>
 		<div class="hs">
 			<span><b>{s.itemCount}</b> updates</span><span><b>{sources}</b> sources</span>
-			<span>since <b>{clockTime(s.firstItemAt)}</b></span><span>latest <b>{clockTime(s.lastItemAt)}</b></span>
+			<span title={fullTime(s.firstItemAt)}>started <b>{relTime(s.firstItemAt, clock.now)}</b></span><span title={fullTime(s.lastItemAt)}>latest <b>{relTime(s.lastItemAt, clock.now)}</b></span>
 		</div>
 		{#if s.continuesId}<a class="cont" href="/storyline/{s.continuesId}">continues an earlier storyline →</a>{/if}
 	</section>
@@ -109,7 +109,7 @@
 				{#each newest as m, i (m.id)}
 					{@const who = authorOf(m)}
 					<button data-row class="u" class:on={i >= selIndex && i < selIndex + PAGE} class:first={i === selIndex} onclick={() => (picked = m.id)}>
-						<span class="tm">{hhmm(m.publishedAt)}</span>
+						<span class="tm" title={fullTime(m.publishedAt)}>{agoShort(m.publishedAt, clock.now)}</span>
 						<span class="dot"></span>
 						<div class="ub">
 							<div class="uw">{isPost(m) ? who.name : m.sourceName}</div>
@@ -268,7 +268,7 @@
 	}
 	.u {
 		display: grid;
-		grid-template-columns: 40px 14px minmax(0, 1fr);
+		grid-template-columns: 52px 14px minmax(0, 1fr);
 		gap: 6px;
 		width: 100%;
 		padding: 7px 14px;

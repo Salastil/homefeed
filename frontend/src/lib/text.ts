@@ -120,6 +120,17 @@ export function ago(iso: string, now: number): string {
 	return h < 48 ? `${h}h` : `${Math.round(h / 24)}d`;
 }
 
+/** "now", "34m ago", "3h ago", "2d ago" - for narrow time columns (issue #3: every time is relative). */
+export function agoShort(iso: string, now: number): string {
+	const a = ago(iso, now);
+	return a === '0m' ? 'now' : `${a} ago`;
+}
+
+/** "Sun, Nov 22, 10:25 AM" - the exact time, for a relative time's hover title. */
+export function fullTime(iso: string): string {
+	return new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 /** "just now", "35m ago", "3hr ago", "4 days ago" - pass clock.now so it re-renders on the shared tick. */
 export function relTime(iso: string, now: number): string {
 	const m = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60000));

@@ -1,6 +1,6 @@
 import { getBackendUrl } from './config';
 import type { MergedArticle, Tag, TrackedEventPublic, Category, Weather, StockTicker, StocksFeed, BookmarksFeed, Poe2Data, WidgetsEnabled, BoardColumn,
-	BoardResponse, StorylinesResponse, Storyline, EventTimeline, ArticleContext } from './types';
+	BoardResponse, StorylinesResponse, Storyline, EventTimeline, ArticleContext, ClosedStorylinesResponse } from './types';
 
 async function get<T>(path: string, fetchFn: typeof fetch = fetch): Promise<T> {
 	// credentials: 'include' so the private-access cookie (see lib/privateAccess.ts)
@@ -84,6 +84,10 @@ export function getBoard(fetchFn?: typeof fetch): Promise<BoardResponse> {
 
 export function getStorylines(fetchFn?: typeof fetch): Promise<StorylinesResponse> {
 	return get<StorylinesResponse>('/api/storylines', fetchFn);
+}
+
+export function getClosedStorylines(days = 7, fetchFn?: typeof fetch): Promise<ClosedStorylinesResponse> {
+	return get<ClosedStorylinesResponse>(`/api/storylines/closed?days=${days}`, fetchFn);
 }
 
 export function getStoryline(id: string, fetchFn?: typeof fetch): Promise<Storyline> {

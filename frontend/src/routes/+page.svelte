@@ -12,6 +12,7 @@
 	import StorylineBand from '$lib/components/board/StorylineBand.svelte';
 	import BoardColumns from '$lib/components/board/BoardColumns.svelte';
 	import DevelopmentSheet from '$lib/components/board/DevelopmentSheet.svelte';
+	import ClosedSheet from '$lib/components/board/ClosedSheet.svelte';
 	import { admin } from '$lib/adminSession.svelte';
 
 	let { data }: { data: PageData } = $props();
@@ -50,13 +51,22 @@
 	const open = $derived({ ...storylines, storylines: storylines.storylines.filter((s) => !s.closesAt || Date.parse(s.closesAt) > clock.now) });
 
 	let sheet = $state<{ title: string; members: LiteArticle[]; nodeId: string; color: string; scopeName: string; href: string; anchor: number } | null>(null);
+	// The closed-storylines pane, hung under the "Closed today" chip (null = shut).
+	let closedAt = $state<number | null>(null);
 </script>
 
 <svelte:head><title>Homefeed</title></svelte:head>
 
 <div class="board">
 	<div class="band" class:editing={admin.editing} class:sel={admin.sheet?.kind === 'panel'}>
-		<StorylineBand data={open} paused={!!sheet || admin.editing} selectedNode={sheet?.nodeId ?? null} onNode={(info) => (sheet = info)} />
+		<StorylineBand
+			data={open}
+			paused={!!sheet || closedAt !== null || admin.editing}
+			selectedNode={sheet?.nodeId ?? null}
+			closedOpen={closedAt !== null}
+			onNode={(info) => ((closedAt = null), (sheet = info))}
+			onClosed={(anchor) => ((sheet = null), (closedAt = closedAt === null ? anchor : null))}
+		/>
 		{#if admin.editing}
 			<button class="eh" onclick={() => (admin.sheet = { kind: 'panel' })}>Storyline panel · {storylines.settings.rows} row{storylines.settings.rows === 1 ? '' : 's'} · {storylines.settings.rotateSeconds} s</button>
 		{/if}
@@ -66,6 +76,9 @@
 
 {#if sheet}
 	<DevelopmentSheet {...sheet} onClose={() => (sheet = null)} />
+{/if}
+{#if closedAt !== null}
+	<ClosedSheet anchor={closedAt} onClose={() => (closedAt = null)} />
 {/if}
 
 <style>
