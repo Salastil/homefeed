@@ -8,7 +8,10 @@
 	 * Word-for-word reposts fold into one card that names the others. Newest first.
 	 */
 	import type { LiteArticle } from '$lib/types';
-	import { authorOf, clockTime, foldReposts, imageOf, initials, isPost, KIND_ICON, KIND_LABEL, kindOf, textOf } from '$lib/text';
+	import { hideBroken } from '$lib/actions/hideBroken';
+	import { SvelteSet } from 'svelte/reactivity';
+	import { clock } from '$lib/live.svelte';
+	import { authorOf, foldReposts, fullTime, relTime, imageOf, initials, isPost, KIND_ICON, KIND_LABEL, kindOf, textOf } from '$lib/text';
 
 	let {
 		items,
@@ -45,6 +48,8 @@
 			return a.sourceName;
 		}
 	};
+	// Pictures that failed to load: the tile shows its text in the picture's place instead.
+	const broken = new SvelteSet<string>();
 	const lines = $derived(shape.rows >= 3 ? 3 : shape.rows === 2 ? 4 : 6);
 </script>
 
@@ -56,13 +61,13 @@
 		<a class="tile" href="/article/{item.id}">
 			<div class="th">
 				{#if who.avatar}<img class="av" src={who.avatar} alt="" loading="lazy" />{:else}<span class="av ini">{initials(who.name)}</span>{/if}
-				<div class="cw"><b>{who.name}</b><span>{who.handle} · {clockTime(item.publishedAt)}</span></div>
+				<div class="cw"><b>{who.name}</b><span title={fullTime(item.publishedAt)}>{who.handle} · {relTime(item.publishedAt, clock.now)}</span></div>
 				<span class="kb k-{kind}">{@html KIND_ICON[kind]}{KIND_LABEL[kind]}</span>
 			</div>
-			{#if kind === 'text'}
-				<div class="mb quote"><p>{textOf(item)}</p></div>
+			{#if kind === 'text' || (img && broken.has(img.url))}
+				<div class="mb quote"><p>{textOf(item) || item.title}</p></div>
 			{:else if img}
-				<div class="mb"><img src={img.url} alt="" loading="lazy" />{#if img.isVideo}<span class="pl">{@html KIND_ICON.video}</span>{/if}</div>
+				<div class="mb"><img src={img.url} alt="" loading="lazy" use:hideBroken={() => broken.add(img.url)} />{#if img.isVideo}<span class="pl">{@html KIND_ICON.video}</span>{/if}</div>
 			{:else}
 				<div class="mb vph"><span class="pl">{@html KIND_ICON.video}</span><em>Video · loads when played</em></div>
 			{/if}

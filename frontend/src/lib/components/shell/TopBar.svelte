@@ -3,6 +3,7 @@
 	import { clock } from '$lib/live.svelte';
 	import ThemeToggle from '../ThemeToggle.svelte';
 	import DynamicWidgetSlot from '../sidebar/DynamicWidgetSlot.svelte';
+	import SearchBar from './SearchBar.svelte';
 	import { admin } from '$lib/adminSession.svelte';
 
 	let {
@@ -26,7 +27,9 @@
 	const time = $derived(new Date(clock.now));
 	const hhmm = $derived(`${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`);
 	const day = $derived(time.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }));
-	const barWidgets = $derived((widgets.topBar ?? []).map((id) => widgets.pluggable.find((p) => p.id === id)).filter((w) => !!w && !!w.frontendEntry));
+	// Search is built in; anything else placed in the bar is an uploaded widget.
+	const showSearch = $derived((widgets.topBar ?? []).includes('searchbar'));
+	const barWidgets = $derived((widgets.topBar ?? []).filter((id) => id !== 'searchbar').map((id) => widgets.pluggable.find((p) => p.id === id)).filter((w) => !!w && !!w.frontendEntry));
 </script>
 
 <header class="top">
@@ -35,6 +38,7 @@
 		<span class="clock"><b>{hhmm}</b> {day}</span>
 	</a>
 	<div class="bar-widgets">
+		{#if showSearch}<SearchBar />{/if}
 		{#each barWidgets as w (w!.id)}
 			<DynamicWidgetSlot id={w!.id} displayName={w!.displayName} frontendEntry={w!.frontendEntry!} layout="bar" />
 		{/each}

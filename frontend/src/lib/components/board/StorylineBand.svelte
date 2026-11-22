@@ -9,17 +9,23 @@
 	import { clock } from '$lib/live.svelte';
 	import { storyColor, until } from '$lib/text';
 	import StoryRow from './StoryRow.svelte';
+	import { dragScroll } from '$lib/actions/dragScroll';
 
 	let {
 		data,
 		paused = false,
 		selectedNode = null,
-		onNode
+		closedOpen = false,
+		onNode,
+		onClosed
 	}: {
 		data: StorylinesResponse;
 		paused?: boolean;
 		selectedNode?: string | null;
+		closedOpen?: boolean;
 		onNode: (info: { title: string; members: LiteArticle[]; nodeId: string; color: string; scopeName: string; href: string; anchor: number }) => void;
+		/** The "Closed today" chip: opens the closed-storylines pane hung under the panel's header. */
+		onClosed?: (anchor: number) => void;
 	} = $props();
 
 	type Item = { kind: 'story'; id: string; color: string; story: Storyline; score: number; lastAt: string } | { kind: 'event'; id: string; color: string; event: EventStoryline; score: number; lastAt: string };
@@ -92,6 +98,22 @@
 	const trackedCount = $derived(data.events.length);
 
 	let band: HTMLElement | undefined = $state();
+	let chipRow: HTMLElement | undefined = $state();
+	// Each turn of the page brings its chips into view, unless the pointer is over the panel
+	// (someone may be dragging the row to look for one).
+	$effect(() => {
+		void shownPage;
+		if (!chipRow || hovering) return;
+		const on = chipRow.querySelector<HTMLElement>('.chip.on');
+		if (!on) return;
+		const left = on.offsetLeft - chipRow.offsetLeft;
+		if (left < chipRow.scrollLeft + 90 || left + on.offsetWidth > chipRow.scrollLeft + chipRow.clientWidth - 48) {
+			chipRow.scrollTo({ left: Math.max(0, left - 120), behavior: 'smooth' });
+		}
+	});
+	// Rects come back in screen pixels, but fixed sheets are placed inside the zoomed page
+	// (--ui-zoom), so convert back or they land 10% higher than the element.
+	const bottomOf = (el: Element) => el.getBoundingClientRect().bottom / ((el as HTMLElement & { currentCSSZoom?: number }).currentCSSZoom ?? 1);
 	function open(it: Item, title: string, members: LiteArticle[], nodeId: string, rowEl: EventTarget | null) {
 		const row = (rowEl as HTMLElement | null)?.closest('.st') as HTMLElement | null;
 		const el = row ?? band;
@@ -127,7 +149,7 @@
 		{/if}
 		<span class="sp"></span>
 		{#if data.grouping === false}<span class="chip arch" title="The embedding server set under admin Connections isn't reachable">grouping paused</span>{/if}
-		{#if data.closedToday}<span class="chip arch">Closed today: {data.closedToday}</span>{/if}
+		<button class="chip arch closed" class:on={closedOpen} title="Storylines that closed over the last week" onclick={(e) => onClosed?.(bottomOf(e.currentTarget))}>Closed today: {data.closedToday} <span class="ca">▾</span></button>
 	</div>
 	{#each shown as it (it.id)}
 		<StoryRow item={it} {big} {selectedNode} onNode={(title, members, nodeId) => open(it, title, members, nodeId, document.activeElement)} />
@@ -142,7 +164,7 @@
 		</p>
 	{/each}
 	{#if items.length > rows}
-		<div class="chips">
+		<div class="chips" bind:this={chipRow} use:dragScroll>
 			<span class="also">All open</span>
 			{#each items as it, i (it.id)}
 				<button class="chip" class:on={shownIds.has(it.id)} class:cooling={it.kind === 'story' && it.story.state === 'cooling'} class:tracked={it.kind === 'event'} style:--sc={it.color} onclick={() => go(Math.floor(i / rows))}>
@@ -242,7 +264,23 @@
 		padding-top: 8px;
 		border-top: 1px solid var(--bd);
 		white-space: nowrap;
-		overflow: hidden;
+		overflow-x: auto;
+		overflow-y: hidden;
+		scrollbar-width: none;
+		cursor: grab;
+	}
+	.chips::-webkit-scrollbar {
+		display: none;
+	}
+	/* More chips off an edge: that edge fades out (set by the dragScroll action). */
+	.chips:global([data-more-right]) {
+		mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+	}
+	.chips:global([data-more-left]) {
+		mask-image: linear-gradient(to right, transparent, #000 140px);
+	}
+	.chips:global([data-more-left][data-more-right]) {
+		mask-image: linear-gradient(to right, transparent, #000 140px, #000 calc(100% - 48px), transparent);
 	}
 	.chips > * {
 		flex: none;
@@ -290,6 +328,20 @@
 		font-size: 11px;
 		padding: 2px 9px;
 		color: var(--tx3);
+	}
+	.chip.closed {
+		gap: 5px;
+	}
+	.chip.closed:hover {
+		color: var(--tx);
+		border-color: var(--tx3);
+	}
+	.chip.closed.on {
+		--sc: var(--acc);
+		color: var(--tx);
+	}
+	.ca {
+		font-size: 9px;
 	}
 	.quiet {
 		margin: 0;

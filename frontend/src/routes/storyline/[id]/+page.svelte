@@ -7,9 +7,9 @@
 	import type { PageData } from './$types';
 	import { getStoryline } from '$lib/api';
 	import { clock, poll } from '$lib/live.svelte';
-	import { fitRows } from '$lib/actions/fitRows';
+	import { scrollList, toTop } from '$lib/actions/scrollList';
 	import { resolveMediaUrl } from '$lib/config';
-	import { authorOf, clockTime, headlineOf, hhmm, isPost, storyColor, until } from '$lib/text';
+	import { agoShort, authorOf, fullTime, headlineOf, isPost, relTime, storyColor, until } from '$lib/text';
 	import PostTiles from '$lib/components/tiles/PostTiles.svelte';
 	import { browser } from '$app/environment';
 	import { getApiKey } from '$lib/adminAuth';
@@ -40,7 +40,9 @@
 	const PAGE = 6;
 	const tiles = $derived(newest.slice(selIndex, selIndex + PAGE));
 	const sources = $derived(new Set(s.members.map((m) => m.sourceKey)).size);
-	let hidden = $state(0);
+	// The updates list scrolls (issue #3, option A); rows scrolled up out of view.
+	let above = $state(0);
+	let listBox: HTMLElement | undefined = $state();
 	// Admins (a key stored in this browser) can name a storyline by hand.
 	// Read after hydration, so the server's render (never an admin) and the client's agree.
 	let isAdmin = $state(false);
@@ -97,7 +99,7 @@
 		<span class="sp"></span>
 		<div class="hs">
 			<span><b>{s.itemCount}</b> updates</span><span><b>{sources}</b> sources</span>
-			<span>since <b>{clockTime(s.firstItemAt)}</b></span><span>latest <b>{clockTime(s.lastItemAt)}</b></span>
+			<span title={fullTime(s.firstItemAt)}>started <b>{relTime(s.firstItemAt, clock.now)}</b></span><span title={fullTime(s.lastItemAt)}>latest <b>{relTime(s.lastItemAt, clock.now)}</b></span>
 		</div>
 		{#if s.continuesId}<a class="cont" href="/storyline/{s.continuesId}">continues an earlier storyline →</a>{/if}
 	</section>
@@ -105,11 +107,12 @@
 	<section class="lower">
 		<div class="tlist card">
 			<div class="lh">Updates <em>newest first</em></div>
-			<div class="tb" use:fitRows={{ key: newest.map((m) => m.id).join(), onHidden: (n) => (hidden = n) }}>
+			{#if above}<button class="top-pill" onclick={() => toTop(listBox)}>↑ {above} newer · back to top</button>{/if}
+			<div class="tb scroll-thin" bind:this={listBox} use:scrollList={{ onAbove: (n) => (above = n) }}>
 				{#each newest as m, i (m.id)}
 					{@const who = authorOf(m)}
 					<button data-row class="u" class:on={i >= selIndex && i < selIndex + PAGE} class:first={i === selIndex} onclick={() => (picked = m.id)}>
-						<span class="tm">{hhmm(m.publishedAt)}</span>
+						<span class="tm" title={fullTime(m.publishedAt)}>{agoShort(m.publishedAt, clock.now)}</span>
 						<span class="dot"></span>
 						<div class="ub">
 							<div class="uw">{isPost(m) ? who.name : m.sourceName}</div>
@@ -118,7 +121,7 @@
 					</button>
 				{/each}
 			</div>
-			<div class="lf"><span>{hidden ? `+${hidden} earlier` : ''}</span><span>select an update to show it and the ones before it</span></div>
+			<div class="lf"><span>{newest.length} updates{newest.length > 10 ? ' · scroll for earlier' : ''}</span><span>select an update to show it and the ones before it</span></div>
 		</div>
 		<div class="detail card">
 			<div class="dh">
@@ -260,15 +263,19 @@
 		text-transform: none;
 		margin-left: 6px;
 	}
+	.tlist {
+		position: relative;
+	}
 	.tb {
 		flex: 1;
 		min-height: 0;
-		overflow: hidden;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		position: relative;
 	}
 	.u {
 		display: grid;
-		grid-template-columns: 40px 14px minmax(0, 1fr);
+		grid-template-columns: 52px 14px minmax(0, 1fr);
 		gap: 6px;
 		width: 100%;
 		padding: 7px 14px;

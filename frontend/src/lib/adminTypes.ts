@@ -164,7 +164,7 @@ export interface WidgetUploadManifest {
 	frontendEntry?: string;
 }
 
-/** A custom search engine for the "searchbar" pluggable widget — see widgets/searchbar/index.mjs. */
+/** A custom search engine for the built-in Search widget — see backend/src/widgets/searchbar/plugin.ts. */
 export interface AdminSearchEngine {
 	id: string;
 	name: string;

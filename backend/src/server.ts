@@ -18,6 +18,17 @@ import { logger } from './storage/db/logs.js';
 const PORT = Number(process.env.PORT) || 4000;
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
 const MEDIA_DIR = process.env.MEDIA_DIR || './data/media';
+// Media is stored under its source's extension; anything not listed stays a plain download. No SVG: it could carry script.
+const MEDIA_TYPES: Record<string, string> = {
+	jpg: 'image/jpeg',
+	jpeg: 'image/jpeg',
+	png: 'image/png',
+	gif: 'image/gif',
+	webp: 'image/webp',
+	avif: 'image/avif',
+	mp4: 'video/mp4',
+	webm: 'video/webm'
+};
 const WIDGETS_INSTALLED_DIR = process.env.WIDGETS_INSTALLED_DIR || './data/widgets-installed';
 
 let currentApp: FastifyInstance | null = null;
@@ -91,6 +102,10 @@ async function buildApp(): Promise<FastifyInstance> {
 		if (filename.includes('..') || filename.includes('/')) return reply.code(400).send();
 		const filePath = path.join(MEDIA_DIR, filename);
 		if (!fs.existsSync(filePath)) return reply.code(404).send();
+		// Without a type the stream goes out as application/octet-stream, which (with nosniff)
+		// makes a browser download an image opened in a tab instead of showing it (issue #3).
+		const type = MEDIA_TYPES[path.extname(filename).slice(1).toLowerCase()];
+		if (type) reply.type(type);
 		return reply.send(fs.createReadStream(filePath));
 	});
 

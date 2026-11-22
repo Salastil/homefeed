@@ -10,6 +10,7 @@ import { weatherPlugin } from './weather/plugin.js';
 import { stocksPlugin } from './stocks/plugin.js';
 import { bookmarksPlugin } from './bookmarks/plugin.js';
 import { poe2Plugin } from './poe2/plugin.js';
+import { searchbarPlugin } from './searchbar/plugin.js';
 
 // Both built-in and uploaded widgets funnel into this one map — scheduler dispatch and
 // route registration (see index.ts, queue/scheduler.ts) iterate it generically instead of
@@ -32,8 +33,10 @@ export async function loadAllWidgets(): Promise<void> {
 	registerBuiltinWidget(stocksPlugin);
 	registerBuiltinWidget(bookmarksPlugin);
 	registerBuiltinWidget(poe2Plugin);
+	registerBuiltinWidget(searchbarPlugin);
 
-	for (const row of installedWidgetsDb.listInstalled().filter((w) => w.source === 'uploaded')) {
+	// A widget that has since become built in (Search) is never loaded from an old upload.
+	for (const row of installedWidgetsDb.listInstalled().filter((w) => w.source === 'uploaded' && !loadedWidgets.has(w.id))) {
 		await loadUploadedWidget(row.id, row.codePath);
 	}
 

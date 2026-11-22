@@ -46,7 +46,8 @@
 		weather: 'Weather',
 		stocks: 'Stocks',
 		bookmarks: 'Bookmarks',
-		poe2: 'PoE2'
+		poe2: 'PoE2',
+		searchbar: 'Search'
 	};
 
 	// One ordered list for every installed widget, built-in or uploaded — installedWidgets
@@ -147,10 +148,9 @@
 				<BookmarksTab {bookmarks} config={bookmarksConfig} />
 			{:else if key === 'poe2'}
 				<Poe2Tab {poe2} watchlist={poe2Watchlist} />
+			{:else if key === 'searchbar'}
+				<SearchEnginesTab />
 			{:else}
-				{#if key === 'searchbar'}
-					<SearchEnginesTab />
-				{/if}
 				<div class="pluggable-footer">
 					<button class="icon-btn danger" onclick={() => handleDelete(w.id)}>Delete widget</button>
 				</div>

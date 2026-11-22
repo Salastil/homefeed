@@ -11,6 +11,7 @@
 	import { clock } from '$lib/live.svelte';
 	import { authorOf, cleanPost, columnColor, imageOf, isPost, relTime, textOf } from '$lib/text';
 	import { slugify } from '$lib/format';
+	import { hideBroken } from '$lib/actions/hideBroken';
 	import { admin } from '$lib/adminSession.svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 
@@ -154,7 +155,7 @@
 						<div class="meta"><span class="tm">{relTime(a.publishedAt, clock.now)}</span>{#if !post}<span>{a.sourceName}</span>{/if}{#if a.hasVideo}<span>▶ video</span>{/if}</div>
 					</div>
 					{#if img}
-						<span class="th"><img src={img.url} alt="" loading="lazy" />{#if img.isVideo}<span class="pb">▶</span>{/if}</span>
+						<span class="th"><img src={img.url} alt="" loading="lazy" use:hideBroken={'.th'} />{#if img.isVideo}<span class="pb">▶</span>{/if}</span>
 					{/if}
 				</a>
 			{:else}

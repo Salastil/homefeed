@@ -361,6 +361,14 @@ export interface StorylinesResponse {
 	grouping?: boolean;
 }
 
+/** A storyline that has closed, for the board's "Closed today" pane - no members, just the summary. */
+export type ClosedStoryline = Omit<Storyline, 'members' | 'score'>;
+
+export interface ClosedStorylinesResponse {
+	days: number;
+	storylines: ClosedStoryline[];
+}
+
 export interface BoardColumn {
 	key: string;
 	kind: 'category' | 'wire' | 'general';

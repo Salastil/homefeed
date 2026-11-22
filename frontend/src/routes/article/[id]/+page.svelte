@@ -10,8 +10,10 @@
 	import type { LiteArticle } from '$lib/types';
 	import { resolveMediaUrl } from '$lib/config';
 	import { clock } from '$lib/live.svelte';
-	import { ago, authorOf, categoryColor, cleanPost, clockTime, headlineOf, hhmm, initials, isPost, KIND_ICON, KIND_LABEL, kindOf, paragraphs, storyColor, until } from '$lib/text';
+	import { agoShort, authorOf, categoryColor, cleanPost, fullTime, headlineOf, initials, isPost, KIND_ICON, KIND_LABEL, kindOf, paragraphs, relTime, storyColor, until } from '$lib/text';
 	import PostTiles from '$lib/components/tiles/PostTiles.svelte';
+	import { openLightbox } from '$lib/lightbox.svelte';
+	import { hideBroken } from '$lib/actions/hideBroken';
 
 	let { data }: { data: PageData } = $props();
 	const a = $derived(data.article);
@@ -34,7 +36,6 @@
 		}
 	});
 	const section = $derived(a.category[0] ?? (post ? 'Wire' : 'General'));
-	const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 	// Article text: the first paragraph becomes the standfirst under the headline.
 	const paras = $derived(paragraphs(a.body));
@@ -42,7 +43,10 @@
 	const bodyParas = $derived(dek ? paras.slice(1) : paras.length ? paras : a.body ? [a.body] : []);
 	const minutes = $derived(Math.max(1, Math.round(a.body.split(/\s+/).length / 230)));
 	const postText = $derived(post ? cleanPost(a.body || a.title) : '');
-	const media = $derived((a.tweet?.media ?? a.telegramMessage?.media ?? []).slice(0, 4));
+	const allMedia = $derived(a.tweet?.media ?? a.telegramMessage?.media ?? []);
+	const media = $derived(allMedia.slice(0, 4));
+	// Every photo in the post (not just the four shown) goes into the lightbox's film strip.
+	const photos = $derived(allMedia.filter((m) => m.type === 'photo').map((m) => ({ url: resolveMediaUrl(m.url) })));
 	const youtube = $derived(a.video?.provider === 'youtube' ? (a.video.embedUrl ?? a.video.url) : null);
 	const nativeVideo = $derived(a.video && !youtube ? resolveMediaUrl(a.video.url) : null);
 
@@ -92,8 +96,10 @@
 		pinned = false;
 	});
 
+	const lightboxTitle = $derived(post ? `${who.name}${who.handle ? ` ${who.handle}` : ''}` : sourceName);
 	function openImage(url: string) {
-		window.open(resolveMediaUrl(url), '_blank', 'noopener,noreferrer');
+		const at = photos.findIndex((p) => p.url === resolveMediaUrl(url));
+		openLightbox(photos, Math.max(0, at), lightboxTitle);
 	}
 </script>
 
@@ -111,7 +117,7 @@
 			<div class="pin" class:show={pinned}>
 				<span class="pk">{section}</span>
 				<b>{post ? headlineOf(item) : a.title}</b>
-				<span class="pm">{sourceName} · {clockTime(a.publishedAt)}</span>
+				<span class="pm" title={fullTime(a.publishedAt)}>{sourceName} · {relTime(a.publishedAt, clock.now)}</span>
 			</div>
 			<div class="reader" bind:this={reader} onscroll={onScroll}>
 				<article class:post>
@@ -127,7 +133,7 @@
 							{#if who.avatar}<img class="av" src={who.avatar} alt="" />{:else}<span class="av ini">{initials(who.name)}</span>{/if}
 							<div>
 								<b>{who.name}</b>
-								<span>{who.handle}{who.handle ? ' · ' : ''}{when(a.publishedAt)} · {ago(a.publishedAt, clock.now)} ago</span>
+								<span>{who.handle}{who.handle ? ' · ' : ''}<time datetime={a.publishedAt} title={fullTime(a.publishedAt)}>{relTime(a.publishedAt, clock.now)}</time></span>
 							</div>
 							{#if original}<a class="orig" href={original} target="_blank" rel="noreferrer">View on {host} ↗</a>{/if}
 						</div>
@@ -139,7 +145,7 @@
 							<div class="gallery" class:multi={media.length > 1}>
 								{#each media as m (m.url)}
 									{#if m.type === 'photo'}
-										<button class="gm" onclick={() => openImage(m.url)} aria-label="Open image"><img src={resolveMediaUrl(m.url)} alt="" /></button>
+										<button class="gm" onclick={() => openImage(m.url)} aria-label="Open image"><img src={resolveMediaUrl(m.url)} alt="" use:hideBroken={'.gm'} /></button>
 									{:else if m.type === 'gif'}
 										<video class="gm" src={resolveMediaUrl(m.url)} autoplay loop muted playsinline></video>
 									{:else}
@@ -164,8 +170,8 @@
 						<div class="byline">
 							<span class="av ini">{initials(sourceName)}</span>
 							<b>{sourceName}</b>
-							<span>{when(a.publishedAt)} · {ago(a.publishedAt, clock.now)} ago</span>
-							{#if a.updatedAt !== a.publishedAt}<span>· updated {ago(a.updatedAt, clock.now)} ago</span>{/if}
+							<span><time datetime={a.publishedAt} title={fullTime(a.publishedAt)}>{relTime(a.publishedAt, clock.now)}</time></span>
+							{#if a.updatedAt !== a.publishedAt}<span title={fullTime(a.updatedAt)}>· updated {relTime(a.updatedAt, clock.now)}</span>{/if}
 							<span>{minutes} min read</span>
 							{#if original}<a class="orig" href={original} target="_blank" rel="noreferrer">Open original ↗</a>{/if}
 						</div>
@@ -178,7 +184,9 @@
 							</div>
 						{:else if a.heroImage}
 							<figure>
-								<img src={resolveMediaUrl(a.heroImage.url)} alt="" />
+								<button class="hero" aria-label="Open image" onclick={() => a.heroImage && openLightbox([{ url: resolveMediaUrl(a.heroImage.url) }], 0, sourceName)}>
+									<img src={resolveMediaUrl(a.heroImage.url)} alt="" use:hideBroken={'figure'} />
+								</button>
 								<figcaption>Image · {sourceName}</figcaption>
 							</figure>
 						{/if}
@@ -226,13 +234,13 @@
 						{/if}
 					</div>
 					<a class="stt" href={storyHref}>{story.tag || story.label}</a>
-					<div class="sm">{story.itemCount} updates · {story.sourceCount} sources · {clockTime(story.firstItemAt)} – {clockTime(story.lastItemAt)}</div>
+					<div class="sm">{story.itemCount} updates · {story.sourceCount} sources · <span title={fullTime(story.firstItemAt)}>started {relTime(story.firstItemAt, clock.now)}</span> · <span title={fullTime(story.lastItemAt)}>latest {relTime(story.lastItemAt, clock.now)}</span></div>
 					<ol class="vt">
 						{#if win.before}<li class="more">+{win.before} earlier</li>{/if}
 						{#each win.list as m (m.id)}
 							{@const mk = kindOf(m)}
 							<li class:me={m.id === a.id}>
-								<span class="tm">{hhmm(m.publishedAt)}</span>
+								<span class="tm" title={fullTime(m.publishedAt)}>{agoShort(m.publishedAt, clock.now)}</span>
 								<span class="dot"></span>
 								<a href="/article/{m.id}">
 									<span class="vtt">{headlineOf(m)}</span>
@@ -249,7 +257,7 @@
 					<div class="sk"><span>More in {section}</span></div>
 					{#each ctx.related as r (r.id)}
 						<a class="ri" href="/article/{r.id}">
-							<span class="tm">{hhmm(r.publishedAt)}</span>
+							<span class="tm" title={fullTime(r.publishedAt)}>{agoShort(r.publishedAt, clock.now)}</span>
 							<span><b>{r.title}</b><i>{r.sourceName}</i></span>
 						</a>
 					{/each}
@@ -366,6 +374,9 @@
 	article {
 		max-width: 820px;
 		margin: 0 auto;
+		/* Media at the top of an item stops at about 40% of the screen, so the opening of the
+		   text is on screen with it (issue #3). */
+		--media-h: min(420px, calc(40dvh / var(--ui-zoom)));
 	}
 	.kick {
 		display: flex;
@@ -483,7 +494,7 @@
 	.gm {
 		display: block;
 		width: 100%;
-		max-height: 560px;
+		max-height: var(--media-h);
 		padding: 0;
 		border: 0;
 		border-radius: 10px;
@@ -497,7 +508,7 @@
 	}
 	.gm img {
 		width: 100%;
-		max-height: 560px;
+		max-height: var(--media-h);
 		object-fit: contain;
 		display: block;
 	}
@@ -530,9 +541,18 @@
 	figure {
 		margin: 0 0 24px;
 	}
+	.hero {
+		display: block;
+		width: 100%;
+		padding: 0;
+		border: 0;
+		border-radius: 10px;
+		background: transparent;
+		cursor: zoom-in;
+	}
 	figure img {
 		width: 100%;
-		max-height: 540px;
+		max-height: var(--media-h);
 		object-fit: cover;
 		border-radius: 10px;
 		display: block;
@@ -546,6 +566,7 @@
 	.yt {
 		position: relative;
 		aspect-ratio: 16 / 9;
+		max-width: calc(var(--media-h) * 16 / 9);
 		border-radius: 10px;
 		overflow: hidden;
 		background: #000;
@@ -559,6 +580,8 @@
 		border: 0;
 	}
 	.vid {
+		width: fit-content;
+		max-width: 100%;
 		border-radius: 10px;
 		overflow: hidden;
 		background: #000;
@@ -566,8 +589,9 @@
 	}
 	.vid video {
 		display: block;
-		width: 100%;
-		max-height: 540px;
+		height: var(--media-h);
+		width: auto;
+		max-width: 100%;
 		object-fit: contain;
 	}
 	.body p {
@@ -691,7 +715,7 @@
 	}
 	.vt li {
 		display: grid;
-		grid-template-columns: 42px 16px minmax(0, 1fr);
+		grid-template-columns: 52px 16px minmax(0, 1fr);
 		gap: 4px;
 		padding: 6px 0;
 		position: relative;
@@ -790,7 +814,7 @@
 	}
 	.ri {
 		display: grid;
-		grid-template-columns: 42px minmax(0, 1fr);
+		grid-template-columns: 52px minmax(0, 1fr);
 		gap: 6px;
 		padding: 9px 0;
 		border-bottom: 1px solid var(--bd);

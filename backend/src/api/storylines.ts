@@ -196,10 +196,18 @@ export async function registerStorylineRoutes(app: FastifyInstance) {
 		const storylines = all
 			.filter((p) => p.state !== 'closed' && isShown(p, settings.minItems, settings.minSources))
 			.sort((a, b) => b.score - a.score);
+		// Closed in the last 24 hours - the same set the closed pane lists first. One that
+		// closed then went quiet up to closeHours before that.
 		const dayAgo = new Date(now - 24 * HOUR).toISOString();
 		const closedToday = stl
-			.storylinesTouchedSince('news', dayAgo)
-			.filter((row) => storylineState(row, settings, now) === 'closed' && row.itemCount >= settings.minItems && row.sourceCount >= settings.minSources).length;
+			.storylinesTouchedSince('news', new Date(now - (24 + Math.max(settings.closeHours, 1)) * HOUR).toISOString())
+			.filter(
+				(row) =>
+					storylineState(row, settings, now) === 'closed' &&
+					closesAt(row, settings) >= dayAgo &&
+					row.itemCount >= settings.minItems &&
+					row.sourceCount >= settings.minSources
+			).length;
 
 		const events = settings.includeEvents
 			? eventsDb.listActiveEvents().map((ev) => {
@@ -236,6 +244,27 @@ export async function registerStorylineRoutes(app: FastifyInstance) {
 			// False while the embedding service is unreachable: nothing new can be grouped.
 			grouping: engineStatus.reachable !== false
 		};
+	});
+
+	// Storylines that have closed, most recently closed first: the board's "Closed today" pane
+	// (issue #3). Members aren't sent - each entry links to its storyline page - so a week of
+	// them stays a small payload.
+	app.get('/api/storylines/closed', async (req) => {
+		const { days } = req.query as { days?: string };
+		const d = Math.min(Math.max(Number(days) || 7, 1), 14);
+		const settings = settingsDb.getSettings().storylines;
+		const visible = visibilityFilter(req);
+		const now = Date.now();
+		const since = new Date(now - d * 24 * HOUR).toISOString();
+		const closed = stl
+			.storylinesTouchedSince('news', since)
+			.filter((row) => storylineState(row, settings, now) === 'closed' && row.itemCount >= settings.minItems && row.sourceCount >= settings.minSources)
+			.map((row) => payload(row, membersVisible(row, visible), settings, now))
+			.filter((p) => isShown(p, settings.minItems, settings.minSources))
+			.sort((a, b) => b.closesAt.localeCompare(a.closesAt))
+			.slice(0, 200)
+			.map(({ members: _members, score: _score, ...rest }) => rest);
+		return { days: d, storylines: closed };
 	});
 
 	app.get('/api/storylines/:id', async (req, reply) => {

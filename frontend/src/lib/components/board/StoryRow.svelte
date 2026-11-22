@@ -7,7 +7,8 @@
 	import type { EventStoryline, LiteArticle, Storyline } from '$lib/types';
 	import { resolveMediaUrl } from '$lib/config';
 	import { clock } from '$lib/live.svelte';
-	import { authorOf, clockTime, headlineOf, relTime } from '$lib/text';
+	import { hideBroken } from '$lib/actions/hideBroken';
+	import { authorOf, fullTime, headlineOf, relTime } from '$lib/text';
 
 	type Item = { kind: 'story'; color: string; story: Storyline } | { kind: 'event'; color: string; event: EventStoryline };
 
@@ -27,6 +28,8 @@
 	const PIN = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M16 3l5 5-3 1-4 4 1 5-2 2-4-4-5 5-1-1 5-5-4-4 2-2 5 1 4-4z"/></svg>';
 
 	const image = $derived(item.kind === 'story' ? item.story.image : item.event.image);
+	// An image that fails to load shows the "no image" frame instead of an empty one.
+	let broken = $state<string | null>(null);
 	const href = $derived(item.kind === 'story' ? `/storyline/${item.story.id}` : `/event/${item.event.id}`);
 	const closesIn = $derived.by(() => {
 		if (item.kind !== 'story') return '';
@@ -62,9 +65,9 @@
 </script>
 
 <div class="st" class:big class:cooling={item.kind === 'story' && item.story.state === 'cooling'} style:--sc={item.color}>
-	<a class="thumb" class:none={!image} {href}>
-		{#if image}
-			<img src={resolveMediaUrl(image.url)} alt="" loading="lazy" />
+	<a class="thumb" class:none={!image || broken === image.url} {href}>
+		{#if image && broken !== image.url}
+			<img src={resolveMediaUrl(image.url)} alt="" loading="lazy" use:hideBroken={() => (broken = image.url)} />
 		{:else}
 			<span>no image yet</span>
 		{/if}
@@ -83,7 +86,7 @@
 			{/if}
 			<div class="sname">{item.story.tag}</div>
 			<a class="slab" {href}>{item.story.label}</a>
-			<div class="smeta">{item.story.itemCount} updates · {item.story.sourceCount} sources · since {clockTime(item.story.firstItemAt)}</div>
+			<div class="smeta">{item.story.itemCount} updates · {item.story.sourceCount} sources · <span title={fullTime(item.story.firstItemAt)}>started {relTime(item.story.firstItemAt, clock.now)}</span></div>
 		{/if}
 	</div>
 	<div class="tl" style:grid-template-columns={nodes.list.map((_, i) => (i === nodes.list.length - 2 && nodes.gap ? '1fr 38px' : '1fr')).join(' ')}>

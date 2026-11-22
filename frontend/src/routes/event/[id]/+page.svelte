@@ -10,8 +10,9 @@
 	import { page } from '$app/stores';
 	import { getEventTimeline } from '$lib/api';
 	import { clock, poll } from '$lib/live.svelte';
-	import { fitRows } from '$lib/actions/fitRows';
-	import { authorOf, clockTime, headlineOf, hhmm, imageOf, isPost, storyColor, textOf } from '$lib/text';
+	import { scrollList, toTop } from '$lib/actions/scrollList';
+	import { agoShort, authorOf, fullTime, headlineOf, imageOf, isPost, relTime, storyColor, textOf } from '$lib/text';
+	import { hideBroken } from '$lib/actions/hideBroken';
 	import { timeUntil } from '$lib/format';
 	import PostTiles from '$lib/components/tiles/PostTiles.svelte';
 
@@ -30,8 +31,11 @@
 	const color = $derived(storyColor(tl.event.id));
 	const PIN = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M16 3l5 5-3 1-4 4 1 5-2 2-4-4-5 5-1-1 5-5-4-4 2-2 5 1 4-4z"/></svg>';
 
-	let hiddenDevs = $state(0);
-	let hiddenSingles = $state(0);
+	// Both lists scroll (issue #3, option A); these count the rows scrolled up out of view.
+	let aboveDevs = $state(0);
+	let aboveSingles = $state(0);
+	let devBox: HTMLElement | undefined = $state();
+	let singleBox: HTMLElement | undefined = $state();
 	const recapNote = $derived.by(() => {
 		const ev = tl.event;
 		if (ev.recapIntervalHours === null) return 'AI recaps are off for this event';
@@ -40,7 +44,12 @@
 		return `AI recap every ${ev.recapIntervalHours} h when the writer is on · next ${timeUntil(next)} · recaps appear in the developments list like any post`;
 	});
 	const singlesNewest = $derived([...tl.singles].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)));
-	const span = (d: { members: { publishedAt: string }[] }) => `${hhmm(d.members[0].publishedAt)}–${hhmm(d.members[d.members.length - 1].publishedAt)}`;
+	// "over 2h, latest 34m ago" - how long a development ran and how fresh it is, all relative.
+	const span = (d: { firstItemAt: string; lastItemAt: string }) => {
+		const mins = Math.round((Date.parse(d.lastItemAt) - Date.parse(d.firstItemAt)) / 60_000);
+		const over = mins < 1 ? '' : mins < 60 ? `over ${mins}m · ` : `over ${Math.round(mins / 60)}h · `;
+		return `${over}latest ${relTime(d.lastItemAt, clock.now)}`;
+	};
 	const setRange = (h: number) => goto(`?h=${h}`, { keepFocus: true, noScroll: true });
 </script>
 
@@ -65,10 +74,11 @@
 	<section class="lower">
 		<div class="devlist card">
 			<div class="lh">Developments <em>newest first</em></div>
-			<div class="dvb" use:fitRows={{ key: devsNewest.map((d) => d.id).join() + selected?.id, onHidden: (n) => (hiddenDevs = n) }}>
+			{#if aboveDevs}<button class="top-pill" onclick={() => toTop(devBox)}>↑ {aboveDevs} newer · back to top</button>{/if}
+			<div class="dvb scroll-thin" bind:this={devBox} use:scrollList={{ onAbove: (n) => (aboveDevs = n) }}>
 				{#each devsNewest as d (d.id)}
 					<button data-row class="dv" class:on={d.id === selected?.id} onclick={() => (picked = d.id)}>
-						<span class="tm">{hhmm(d.lastItemAt)}</span>
+						<span class="tm" title={fullTime(d.lastItemAt)}>{agoShort(d.lastItemAt, clock.now)}</span>
 						<div>
 							<div class="dtt">{headlineOf(d.members.find((m) => m.id === d.labelArticleId) ?? d.members[0])}</div>
 							<div class="dsub">{d.itemCount} posts · {d.sourceCount} channels · {span(d)}</div>
@@ -78,13 +88,13 @@
 					<p class="none" data-row>No developments in this window yet.</p>
 				{/each}
 			</div>
-			<div class="dvf"><span>{hiddenDevs ? `+${hiddenDevs} earlier` : ''}</span><span>Single posts ({tl.singles.length}) →</span></div>
+			<div class="dvf"><span>{devsNewest.length} {devsNewest.length === 1 ? 'development' : 'developments'}{devsNewest.length > 8 ? ' · scroll for earlier' : ''}</span><span>Single posts ({tl.singles.length}) →</span></div>
 		</div>
 
 		<div class="detail card">
 			{#if selected}
 				<div class="dh">
-					<div class="sk">Selected development · {selected.itemCount} posts · {selected.sourceCount} channels · {clockTime(selected.firstItemAt)} – {clockTime(selected.lastItemAt)}</div>
+					<div class="sk">Selected development · {selected.itemCount} posts · {selected.sourceCount} channels · {span(selected)}</div>
 					<div class="stt">{headlineOf(selected.members.find((m) => m.id === selected.labelArticleId) ?? selected.members[0])}</div>
 				</div>
 				<div class="body"><PostTiles items={selected.members} /></div>
@@ -95,23 +105,24 @@
 
 		<div class="singles card">
 			<div class="lh">Single posts <em>{tl.singles.length} in {data.hours} h · newest first</em></div>
-			<div class="sgb" use:fitRows={{ key: singlesNewest.map((s) => s.id).join(), onHidden: (n) => (hiddenSingles = n) }}>
+			{#if aboveSingles}<button class="top-pill" onclick={() => toTop(singleBox)}>↑ {aboveSingles} newer · back to top</button>{/if}
+			<div class="sgb scroll-thin" bind:this={singleBox} use:scrollList={{ onAbove: (n) => (aboveSingles = n) }}>
 				{#each singlesNewest as a (a.id)}
 					{@const who = authorOf(a)}
 					{@const img = imageOf(a)}
 					<a data-row class="sr" class:new={clock.now - new Date(a.publishedAt).getTime() < 10 * 60_000} class:art={!isPost(a)} href="/article/{a.id}">
-						<span class="tm">{hhmm(a.publishedAt)}</span>
+						<span class="tm" title={fullTime(a.publishedAt)}>{agoShort(a.publishedAt, clock.now)}</span>
 						<div class="sb">
 							<div class="sw">{#if who.avatar}<img class="sav" src={who.avatar} alt="" loading="lazy" />{/if}<b>{who.name}</b></div>
 							<div class="stx">{isPost(a) ? textOf(a) : a.title}</div>
 						</div>
-						{#if img}<span class="sth"><img src={img.url} alt="" loading="lazy" /></span>{:else if a.hasVideo || (a.tweet?.media ?? a.telegramMessage?.media ?? []).length}<span class="sth vid">▶</span>{/if}
+						{#if img}<span class="sth"><img src={img.url} alt="" loading="lazy" use:hideBroken={'.sth'} /></span>{:else if a.hasVideo || (a.tweet?.media ?? a.telegramMessage?.media ?? []).length}<span class="sth vid">▶</span>{/if}
 					</a>
 				{:else}
 					<p class="none" data-row>None.</p>
 				{/each}
 			</div>
-			<div class="dvf"><span>{hiddenSingles ? `+${hiddenSingles} earlier` : ''}</span><span>Posts that didn't join a development</span></div>
+			<div class="dvf"><span>{singlesNewest.length} {singlesNewest.length === 1 ? 'post' : 'posts'}{singlesNewest.length > 10 ? ' · scroll for earlier' : ''}</span><span>back to the top after 60 s idle</span></div>
 		</div>
 	</section>
 </div>
@@ -228,15 +239,20 @@
 		text-transform: none;
 		margin-left: 6px;
 	}
+	.devlist,
+	.singles {
+		position: relative;
+	}
 	.dvb,
 	.sgb {
 		flex: 1;
 		min-height: 0;
-		overflow: hidden;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 	.dv {
 		display: grid;
-		grid-template-columns: 44px 1fr;
+		grid-template-columns: 52px 1fr;
 		gap: 8px;
 		padding: 8px 14px;
 		border: 0;
@@ -320,7 +336,7 @@
 	}
 	.sr {
 		display: grid;
-		grid-template-columns: 40px minmax(0, 1fr) auto;
+		grid-template-columns: 52px minmax(0, 1fr) auto;
 		gap: 8px;
 		align-items: center;
 		padding: 6px 12px;
