@@ -232,6 +232,24 @@ kbd {
 	scrollbar-color: var(--s3) transparent;
 }
 
+/* "Back to top" on a list panel that scrolls (lib/actions/scrollList). Its card is position: relative. */
+.top-pill {
+	position: absolute;
+	left: 50%;
+	top: 44px;
+	transform: translateX(-50%);
+	z-index: 5;
+	font-size: 11.5px;
+	font-weight: 600;
+	padding: 5px 12px;
+	border-radius: 99px;
+	border: 1px solid var(--acc);
+	background: var(--acc-bg);
+	color: var(--tx);
+	white-space: nowrap;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
 @media (prefers-reduced-motion: reduce) {
 	* {
 		animation-duration: 0s !important;

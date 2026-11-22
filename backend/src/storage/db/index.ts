@@ -650,6 +650,22 @@ export function migrate() {
 		});
 	}
 
+	// Search became a built-in widget (issue #3). An install that uploaded it keeps its row -
+	// its place in the order, on/off, and its engines table - now marked built in; anywhere
+	// else gets one, switched on, at the end.
+	const searchRow = db.prepare("SELECT source FROM installed_widgets WHERE id = 'searchbar'").get() as { source: string } | undefined;
+	if (!searchRow) {
+		const maxRank = db.prepare('SELECT COALESCE(MAX(priority_rank), 0) as m FROM installed_widgets').get() as { m: number };
+		db.prepare(
+			`INSERT INTO installed_widgets (id, display_name, source, code_path, enabled, priority_rank, owned_tables, installed_at)
+				VALUES ('searchbar', 'Search', 'builtin', 'widgets/searchbar', 1, ?, '["widget_searchbar_engines"]', ?)`
+		).run(maxRank.m + 1, new Date().toISOString());
+	} else if (searchRow.source !== 'builtin') {
+		db.prepare(
+			"UPDATE installed_widgets SET source = 'builtin', display_name = 'Search', code_path = 'widgets/searchbar', frontend_entry = NULL, version = '2.0.0' WHERE id = 'searchbar'"
+		).run();
+	}
+
 	// PoE2's league cache (previously bare global_settings columns) moves into the
 	// generic widget_kv store so it's prunable via the same deleteAllKv('poe2') path as
 	// everything else the widget owns, rather than needing bespoke column-nulling logic
